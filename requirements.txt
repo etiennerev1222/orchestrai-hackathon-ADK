@@ -1,0 +1,4 @@
+# my_simple_a2a_service/requirements.txt
+a2a-sdk 
+# uvicorn  (sera nécessaire pour main_server.py)
+# click    (si main_server.py utilise click, comme dans l'exemple Airbnb)

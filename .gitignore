@@ -1,0 +1,38 @@
+# Fichier .gitignore pour le projet d'agents Python
+
+# 1. Fichiers de cache et bytecode Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 2. Environnements virtuels
+# Remplacez "a2a_py313" par le nom de votre dossier d'environnement si différent
+a2a_py313/
+venv/
+.venv/
+env/
+.env/
+
+# 3. Fichiers d'environnement (TRÈS IMPORTANT)
+# Ne jamais sauvegarder les fichiers contenant des secrets comme les clés API
+.env
+*.env
+
+# 4. Dossiers des éditeurs de code et IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 5. Fichiers de construction et de distribution
+/dist/
+/build/
+*.egg-info/
+
+# 6. Fichiers spécifiques au système d'exploitation
+.DS_Store
+Thumbs.db
+
+# 7. Fichiers de logs (si vous en générez)
+*.log
