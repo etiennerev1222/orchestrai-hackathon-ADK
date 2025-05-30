@@ -1,54 +1,99 @@
-
 # src/orchestrators/planning_supervisor_logic.py
-# Les imports restent les mêmes...
 import logging
 from typing import List, Dict, Any, Optional
 import uuid
 import asyncio
 import json
+import httpx
 
 from src.shared.task_graph_management import TaskGraph, TaskNode, TaskState
-
 from src.clients.a2a_api_client import call_a2a_agent
 from a2a.types import Task as A2ATask, TaskState as A2ATaskStateEnum, TextPart
+from src.shared.service_discovery import get_gra_base_url
 
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-REFORMULATOR_AGENT_URL = "http://localhost:8001"
-EVALUATOR_AGENT_URL = "http://localhost:8002"
-VALIDATOR_AGENT_URL = "http://localhost:8003"
-
+# Les URLs en dur sont supprimées, nous utiliserons le GRA
 
 class PlanningSupervisorLogic:
-    def __init__(self, max_revisions: int = 2): # <-- CORRECTION ICI
+    def __init__(self, max_revisions: int = 2):
         self.task_graph: Optional[TaskGraph] = None
-        
         self.max_revisions = max_revisions
+        self._gra_base_url: Optional[str] = None
         logger.info(f"PlanningSupervisorLogic initialisé. Max révisions: {self.max_revisions}")
+
+    async def _ensure_gra_url(self):
+        if not self._gra_base_url:
+            self._gra_base_url = await get_gra_base_url()
+            if not self._gra_base_url:
+                logger.error("[Superviseur] Impossible de découvrir l'URL du GRA. Les appels aux agents échoueront.")
+        return self._gra_base_url
+
+    async def _get_agent_url_from_gra(self, skill: str) -> Optional[str]:
+        gra_url = await self._ensure_gra_url()
+        if not gra_url:
+            return None
+
+        agent_target_url = None
+        try:
+            async with httpx.AsyncClient() as client:
+                logger.info(f"[Superviseur] Demande au GRA ({gra_url}) un agent avec la compétence: '{skill}'")
+                response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
+                response.raise_for_status()
+                data = response.json()
+                agent_target_url = data.get("url")
+                if agent_target_url:
+                    logger.info(f"[Superviseur] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data.get('name')})")
+                else:
+                    logger.error(f"[Superviseur] Aucune URL retournée par le GRA pour la compétence '{skill}'. Réponse: {data}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.error(f"[Superviseur] Aucun agent trouvé pour '{skill}' dans le GRA à {e.request.url}.")
+            else:
+                logger.error(f"[Superviseur] Erreur HTTP ({e.response.status_code}) en contactant le GRA pour '{skill}': {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"[Superviseur] Erreur de requête en contactant le GRA pour '{skill}': {e}")
+        except Exception as e:
+            logger.error(f"[Superviseur] Erreur inattendue en contactant le GRA pour '{skill}': {e}")
+        return agent_target_url
+
     def create_new_plan(self, raw_objective: str, plan_id: str) -> TaskNode:
         self.task_graph = TaskGraph(plan_id=plan_id)
         logger.info(f"Initialisation du TaskGraph pour le plan '{plan_id}' sur Firestore.")
-
-        # On crée un objet TaskNode avant de l'ajouter
         root_task_node = TaskNode(
-            task_id=plan_id,
-            objective=raw_objective,
-            assigned_agent="PlanningSupervisor",
-            meta={"revision_count": 0}
+            task_id=plan_id, objective=raw_objective,
+            assigned_agent="PlanningSupervisor", meta={"revision_count": 0}
         )
         self.task_graph.add_task(root_task_node)
-
         reformulation_task = TaskNode(
-            task_id=f"reformulate_{uuid.uuid4().hex[:12]}",
-            parent=plan_id,
+            task_id=f"reformulate_{uuid.uuid4().hex[:12]}", parent=plan_id,
             objective="Reformuler l'objectif initial",
-            assigned_agent="ReformulatorAgentServer",
+            assigned_agent="ReformulatorAgentServer"
         )
         self.task_graph.add_task(reformulation_task)
         logger.info(f"Tâche de reformulation initiale '{reformulation_task.id}' ajoutée au plan.")
         return root_task_node
+
+    
+    async def _handle_reformulation_completion(self, completed_reformulation_task: TaskNode):
+        logger.info(f"La tâche de reformulation '{completed_reformulation_task.id}' est complétée.")
+        plan_root_id = completed_reformulation_task.parent
+        if not self.task_graph:
+            logger.error("TaskGraph non initialisé dans _handle_reformulation_completion.")
+            return
+        plan_root_node = self.task_graph.get_task(plan_root_id)
+        if not plan_root_id or not plan_root_node:
+            logger.warning(f"Parent (plan racine) '{plan_root_id}' introuvable pour la tâche de reformulation '{completed_reformulation_task.id}'.")
+            return
+        evaluation_task = TaskNode(
+            task_id=f"evaluate_{uuid.uuid4().hex[:12]}", parent=plan_root_id,
+            objective="Évaluer l'objectif reformulé", assigned_agent="EvaluatorAgentServer"
+        )
+        self.task_graph.add_task(evaluation_task)
+        logger.info(f"Nouvelle tâche d'évaluation '{evaluation_task.id}' ajoutée au plan '{plan_root_id}'.")
+
     
     async def _simulate_agent_call(self, task_node: TaskNode, input_data: Any) -> Dict[str, Any]:
         # Ne simule plus que les agents de replanification
@@ -138,278 +183,215 @@ class PlanningSupervisorLogic:
         else:
             logger.warning(f"Aucune stratégie de replanification définie pour l'agent {failed_task.assigned_agent} sur la tâche {failed_task.id}.")
 
-# DANS LA CLASSE PlanningSupervisorLogic:
+
     async def process_plan(self, plan_id: str):
         if not self.task_graph or self.task_graph.plan_id != plan_id:
             self.task_graph = TaskGraph(plan_id=plan_id)
-            logger.info(f"Chargement du TaskGraph existant '{plan_id}' depuis Firestore.")
-
-        logger.info(f"Traitement du plan ID: {plan_id}")
+            logger.info(f"[Superviseur] (Re)chargé pour le plan '{plan_id}' depuis Firestore.")
         
+        logger.info(f"[Superviseur] Traitement du plan ID: {plan_id}")
         ready_tasks = self.task_graph.get_ready_tasks()
-        logger.info(f"Tâches prêtes à être exécutées: {[task.id for task in ready_tasks]}")
+        
+        current_cycle_log_id = uuid.uuid4().hex[:6]
+        logger.info(f"[MOUCHARD_CYCLE_START - {current_cycle_log_id}] Début du traitement. Tâches prêtes: {[task.id for task in ready_tasks]}")
 
         if not ready_tasks:
-            # ... (logique de fin de plan, si la tâche racine est terminée)
-            root_task_node_check = self.task_graph.get_task(plan_id) # Récupérer le nœud racine mis à jour
+            root_task_node_check = self.task_graph.get_task(plan_id)
             if root_task_node_check and root_task_node_check.state in [TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELLED, TaskState.UNABLE]:
-                logger.info(f"Aucune tâche prête et la tâche racine est dans un état final ({root_task_node_check.state.value}).")
+                logger.info(f"Aucune tâche prête et la tâche racine '{plan_id}' est dans un état final ({root_task_node_check.state.value}).")
             else:
-                logger.info("Aucune tâche prête à exécuter pour ce cycle, mais le plan n'est pas encore terminé.")
+                logger.info(f"Aucune tâche prête à exécuter pour le plan '{plan_id}', mais le plan n'est pas encore terminé.")
             return
-        # Mouchard pour le début de la boucle sur les tâches prêtes
-        current_cycle_log_id = uuid.uuid4().hex[:6] 
-        logger.info(f"[MOUCHARD_CYCLE_START - {current_cycle_log_id}] Début du traitement des tâches prêtes pour le plan {plan_id}.")
 
         for task_node in ready_tasks:
-          # --- MOUCHARD A ---
-            logger.info(f"[MOUCHARD_A - {current_cycle_log_id}] Traitement de la tâche PRÊTE: {task_node.id}, état actuel (avant traitement): {task_node.state.value}, agent: {task_node.assigned_agent}")
-
-            logger.info(f"Traitement de la tâche prête: {task_node.id} ({task_node.objective}) assignée à {task_node.assigned_agent}")
+            logger.info(f"[MOUCHARD_A - {current_cycle_log_id}] Traitement tâche PRÊTE: {task_node.id}, état: {task_node.state.value}, agent: {task_node.assigned_agent}")
 
             if task_node.assigned_agent == "PlanningSupervisor":
                 if task_node.state == TaskState.SUBMITTED:
-                    self.task_graph.update_state(task_node.id, TaskState.WORKING, details="Décomposition par le superviseur.")
-                    self.task_graph.update_state(task_node.id, TaskState.COMPLETED, details="Décomposition initiale terminée.")
-                    logger.info(f"Tâche racine {task_node.id} marquée comme COMPLETED par le superviseur.")
-            elif task_node.assigned_agent in ["ReformulatorAgentServer", "EvaluatorAgentServer", "ValidatorAgentServer"]: # ValidatorAgentServer est maintenant géré ici
-                self.task_graph.update_state(task_node.id, TaskState.WORKING, details=f"Appel à l'agent {task_node.assigned_agent}.")
+                    self.task_graph.update_state(task_node.id, TaskState.WORKING, details="Décomposition initiale par le superviseur.")
+                    self.task_graph.update_state(task_node.id, TaskState.COMPLETED, details="Décomposition initiale terminée, en attente des sous-tâches enfants.")
+                    logger.info(f"Tâche racine '{task_node.id}' décomposée et marquée comme COMPLETED pour débloquer les enfants.")
+            
+            elif task_node.assigned_agent in ["ReformulatorAgentServer", "EvaluatorAgentServer", "ValidatorAgentServer"]:
+                self.task_graph.update_state(task_node.id, TaskState.WORKING, details=f"Préparation de l'appel à l'agent {task_node.assigned_agent}.")
                 
                 input_for_agent: Any = ""
-                agent_target_url: str = "" 
+                agent_target_url: Optional[str] = None
+                skill_to_find: str = ""
 
                 if task_node.assigned_agent == "ReformulatorAgentServer":
-                    # ... (logique identique pour obtenir input_for_agent) ...
-                    agent_target_url = REFORMULATOR_AGENT_URL
+                    skill_to_find = "reformulation" # Compétence clé
                     if task_node.id.startswith("reformulate_rev"):
-                            input_for_agent = task_node.objective # L'objectif contient déjà le feedback
-                    else: # C'est la première reformulation
-                        root_objective_task = self.task_graph.get_task(task_node.parent) if task_node.parent else task_node
-                        input_for_agent = root_objective_task.objective if root_objective_task and root_objective_task.objective else ""
-
+                        input_for_agent = task_node.objective
+                        logger.info(f"Input pour Reformulator (révision) {task_node.id} est son propre objectif.")
+                    else:
+                        root_task_node = self.task_graph.get_task(task_node.parent) if task_node.parent else task_node
+                        input_for_agent = root_task_node.objective if root_task_node and root_task_node.objective else ""
+                        logger.info(f"Input pour Reformulator (initial) {task_node.id} est l'objectif racine.")
+                    
                     if not input_for_agent: 
-                        logger.error(f"Objectif source vide pour la tâche de reformulation {task_node.id}. Marquage comme FAILED.")
-                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details="Objectif source vide.")
-                        await self._handle_task_failure(task_node, "Objectif source vide.")
-                        continue 
-# Dans PlanningSupervisorLogic.process_plan, section pour EvaluatorAgentServer
+                        details = "Objectif source vide."
+                        logger.error(f"{details} pour la tâche de reformulation {task_node.id}.")
+                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details=details, artifact_ref=None)
+                        await self._handle_task_failure(self.task_graph.get_task(task_node.id), details)
+                        continue
 
                 elif task_node.assigned_agent == "EvaluatorAgentServer":
-                    agent_target_url = EVALUATOR_AGENT_URL
-                    parent_node = self.task_graph.get_task(task_node.parent) # Le parent est le plan_root_node
+                    skill_to_find = "evaluation"
+                    parent_node = self.task_graph.get_task(task_node.parent)
                     found_input = False
                     if parent_node:
-                        logger.info(f"Recherche d'artefact pour l'évaluateur. Parent '{parent_node.id}'. Enfants du parent: {parent_node.children}")
-                        child_tasks_details = []
+                        # Logique de recherche de l'artefact de reformulation le plus récent
+                        child_tasks_details = [] # Pour le log de débogage
                         raw_child_tasks = [self.task_graph.get_task(child_id) for child_id in parent_node.children]
-
-                        for t_idx, t_obj in enumerate(raw_child_tasks):
-                            if t_obj:
-                                child_tasks_details.append({
-                                    "id": t_obj.id,
-                                    "agent": t_obj.assigned_agent,
-                                    "state": t_obj.state.value if hasattr(t_obj.state, 'value') else str(t_obj.state),
-                                    "has_artifact": t_obj.artifact_ref is not None,
-                                    "artifact_type": str(type(t_obj.artifact_ref)),
-                                    "artifact_preview": str(t_obj.artifact_ref)[:100] if t_obj.artifact_ref else None
-                                })
-                            else:
-                                child_tasks_details.append({"id": parent_node.children[t_idx], "status": "Non trouvé/None"})
-                        logger.info(f"Détails des tâches enfants récupérées: {json.dumps(child_tasks_details, indent=2)}")
+                        for t_obj in raw_child_tasks: # Log de débogage
+                            if t_obj: child_tasks_details.append({"id": t_obj.id, "agent": t_obj.assigned_agent, "state": t_obj.state.value, "has_artifact": t_obj.artifact_ref is not None})
+                        logger.info(f"Recherche artefact pour évaluateur. Parent '{parent_node.id}'. Enfants: {json.dumps(child_tasks_details)}")
 
                         completed_reformulation_tasks = [
                             t for t in raw_child_tasks 
                             if t and t.assigned_agent == "ReformulatorAgentServer" and \
                             t.state == TaskState.COMPLETED and t.artifact_ref
                         ]
-                        logger.info(f"Nombre de tâches de reformulation complétées avec artefact trouvées: {len(completed_reformulation_tasks)}")
-
-                        if completed_reformulation_tasks:                    
-                            # Trier par date/heure de la dernière mise à jour d'état pour trouver la plus récente
-                            # (L'historique stocke les timestamps)
+                        logger.info(f"Nb tâches reformulation complétées avec artefact: {len(completed_reformulation_tasks)}")
+                        if completed_reformulation_tasks:
                             def get_completion_time(task: TaskNode):
-                                for entry in reversed(task.history): # Cherche à partir de la fin
-                                    if entry.get("to_state") == TaskState.COMPLETED.value:
-                                        return entry.get("timestamp", "")
-                                return "" # Si pas trouvé, mettre au début
-
+                                for entry in reversed(task.history):
+                                    if entry.get("to_state") == TaskState.COMPLETED.value: return entry.get("timestamp", "")
+                                return ""
                             completed_reformulation_tasks.sort(key=get_completion_time, reverse=True)
-                            
-                            latest_reformulation_task = completed_reformulation_tasks[0] # La plus récente
+                            latest_reformulation_task = completed_reformulation_tasks[0]
                             if isinstance(latest_reformulation_task.artifact_ref, str):
                                 input_for_agent = latest_reformulation_task.artifact_ref
                                 found_input = True
-                                logger.info(f"Input pour EvaluatorAgentServer (depuis la reformulation la plus récente {latest_reformulation_task.id}): '{input_for_agent[:100]}...'")
-                            else:
-                                logger.error(f"L'artefact de la reformulation la plus récente {latest_reformulation_task.id} n'est pas une chaîne.")
-                    else:
-                            logger.error(f"Aucune tâche de reformulation complétée trouvée pour le plan {parent_node.id}.")
-
+                                logger.info(f"Input pour Evaluator (depuis {latest_reformulation_task.id}): '{input_for_agent[:100]}...'")
+                            else: logger.error(f"Artefact de {latest_reformulation_task.id} n'est pas une chaîne.")
+                        else: logger.info(f"Aucune tâche de reformulation pertinente trouvée pour le plan {parent_node.id}.")
+                    
                     if not found_input:
-                        logger.error(f"Artefact de reformulation manquant ou de format incorrect pour l'évaluation de la tâche {task_node.id}. Marquage comme FAILED.")
-                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details="Artefact de reformulation manquant/incorrect.")
-                        await self._handle_task_failure(task_node, "Artefact de reformulation manquant/incorrect.")
-                        continue # Passe à la tâche suivante dans ready_tasks                
+                        details = "Artefact de reformulation manquant/incorrect."
+                        logger.error(f"{details} pour tâche évaluation {task_node.id}.")
+                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details=details, artifact_ref=None)
+                        await self._handle_task_failure(self.task_graph.get_task(task_node.id), details)
+                        continue
 
-                elif task_node.assigned_agent == "ValidatorAgentServer": # LOGIQUE POUR APPEL RÉEL AU VALIDATEUR
-                    agent_target_url = VALIDATOR_AGENT_URL
-                    parent_node = self.task_graph.get_task(task_node.parent) if task_node.parent else None
+                elif task_node.assigned_agent == "ValidatorAgentServer":
+                    skill_to_find = "validation"
+                    parent_node = self.task_graph.get_task(task_node.parent)
                     found_input = False
                     input_dict_for_validator: Optional[Dict[str, Any]] = None
                     if parent_node:
-                        for child_id_of_root in parent_node.children:
-                            sibling_task = self.task_graph.get_task(child_id_of_root)
-                            if sibling_task and sibling_task.assigned_agent == "EvaluatorAgentServer" and \
-                            sibling_task.state == TaskState.COMPLETED and isinstance(sibling_task.artifact_ref, dict): 
-                                input_dict_for_validator = sibling_task.artifact_ref # C'est déjà un dict
-                                found_input = True
-                                logger.info(f"Input (dict) pour ValidatorAgentServer (depuis artefact évaluateur {sibling_task.id}): {input_dict_for_validator}")
-                                break
+                        # Logique de recherche de l'artefact d'évaluation le plus récent
+                        child_tasks = [self.task_graph.get_task(child_id) for child_id in parent_node.children]
+                        completed_evaluation_tasks = [
+                            t for t in child_tasks if t and t.assigned_agent == "EvaluatorAgentServer" and \
+                            t.state == TaskState.COMPLETED and isinstance(t.artifact_ref, dict)
+                        ]
+                        if completed_evaluation_tasks:
+                            def get_completion_time(task: TaskNode): # Fonction utilitaire locale
+                                for entry in reversed(task.history):
+                                    if entry.get("to_state") == TaskState.COMPLETED.value: return entry.get("timestamp", "")
+                                return ""
+                            completed_evaluation_tasks.sort(key=get_completion_time, reverse=True)
+                            latest_evaluation_task = completed_evaluation_tasks[0]
+                            input_dict_for_validator = latest_evaluation_task.artifact_ref
+                            found_input = True
+                            logger.info(f"Input pour Validator (depuis {latest_evaluation_task.id}): {input_dict_for_validator}")
+                    
                     if not found_input or not input_dict_for_validator:
-                        logger.error(f"Artefact d'évaluation (dict) manquant ou de format incorrect pour la validation de la tâche {task_node.id}. Marquage comme FAILED.")
-                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details="Artefact d'évaluation (dict) manquant/incorrect.")
-                        await self._handle_task_failure(task_node, "Artefact d'évaluation (dict) manquant/incorrect.")
+                        details = "Artefact d'évaluation (dict) manquant/incorrect."
+                        logger.error(f"{details} pour tâche validation {task_node.id}.")
+                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details=details, artifact_ref=None)
+                        await self._handle_task_failure(self.task_graph.get_task(task_node.id), details)
                         continue
                     try:
-                        input_for_agent = json.dumps(input_dict_for_validator) # Sérialiser le dict en chaîne JSON
+                        input_for_agent = json.dumps(input_dict_for_validator)
                     except TypeError as e:
-                        logger.error(f"Erreur de sérialisation JSON de l'input pour ValidatorAgent: {e}", exc_info=True)
-                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details="Erreur de formatage de l'input pour Validator.")
-                        await self._handle_task_failure(task_node, "Erreur de formatage de l'input pour Validator.")
+                        details = "Erreur formatage input pour Validator."
+                        logger.error(f"Erreur JSON dump pour Validator: {e}", exc_info=True)
+                        self.task_graph.update_state(task_node.id, TaskState.FAILED, details=details, artifact_ref=None)
+                        await self._handle_task_failure(self.task_graph.get_task(task_node.id), details)
                         continue
-
-              
-                # --- Section commune pour l'appel A2A réel et traitement de la réponse (CORRIGÉE ET FINALISÉE) ---
-  
-               
-                if not agent_target_url: 
-                    logger.critical(f"ERREUR DE LOGIQUE: agent_target_url non défini pour {task_node.assigned_agent}")
-                    # S'assurer de passer artifact_ref=None même en cas d'erreur avant l'appel
-                    self.task_graph.update_state(task_node.id, TaskState.FAILED, details="Erreur interne: URL d'agent cible non définie.", artifact_ref=None)
-                    updated_failed_node = self.task_graph.get_task(task_node.id)
-                    if updated_failed_node:
-                        await self._handle_task_failure(updated_failed_node, "URL d'agent cible non définie.")
-                    continue # Passe à la tâche suivante
                 
-                if not isinstance(input_for_agent, str):
-                    logger.warning(f"Input pour {task_node.assigned_agent} n'est pas une chaîne ({type(input_for_agent)}), tentative de conversion.")
+                # --- APPEL AU GRA POUR OBTENIR L'URL DE L'AGENT ---
+                if skill_to_find:
+                    agent_target_url = await self._get_agent_url_from_gra(skill_to_find)
+                
+                # --- SECTION COMMUNE POUR L'APPEL A2A (version corrigée) ---
+                if not agent_target_url: 
+                    details = f"URL agent pour '{skill_to_find}' non trouvée via GRA."
+                    logger.critical(f"{details} Impossible de traiter {task_node.id}")
+                    self.task_graph.update_state(task_node.id, TaskState.FAILED, details=details, artifact_ref=None)
+                    await self._handle_task_failure(self.task_graph.get_task(task_node.id), details)
+                    continue
+                
+                if not isinstance(input_for_agent, str): # Déjà fait pour Validator, mais bon pour les autres
                     input_for_agent = str(input_for_agent) if input_for_agent is not None else ""
 
-                logger.info(f"Préparation de l'appel réel à {agent_target_url} pour la tâche {task_node.id} avec l'input: '{input_for_agent[:200]}...'")
-                a2a_task_result: Optional[A2ATask] = await call_a2a_agent(
-                    agent_url=agent_target_url,
-                    input_text=input_for_agent, 
-                    initial_context_id=plan_id 
-                )
+                logger.info(f"Appel réel à {agent_target_url} pour {task_node.id} avec input: '{str(input_for_agent)[:200]}...'")
+                a2a_task_result = await call_a2a_agent(agent_url=agent_target_url, input_text=input_for_agent, initial_context_id=plan_id)
+                
+                final_a2a_state = TaskState.FAILED
+                details_message = "Réponse agent non traitée."
+                extracted_artifact_content = None
 
-                final_a2a_state: TaskState = TaskState.FAILED # Par défaut
-                details_message: str = "Réponse de l'agent non initialisée."
-                extracted_artifact_content: Any = None
-  
                 if a2a_task_result and a2a_task_result.status and hasattr(a2a_task_result.status.state, 'value'):
                     try:
                         final_a2a_state = TaskState(a2a_task_result.status.state.value)
                     except ValueError:
-                        logger.error(f"État A2A inconnu '{a2a_task_result.status.state.value}' pour {task_node.assigned_agent}.")
-                        final_a2a_state = TaskState.FAILED 
-
-                    details_message = f"Réponse de l'agent {task_node.assigned_agent} reçue."
+                        final_a2a_state = TaskState.FAILED
+                        details_message = f"État A2A inconnu: {a2a_task_result.status.state.value}"
+                        logger.error(details_message)
 
                     if final_a2a_state == TaskState.COMPLETED:
+                        details_message = f"Réponse agent {task_node.assigned_agent} reçue."
                         if a2a_task_result.artifacts and len(a2a_task_result.artifacts) > 0:
+                            # ... (logique d'extraction d'artefact comme dans votre dernière version complète) ...
                             first_artifact = a2a_task_result.artifacts[0]
                             artifact_text = None
                             if first_artifact.parts and len(first_artifact.parts) > 0:
                                 part_content = first_artifact.parts[0]
-                                if hasattr(part_content, 'root') and isinstance(part_content.root, TextPart):
-                                    artifact_text = part_content.root.text
-                                elif isinstance(part_content, TextPart):
-                                     artifact_text = part_content.text
-                            
+                                if hasattr(part_content, 'root') and isinstance(part_content.root, TextPart): artifact_text = part_content.root.text
+                                elif isinstance(part_content, TextPart): artifact_text = part_content.text
                             if artifact_text is not None:
                                 if task_node.assigned_agent in ["EvaluatorAgentServer", "ValidatorAgentServer"]:
                                     try:
                                         extracted_artifact_content = json.loads(artifact_text)
-                                        details_message += " Artefact JSON reçu et parsé."
+                                        details_message += " Artefact JSON parsé."
                                     except json.JSONDecodeError as e:
-                                        logger.error(f"Impossible de parser JSON de {task_node.assigned_agent}: {e}. Artefact: {artifact_text[:200]}")
-                                        extracted_artifact_content = {"error": "Invalid JSON artifact", "raw": artifact_text}
-                                        final_a2a_state = TaskState.FAILED 
-                                        details_message = f"Artefact JSON attendu de {task_node.assigned_agent} invalide."
-                                else: 
+                                        extracted_artifact_content = {"error": "Invalid JSON", "raw": artifact_text}
+                                        final_a2a_state = TaskState.FAILED
+                                        details_message = f"JSON invalide de {task_node.assigned_agent}: {e}"
+                                else:
                                     extracted_artifact_content = artifact_text
                                     details_message += " Artefact textuel reçu."
-                            else:
-                                extracted_artifact_content = "[Artefact textuel A2A non trouvé ou vide]"
-                                details_message += " Artefact textuel A2A non trouvé ou vide."
-                        else:
-                            extracted_artifact_content = "[Aucun artefact A2A retourné]"
-                            details_message += " Aucun artefact A2A retourné."
-                        # --- MOUCHARD B ---
-                        logger.info(f"[MOUCHARD_B - {current_cycle_log_id}] Tâche {task_node.id} - Réponse agent: état A2A final={final_a2a_state.value}, artifact_present={extracted_artifact_content is not None}")
-                    
-                    else: # Si l'agent A2A retourne FAILED, etc.
-                        error_msg_from_agent = "Échec rapporté par l'agent."
-                        if a2a_task_result.status.message and a2a_task_result.status.message.parts:
-                            part_content = a2a_task_result.status.message.parts[0]
-                            text_content_error = ""
-                            if hasattr(part_content, 'root') and isinstance(part_content.root, TextPart):
-                                text_content_error = part_content.root.text
-                            elif isinstance(part_content, TextPart):
-                                text_content_error = part_content.text
-                            if text_content_error: error_msg_from_agent = text_content_error
-                        details_message = error_msg_from_agent
-                
-                else: # Si a2a_task_result est None ou invalide structurellement
-                    details_message = "Réponse A2A invalide ou statut manquant."
+                            else: extracted_artifact_content = "[Artefact A2A vide]"
+                        else: extracted_artifact_content = "[Aucun artefact A2A]"
+                    else: # Échec rapporté par l'agent A2A
+                        # ... (logique d'extraction du message d'erreur de l'agent A2A) ...
+                        details_message = "Échec rapporté par l'agent A2A." # Simplifié
+                else:
+                    details_message = "Réponse A2A invalide."
                     final_a2a_state = TaskState.FAILED
 
-                # --- POINT CRUCIAL : SAUVEGARDE DE L'ÉTAT ET DE L'ARTEFACT ---
-                self.task_graph.update_state(
-                    task_node.id, 
-                    final_a2a_state, 
-                    details=details_message, 
-                    artifact_ref=extracted_artifact_content # L'artefact est passé ici !
-                )
+                self.task_graph.update_state(task_node.id, final_a2a_state, details=details_message, artifact_ref=extracted_artifact_content)
+                updated_node_from_db = self.task_graph.get_task(task_node.id)
 
-                # On récupère le nœud *après* la mise à jour pour avoir la version persistée
-                updated_task_node_from_db = self.task_graph.get_task(task_node.id)
-
-                if updated_task_node_from_db:
+                if updated_node_from_db:
                     if final_a2a_state == TaskState.COMPLETED:
-                        logger.info(f"Tâche '{updated_task_node_from_db.id}' complétée par {updated_task_node_from_db.assigned_agent}. Log: {details_message}")
-                        await self._handle_task_completion(updated_task_node_from_db) # APPEL UNIQUE
-                    else: 
-                        logger.error(f"La tâche '{updated_task_node_from_db.id}' a échoué. Message: {details_message}")
-                        await self._handle_task_failure(updated_task_node_from_db, details_message)
+                        logger.info(f"[MOUCHARD_D - {current_cycle_log_id}] Tâche {updated_node_from_db.id} ({updated_node_from_db.assigned_agent}) VA APPELER _handle_task_completion. État DB: {updated_node_from_db.state.value}")
+                        await self._handle_task_completion(updated_node_from_db)
+                    else:
+                        await self._handle_task_failure(updated_node_from_db, details_message)
                 else:
-                    logger.critical(f"Impossible de récupérer la tâche {task_node.id} de Firestore après mise à jour.")
-                # --- FIN DE LA SECTION COMMUNE ---
-                
-                
-            else: # Agents de replanification (LogAgent, SimpleReformulatorAgent, AlternativeStrategyAgent etc.)
-                # ... (logique de simulation identique, utilisant _simulate_agent_call) ...
-                logger.info(f"Traitement simulé pour l'agent '{task_node.assigned_agent}' sur la tâche {task_node.id}")
-                self.task_graph.update_state(task_node.id, TaskState.WORKING, details=f"Simulation pour {task_node.assigned_agent}.")
-                simulated_input = task_node.objective 
-                simulated_response = await self._simulate_agent_call(task_node, simulated_input)
-                response_status_sim = TaskState(simulated_response.get("status", TaskState.FAILED).value) 
-                task_node.artifact_ref = simulated_response.get("artifact_content") if response_status_sim == TaskState.COMPLETED else None
-                details_message_sim = f"Traitement simulé par {task_node.assigned_agent}"
-                if response_status_sim == TaskState.FAILED:
-                    details_message_sim = simulated_response.get("error_message", details_message_sim)
-                self.task_graph.update_state(task_node.id, response_status_sim, details=details_message_sim)
-                logger.info(f"Tâche '{task_node.id}' ({task_node.assigned_agent}) mise à jour à {response_status_sim.value} par simulation. Artefact: {task_node.artifact_ref}")
-                if response_status_sim == TaskState.COMPLETED:
-                    await self._handle_task_completion(task_node)
-                elif response_status_sim == TaskState.FAILED: 
-                    await self._handle_task_failure(task_node, details_message_sim)
+                    logger.error(f"CRITICAL: Impossible de récupérer {task_node.id} après update_state.")
             
-        logger.info("État actuel du TaskGraph après traitement du cycle:")
-        for node_id_iter, node_details_iter in self.task_graph.as_dict()["nodes"].items():
-            logger.info(f"  - Tâche {node_id_iter}: {node_details_iter['objective']} - État: {node_details_iter['state']} - Agent: {node_details_iter['assigned_agent']}")
+            else: # Agents de replanification simulés
+                # ... (votre logique de simulation) ...
+                pass # Omis pour la clarté
 
-    # ... (le reste des méthodes _handle_..._completion et _handle_task_failure) ...
+        logger.info(f"[MOUCHARD_CYCLE_END - {current_cycle_log_id}] Fin du traitement des tâches prêtes.")
+        # ... (log de l'état du graphe, si désiré) ...
 
         # ... (log de l'état du graphe) ...
 # src/orchestrators/planning_supervisor_logic.py

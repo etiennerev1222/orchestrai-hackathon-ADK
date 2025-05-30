@@ -14,9 +14,17 @@ from a2a.types import (
     AgentSkill,
     # D'autres types pourraient être nécessaires pour une AgentCard plus complexe
 )
-
+import httpx # AJOUTÉ
+import contextlib # AJOUTÉ
 # Importation de notre AgentExecutor
 from .executor import ReformulatorAgentExecutor
+from src.shared.service_discovery import get_gra_base_url # Assurez-vous que ce chemin est correct
+
+# --- AJOUT : Configuration spécifique à cet agent pour le GRA ---
+AGENT_NAME = "ReformulatorAgentServer"
+AGENT_SKILLS = ["reformulation", "text_processing"] # Compétences de cet agent
+# 
+
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -58,60 +66,123 @@ def get_reformulator_agent_card(host: str, port: int) -> AgentCard:
     logger.info(f"Agent Card créée: {agent_card.name} accessible à {agent_card.url}")
     return agent_card
 
+async def register_self_with_gra(agent_public_url: str):
+    gra_base_url = await get_gra_base_url()
+    if not gra_base_url:
+        logger.error(f"[{AGENT_NAME}] Impossible de découvrir l'URL du GRA. Enregistrement annulé.")
+        return
 
-async def run_server(host: str = "localhost", port: int = 8000, log_level: str = "info"):
-    """
-    Configure et démarre le serveur A2A pour le ReformulatorAgent.
-    """
-    logger.info(f"Démarrage du ReformulatorAgentServer à l'adresse http://{host}:{port}")
+    registration_payload = {
+        "name": AGENT_NAME,
+        "url": agent_public_url,
+        "skills": AGENT_SKILLS
+    }
+    register_endpoint = f"{gra_base_url}/register"
+    
+    max_retries = 3
+    retry_delay = 5 # secondes
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                logger.info(f"[{AGENT_NAME}] Tentative d'enregistrement ({agent_public_url}) auprès du GRA à {register_endpoint} (essai {attempt + 1}/{max_retries})")
+                response = await client.post(register_endpoint, json=registration_payload, timeout=10.0)
+                response.raise_for_status()
+                logger.info(f"[{AGENT_NAME}] Enregistré avec succès auprès du GRA. Réponse: {response.json()}")
+                return
+        except httpx.RequestError as e:
+            logger.warning(f"[{AGENT_NAME}] Échec de l'enregistrement auprès du GRA (essai {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.error(f"[{AGENT_NAME}] Échec final de l'enregistrement après {max_retries} essais. L'agent ne sera pas découvrable via le GRA.")
+        except Exception as e:
+            logger.error(f"[{AGENT_NAME}] Erreur inattendue lors de l'enregistrement: {e}")
+            break 
+# ------------------------------------------------------------------------------------
 
-    # 1. Créer l'instance de notre AgentExecutor
-    reformulator_executor = ReformulatorAgentExecutor()
+# Variable globale pour stocker la config uvicorn pour le lifespan
+uvicorn_config_reformulator = None # Nom unique pour éviter conflit si importé ailleurs
 
-    # 2. Créer un gestionnaire de tâches (simple, en mémoire pour ce démo)
+@contextlib.asynccontextmanager
+async def lifespan(app): # FastAPI ou Starlette app
+    global uvicorn_config_reformulator
+    # Actions au démarrage
+    host = uvicorn_config_reformulator.host if uvicorn_config_reformulator  else "localhost"
+    port = uvicorn_config_reformulator.port if uvicorn_config_reformulator else 8002 # Port par défaut pour l'évaluateur
+    
+    if host == "0.0.0.0":
+        logger.warning(f"[{AGENT_NAME}] L'agent écoute sur 0.0.0.0. L'URL d'enregistrement utilise 'localhost'. Assurez-vous que c'est accessible par le GRA.")
+        agent_public_url = f"http://localhost:{port}"
+    else:
+        agent_public_url = f"http://{host}:{port}"
+        
+    await register_self_with_gra(agent_public_url)
+    yield
+    # Actions à l'arrêt
+    logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
+
+async def run_server(host: str = "localhost", port: int = 8001, log_level: str = "info"): # Adapter le port
+    logger.info(f"Démarrage de {AGENT_NAME} à l'adresse http://{host}:{port}")
+
+    # 1. Définir le lifespan DANS la portée de run_server pour capturer host et port
+    @contextlib.asynccontextmanager
+    async def lifespan_for_this_agent_instance(app): # 'app' est l'instance Starlette
+        current_host = host
+        current_port = port
+        # Logique pour déterminer agent_public_url (comme dans ma réponse précédente)
+        # ...
+        agent_public_url = os.environ.get(f"{AGENT_NAME}_PUBLIC_URL", f"http://{'localhost' if current_host == '0.0.0.0' else current_host}:{current_port}")
+        logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique pour enregistrement : {agent_public_url}")
+        await register_self_with_gra(agent_public_url)
+        yield
+        logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt (lifespan).")
+
+    # 2. Créer l'instance de l'Executor spécifique à l'agent
+    agent_executor = ReformulatorAgentExecutor() # Ou EvaluatorAgentExecutor, ValidatorAgentExecutor
+
+    # 3. Créer les composants A2A standard
     task_store = InMemoryTaskStore()
-
-    # 3. Créer le gestionnaire de requêtes par défaut, en lui passant notre exécuteur et le task_store
     request_handler = DefaultRequestHandler(
-        agent_executor=reformulator_executor,
+        agent_executor=agent_executor,
         task_store=task_store
     )
+    agent_card = get_reformulator_agent_card(host, port) # Ou get_evaluator_agent_card, etc.
 
-    # 4. Obtenir la carte d'agent
-    agent_card = get_reformulator_agent_card(host, port)
-
-    # 5. Créer l'application serveur A2A (basée sur Starlette)
-    # Cette application gère les routes HTTP, la communication A2A, etc.
-    a2a_server_app = A2AStarletteApplication(
+    # 4. Créer l'application A2AStarletteApplication SANS l'argument lifespan
+    a2a_server_app_instance = A2AStarletteApplication(
         agent_card=agent_card,
         http_handler=request_handler
-        # D'autres options de configuration peuvent être passées ici si nécessaire
     )
+    
+    # 5. Construire l'application ASGI (Starlette)
+    asgi_app = a2a_server_app_instance.build()
 
-    # 6. Construire l'application ASGI à partir de notre serveur A2A
-    # L'application ASGI est ce que uvicorn va exécuter.
-    asgi_app = a2a_server_app.build()
+    # 6. Attacher notre lifespan à l'application Starlette construite
+    # Ceci est la manière standard pour Starlette/FastAPI
+    if hasattr(asgi_app, 'router') and hasattr(asgi_app.router, 'lifespan_context'):
+        asgi_app.router.lifespan_context = lifespan_for_this_agent_instance
+        logger.info(f"[{AGENT_NAME}] Lifespan attaché à asgi_app.router.lifespan_context.")
+    else:
+        logger.error(f"[{AGENT_NAME}] Impossible d'attacher le lifespan. L'enregistrement au GRA ne se fera pas.")
 
-    # 7. Configuration d'Uvicorn
-    # Uvicorn est un serveur ASGI (Asynchronous Server Gateway Interface) ultra-rapide.
+
+    # 7. Configurer Uvicorn pour qu'il utilise le lifespan de l'application
     config = uvicorn.Config(
         app=asgi_app,
         host=host,
         port=port,
         log_level=log_level.lower(),
-        lifespan="auto" # Gère le cycle de vie de l'application (démarrage/arrêt)
+        lifespan="on" # <--- Important: "on" ici
     )
-
-    # 8. Créer et démarrer le serveur Uvicorn
-    uvicorn_instance = uvicorn.Server(config)
+    
+    server = uvicorn.Server(config)
     
     try:
-        await uvicorn_instance.serve()
+        await server.serve()
     except KeyboardInterrupt:
-        logger.info("Arrêt du serveur demandé par l'utilisateur (KeyboardInterrupt).")
+        logger.info(f"[{AGENT_NAME}] Arrêt du serveur demandé (KeyboardInterrupt).")
     finally:
-        logger.info("Serveur Uvicorn arrêté.")
-
+        logger.info(f"Serveur {AGENT_NAME} arrêté.")
 
 if __name__ == "__main__":
     # Paramètres pour le serveur

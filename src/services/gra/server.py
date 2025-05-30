@@ -6,6 +6,9 @@ from typing import Dict, Any, List
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pydantic import BaseModel, Field
+import os # <-- AJOUT
+from datetime import datetime, timezone # <-- AJOUT
+
 
 # --- Initialisation de Firestore ---
 # firebase_admin s'authentifiera automatiquement via la variable d'environnement
@@ -22,11 +25,14 @@ except Exception as e:
     exit(1)
 # ------------------------------------
 
-app = FastAPI(
-    title="Gestionnaire de Ressources et d'Agents (GRA)",
-    description="Service central pour l'enregistrement des agents et le stockage des artefacts.",
-    version="1.0.0"
-)
+
+# --- AJOUT : Configuration de l'URL publique du GRA ---
+# Cette URL sera celle à laquelle les autres services peuvent atteindre le GRA.
+# Dans un environnement cloud, elle pourrait être injectée via une variable d'env.
+# Pour le développement local, vous pouvez la coder en dur ou la mettre dans une var d'env.
+GRA_PUBLIC_URL = os.environ.get("GRA_PUBLIC_URL", "http://localhost:8000")
+GRA_SERVICE_REGISTRY_COLLECTION = "service_registry"
+GRA_CONFIG_DOCUMENT_ID = "gra_instance_config"
 
 # --- Modèles de données Pydantic pour la validation ---
 class AgentRegistration(BaseModel):
@@ -41,7 +47,21 @@ class Artifact(BaseModel):
     content: Dict[str, Any] | str
 
 # --- Endpoints du Registre d'Agents ---
+# --- AJOUT : Gestionnaire de durée de vie de l'application FastAPI ---
+from contextlib import asynccontextmanager
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await publish_gra_location()
+    yield
+    # Ajoutez ici tout nettoyage nécessaire lors de l'arrêt de l'application
+
+app = FastAPI(
+    title="Gestionnaire de Ressources et d'Agents (GRA)",
+    description="Service central pour l'enregistrement des agents et le stockage des artefacts.",
+    version="1.0.0",
+    lifespan=lifespan
+)
 @app.post("/register", status_code=201)
 async def register_agent(agent: AgentRegistration):
     """Enregistre un agent ou met à jour ses informations."""
@@ -94,6 +114,22 @@ async def get_artifact(artifact_id: str):
         return doc.to_dict()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- AJOUT : Fonction pour publier l'URL du GRA ---
+async def publish_gra_location():
+    try:
+        doc_ref = db.collection(GRA_SERVICE_REGISTRY_COLLECTION).document(GRA_CONFIG_DOCUMENT_ID)
+        doc_data = {
+            "service_name": "GestionnaireRessourcesAgents",
+            "current_url": GRA_PUBLIC_URL,
+            "last_heartbeat": datetime.now(timezone.utc).isoformat()
+        }
+        doc_ref.set(doc_data)
+        logger.info(f"URL du GRA ({GRA_PUBLIC_URL}) publiée dans Firestore sur '{GRA_SERVICE_REGISTRY_COLLECTION}/{GRA_CONFIG_DOCUMENT_ID}'.")
+    except Exception as e:
+        logger.error(f"Impossible de publier l'URL du GRA dans Firestore : {e}")
+# -------------------------------------------------
 
 
 if __name__ == "__main__":
