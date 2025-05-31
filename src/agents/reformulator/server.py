@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import uvicorn # Pour exécuter notre application ASGI
-
+import os # Pour lire une éventuelle URL publique via variable d'env
 # Importations depuis le SDK A2A
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler

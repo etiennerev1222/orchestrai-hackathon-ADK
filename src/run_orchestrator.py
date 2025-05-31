@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 async def main():
-    objective = "Organiser une conférence sur l'IA éthique à Zurich pour Q4, avec un focus sur l'impact social. Budget : 5000 CHF."
+    objective = "Ecrire une application Tetris html css..."
     plan_id = f"plan_{uuid.uuid4().hex[:12]}"
 
     logger.info("--- DÉMARRAGE D'UN NOUVEAU PLAN ---")

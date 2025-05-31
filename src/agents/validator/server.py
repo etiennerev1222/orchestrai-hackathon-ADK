@@ -3,64 +3,58 @@
 import asyncio
 import logging
 import uvicorn
-import httpx # AJOUTÉ pour appeler le GRA
-import contextlib # AJOUTÉ pour le lifespan
+import httpx
+import contextlib
+import os # Pour lire une éventuelle URL publique via variable d'env
 
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
+from a2a.server.tasks import InMemoryTaskStore # Ou FirestoreTaskStore
 from a2a.types import (
     AgentCard,
     AgentCapabilities,
     AgentSkill,
 )
+from starlette.applications import Starlette # Pour le type hint de asgi_app
 
+# Importation pour la découverte du GRA
+from src.shared.service_discovery import get_gra_base_url
+
+# Importer l'AgentExecutor spécifique
 from .executor import ValidatorAgentExecutor
-from src.shared.service_discovery import get_gra_base_url # Assurez-vous que ce chemin est correct
 
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# --- AJOUT : Configuration spécifique à cet agent pour le GRA ---
+# --- Configuration spécifique à cet agent pour le GRA ---
 AGENT_NAME = "ValidatorAgentServer"
-AGENT_SKILLS = ["décision", "validation"] # Compétences de cet agent
+AGENT_SKILLS = ["validation", "decision_making"] # Adaptez si besoin
 # -------------------------------------------------------------
 
-
 def get_validator_agent_card(host: str, port: int) -> AgentCard:
-    """
-    Crée et retourne la "carte d'agent" pour notre ValidatorAgent.
-    """
-    capabilities = AgentCapabilities(
-        streaming=False,
-        push_notifications=False
-    )
-
-    validation_skill = AgentSkill(
+    capabilities = AgentCapabilities(streaming=False, push_notifications=False)
+    validation_skill_obj = AgentSkill(
         id="plan_validation",
         name="Validate Plan",
         description="Validates a plan based on evaluation results and specific criteria.",
-        tags=["decision", "validation", "planning_gate"],
-        examples=[
-            "Validate this evaluated plan: [JSON output from Evaluator Agent]"
-        ]
+        tags=AGENT_SKILLS,
+        examples=["Validate this evaluated plan: [JSON output from Evaluator Agent]"]
     )
-
     agent_card = AgentCard(
         name="Plan Validator Agent",
         description="An A2A agent that validates evaluated plans.",
         url=f"http://{host}:{port}/",
         version="0.1.0",
-        defaultInputModes=["application/json"],  # Attend du JSON (l'artefact de l'évaluateur)
-        defaultOutputModes=["application/json"],  # Retourne un JSON (le résultat de la validation)
+        defaultInputModes=["application/json"],
+        defaultOutputModes=["application/json"],
         capabilities=capabilities,
-        skills=[validation_skill]
+        skills=[validation_skill_obj]
     )
     logger.info(f"Agent Card créée: {agent_card.name} accessible à {agent_card.url}")
     return agent_card
 
-# --- AJOUT : Fonction pour s'enregistrer auprès du GRA (identique à celle du Reformulator) ---
+# --- Fonction pour s'enregistrer auprès du GRA ---
 async def register_self_with_gra(agent_public_url: str):
     gra_base_url = await get_gra_base_url()
     if not gra_base_url:
@@ -93,41 +87,23 @@ async def register_self_with_gra(agent_public_url: str):
         except Exception as e:
             logger.error(f"[{AGENT_NAME}] Erreur inattendue lors de l'enregistrement: {e}")
             break 
-# ------------------------------------------------------------------------------------
+# ----------------------------------------------------
 
-# Variable globale pour stocker la config uvicorn pour le lifespan
-uvicorn_config_validator = None # Nom unique pour éviter conflit si importé ailleurs
-
-@contextlib.asynccontextmanager
-async def lifespan(app): # FastAPI ou Starlette app
-    global uvicorn_config_validator
-    # Actions au démarrage
-    host = uvicorn_config_validator.host if uvicorn_config_validator else "localhost"
-    port = uvicorn_config_validator.port if uvicorn_config_validator else 8002 # Port par défaut pour l'évaluateur
-    
-    if host == "0.0.0.0":
-        logger.warning(f"[{AGENT_NAME}] L'agent écoute sur 0.0.0.0. L'URL d'enregistrement utilise 'localhost'. Assurez-vous que c'est accessible par le GRA.")
-        agent_public_url = f"http://localhost:{port}"
-    else:
-        agent_public_url = f"http://{host}:{port}"
-        
-    await register_self_with_gra(agent_public_url)
-    yield
-    # Actions à l'arrêt
-    logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
-
-async def run_server(host: str = "localhost", port: int = 8001, log_level: str = "info"): # Adapter le port
+async def run_server(host: str = "localhost", port: int = 8003, log_level: str = "info"): # Port 8003
     logger.info(f"Démarrage de {AGENT_NAME} à l'adresse http://{host}:{port}")
 
-    # 1. Définir le lifespan DANS la portée de run_server pour capturer host et port
     @contextlib.asynccontextmanager
     async def lifespan_for_this_agent_instance(app): # 'app' est l'instance Starlette
         current_host = host
         current_port = port
-        # Logique pour déterminer agent_public_url (comme dans ma réponse précédente)
-        # ...
-        agent_public_url = os.environ.get(f"{AGENT_NAME}_PUBLIC_URL", f"http://{'localhost' if current_host == '0.0.0.0' else current_host}:{current_port}")
+        
+        actual_host_for_url = "localhost" if current_host == "0.0.0.0" else current_host
+        if current_host == "0.0.0.0":
+             logger.warning(f"[{AGENT_NAME}] L'agent écoute sur 0.0.0.0. Utilisation de 'http://localhost:{current_port}' pour l'enregistrement au GRA.")
+
+        agent_public_url = os.environ.get(f"{AGENT_NAME}_PUBLIC_URL", f"http://{actual_host_for_url}:{current_port}")
         logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique pour enregistrement : {agent_public_url}")
+        
         await register_self_with_gra(agent_public_url)
         yield
         logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt (lifespan).")
@@ -139,23 +115,31 @@ async def run_server(host: str = "localhost", port: int = 8001, log_level: str =
         task_store=task_store
     )
     agent_card = get_validator_agent_card(host, port)
-    a2a_server_app = A2AStarletteApplication(
+
+    a2a_server_app_instance = A2AStarletteApplication(
         agent_card=agent_card,
         http_handler=request_handler
+        # Ne pas passer le lifespan ici
     )
-
-    asgi_app = a2a_server_app.build()
     
-    # Sauvegarder la config pour que le lifespan y accède
-    uvicorn_config_evaluator = uvicorn.Config(
+    asgi_app: Starlette = a2a_server_app_instance.build()
+
+    # Attacher le lifespan à l'application Starlette construite
+    if hasattr(asgi_app, 'router') and hasattr(asgi_app.router, 'lifespan_context'):
+        asgi_app.router.lifespan_context = lifespan_for_this_agent_instance
+        logger.info(f"[{AGENT_NAME}] Lifespan attaché à asgi_app.router.lifespan_context.")
+    else:
+        logger.error(f"[{AGENT_NAME}] Impossible d'attacher le lifespan. L'enregistrement au GRA ne se fera pas.")
+
+    config = uvicorn.Config(
         app=asgi_app,
         host=host,
         port=port,
         log_level=log_level.lower(),
-        lifespan="on" # Utilisation de notre lifespan
+        lifespan="on" # Dire à Uvicorn de respecter le lifespan de l'application
     )
     
-    server = uvicorn.Server(uvicorn_config_evaluator) # Utiliser la config stockée
+    server = uvicorn.Server(config)
     
     try:
         await server.serve()
@@ -164,15 +148,13 @@ async def run_server(host: str = "localhost", port: int = 8001, log_level: str =
     finally:
         logger.info(f"Serveur {AGENT_NAME} arrêté.")
 
-
-
 if __name__ == "__main__":
     SERVER_HOST = "localhost"
-    SERVER_PORT = 8003  # Port différent pour cet agent
+    SERVER_PORT = 8003  # Port spécifique pour le ValidatorAgent
 
-    logger.info("Pour lancer le serveur, assurez-vous d'avoir 'uvicorn' et les dépendances serveur A2A installés.")
-
+    print(f"Lancement du serveur {AGENT_NAME}...")
+    logger.info(f"Pour lancer le serveur {AGENT_NAME}, assurez-vous d'avoir 'uvicorn' et les dépendances A2A installés.")
     try:
         asyncio.run(run_server(host=SERVER_HOST, port=SERVER_PORT))
     except Exception as e:
-        logger.error(f"Erreur lors du lancement du serveur: {e}", exc_info=True)
+        logger.error(f"Erreur lors du lancement du serveur {AGENT_NAME}: {e}", exc_info=True)
