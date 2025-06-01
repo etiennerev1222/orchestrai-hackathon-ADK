@@ -6,15 +6,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Assurer l'initialisation de Firebase (idempotente)
-if not firebase_admin._apps:
-    try:
-        cred = credentials.ApplicationDefault()
-        firebase_admin.initialize_app(cred)
-        logger.info("Connexion à Firestore réussie pour service_discovery.")
-    except Exception as e:
-        logger.critical(f"service_discovery: Erreur d'initialisation Firestore: {e}")
-db = firestore.client()
+from src.shared.firebase_init import db # Importez le client db centralisé
+# Vérification optionnelle
+if db is None:
+    logger.critical("CRITICAL: service_discovery - Firestore client not available from firebase_init.")
+    # Gérer l'erreur
 
 GRA_SERVICE_REGISTRY_COLLECTION = "service_registry"
 GRA_CONFIG_DOCUMENT_ID = "gra_instance_config"

@@ -1,30 +1,31 @@
 # src/services/gra/server.py
 import uvicorn
 import logging
-from fastapi import FastAPI, HTTPException, Body
-from typing import Dict, Any, List
+from fastapi import FastAPI, HTTPException, Body, Path
+from typing import Dict, Any, List, Optional
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pydantic import BaseModel, Field
 import os # <-- AJOUT
 from datetime import datetime, timezone # <-- AJOUT
+import asyncio
+# --- Nouveaux Imports ---
+from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
+import os
+import uuid
 
+
+logger = logging.getLogger(__name__)
 
 # --- Initialisation de Firestore ---
 # firebase_admin s'authentifiera automatiquement via la variable d'environnement
-# GOOGLE_APPLICATION_CREDENTIALS que vous avez définie.
-try:
-    cred = credentials.ApplicationDefault()
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
-    logger = logging.getLogger("uvicorn")
-    logger.info("Connexion à Firestore réussie.")
-except Exception as e:
-    logging.basicConfig()
-    logging.critical(f"Impossible de se connecter à Firestore. Assurez-vous que GOOGLE_APPLICATION_CREDENTIALS est bien configuré. Erreur: {e}")
-    exit(1)
-# ------------------------------------
 
+from src.shared.firebase_init import db # Importez le client db centralisé
+if db is None:
+    logger.critical("CRITICAL: Échec de l'obtention du client Firestore depuis firebase_init. Arrêt du serveur GRA.")
+    exit(1)
+else:
+    logger.info("GRA Server: Client Firestore obtenu avec succès depuis firebase_init.")
 
 # --- AJOUT : Configuration de l'URL publique du GRA ---
 # Cette URL sera celle à laquelle les autres services peuvent atteindre le GRA.
@@ -33,6 +34,7 @@ except Exception as e:
 GRA_PUBLIC_URL = os.environ.get("GRA_PUBLIC_URL", "http://localhost:8000")
 GRA_SERVICE_REGISTRY_COLLECTION = "service_registry"
 GRA_CONFIG_DOCUMENT_ID = "gra_instance_config"
+GLOBAL_PLANS_FIRESTORE_COLLECTION = "global_plans" # Nom de la collection pour les plans globaux
 
 # --- Modèles de données Pydantic pour la validation ---
 class AgentRegistration(BaseModel):
@@ -45,6 +47,48 @@ class Artifact(BaseModel):
     context_id: str | None = None
     agent_name: str
     content: Dict[str, Any] | str
+
+# --- NOUVEAUX Modèles Pydantic pour les Global Plans ---
+class GlobalPlanCreateRequest(BaseModel):
+    objective: str = Field(..., min_length=1, description="Objectif brut soumis par l'utilisateur.")
+    user_id: Optional[str] = "default_user" # Optionnel, avec une valeur par défaut
+
+class GlobalPlanResponse(BaseModel): # Réponse générique pour la création et la clarification
+    status: str # ex: "clarification_pending", "objective_clarified", "error", "max_clarification_attempts_reached"
+    message: Optional[str] = None
+    question: Optional[str] = None
+    clarified_objective: Optional[str] = None
+    task_type_estimation: Optional[str] = None
+    global_plan_id: str
+    current_supervisor_state: Optional[str] = None # Pourrait être utile pour le frontend
+
+class UserClarificationRequest(BaseModel):
+    user_response: str = Field(..., min_length=1, description="Réponse de l'utilisateur à une question de clarification.")
+
+class GlobalPlanDetailResponse(BaseModel): # Pour GET /global_plans/{global_plan_id}
+    global_plan_id: str
+    user_id: str
+    raw_objective: str
+    clarified_objective: Optional[str] = None
+    current_supervisor_state: str
+    task_type_estimation: Optional[str] = None
+    last_question_to_user: Optional[str] = None
+    conversation_history: List[Dict[str, str]] = []
+    clarification_attempts: int = 0
+    team1_plan_id: Optional[str] = None
+    created_at: str # ISO format string
+    updated_at: str # ISO format string
+    last_agent_response_artifact: Optional[Dict[str, Any]] = None # Pourrait être verbeux, mais utile pour debug
+    error_message: Optional[str] = None
+
+# --- NOUVEAU Modèle Pydantic pour le résumé des plans globaux ---
+class GlobalPlanSummaryItem(BaseModel):
+    global_plan_id: str
+    raw_objective: str
+    current_supervisor_state: str
+    task_type_estimation: Optional[str] = None
+    created_at: str
+    updated_at: str
 
 # --- Endpoints du Registre d'Agents ---
 # --- AJOUT : Gestionnaire de durée de vie de l'application FastAPI ---
@@ -59,6 +103,13 @@ class PlanSummary(BaseModel):
     status: str # ex: "running", "completed", "failed"
     created_at: str | None = None  # Optionnel, si vous stockez cette info
 
+# --- NOUVEAU Modèle Pydantic pour la requête d'acceptation d'objectif ---
+class AcceptObjectiveRequest(BaseModel):
+    # L'utilisateur peut optionnellement fournir une version finale de l'objectif.
+    # S'il est None, GlobalSupervisorLogic utilisera le dernier objectif enrichi ou clarifié.
+    user_final_objective: Optional[str] = None 
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await publish_gra_location()
@@ -71,32 +122,176 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# --- Endpoints Agents et Artefacts existants (inchangés pour l'instant) ---
 @app.post("/register", status_code=201)
 async def register_agent(agent: AgentRegistration):
-    """Enregistre un agent ou met à jour ses informations."""
+    # ... (identique)
     try:
-        agent_ref = db.collection("agents").document(agent.name)
-        agent_ref.set(agent.model_dump())
+        agent_ref = db.collection("agents").document(agent.name) # Peut-être "agents_registry" comme dans README ?
+        # Utiliser asyncio.to_thread pour les opérations Firestore bloquantes
+        await asyncio.to_thread(agent_ref.set, agent.model_dump())
         logger.info(f"Agent '{agent.name}' enregistré/mis à jour.")
         return {"status": "success", "agent_name": agent.name}
     except Exception as e:
+        logger.error(f"Erreur enregistrement agent '{agent.name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/agents")
-async def find_agent(skill: str):
-    """Trouve un agent possédant une compétence spécifique."""
+
+@app.get("/agents") # Renommé de find_agent pour plus de clarté sur ce qu'il retourne
+async def get_agents_by_skill(skill: str): # Renommé le paramètre pour la clarté
+    # ... (identique, mais vérifier le nom de la collection)
     try:
-        agents_ref = db.collection("agents").where("skills", "array_contains", skill).limit(1)
-        agents = list(agents_ref.stream())
-        if not agents:
+        agents_ref = db.collection("agents").where(field_path="skills", op_string="array_contains", value=skill).limit(1)
+        # Utiliser asyncio.to_thread pour les opérations Firestore bloquantes
+        agent_docs = await asyncio.to_thread(list, agents_ref.stream()) # Convertir le stream en liste dans le thread
+        
+        if not agent_docs:
             raise HTTPException(status_code=404, detail=f"Aucun agent trouvé avec la compétence: {skill}")
         
-        agent_data = agents[0].to_dict()
+        agent_data = agent_docs[0].to_dict()
         logger.info(f"Agent trouvé pour la compétence '{skill}': {agent_data.get('name')}")
-        return {"name": agent_data.get("name"), "url": agent_data.get("url")}
+        return {"name": agent_data.get("name"), "url": agent_data.get("url")} # Conforme à ce que _get_agent_url_from_gra attend
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Erreur recherche agent par compétence '{skill}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    
 
+
+@app.post("/v1/global_plans", response_model=GlobalPlanResponse, status_code=202) # 202 Accepted
+async def create_global_plan(plan_request: GlobalPlanCreateRequest):
+    """
+    Crée un nouveau plan global et initie la clarification de l'objectif.
+    """
+    logger.info(f"[GRA API] Requête de création de plan global reçue. Objectif: {plan_request.objective}")
+    try:
+        supervisor = GlobalSupervisorLogic() # Instancié par requête
+        # La méthode start_new_global_plan est maintenant asynchrone
+        result = await supervisor.start_new_global_plan(
+            raw_objective=plan_request.objective,
+            user_id=plan_request.user_id
+        )
+        # result est un dict comme: {"status": "...", "question": "...", "global_plan_id": "..."}
+        # Il faut s'assurer qu'il correspond à GlobalPlanResponse
+        return GlobalPlanResponse(**result)
+    except ConnectionError as e: # Si le GRA ne peut pas être découvert par le superviseur
+        logger.error(f"[GRA API] Erreur de connexion lors de la création du plan: {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail=f"Erreur de service: {str(e)}")
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur interne lors de la création du plan global: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
+
+
+@app.post("/v1/global_plans/{global_plan_id}/respond", response_model=GlobalPlanResponse)
+async def respond_to_clarification_question(
+    global_plan_id: str = Path(..., description="L'ID du plan global."),
+    user_input: UserClarificationRequest = Body(...)
+):
+    """
+    Soumet la réponse d'un utilisateur à une question de clarification pour un plan global.
+    """
+    logger.info(f"[GRA API] Réponse utilisateur pour plan '{global_plan_id}': {user_input.user_response}")
+    try:
+        supervisor = GlobalSupervisorLogic()
+        result = await supervisor.process_user_clarification_response(
+            global_plan_id=global_plan_id,
+            user_response=user_input.user_response
+        )
+        return GlobalPlanResponse(**result)
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur traitement réponse utilisateur pour plan '{global_plan_id}': {e}", exc_info=True)
+        # Vérifier si le plan n'existe pas pour un 404 potentiel
+        if "non trouvé" in str(e).lower(): # Heuristique simple
+             raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
+
+
+@app.get("/v1/global_plans/{global_plan_id}", response_model=GlobalPlanDetailResponse)
+async def get_global_plan_details(
+    global_plan_id: str = Path(..., description="L'ID du plan global.")
+):
+    """
+    Récupère les détails complets et l'état actuel d'un plan global.
+    """
+    logger.info(f"[GRA API] Demande de détails pour plan global '{global_plan_id}'")
+    try:
+        supervisor = GlobalSupervisorLogic()
+        # Nous devons ajouter cette méthode à GlobalSupervisorLogic
+        plan_details = await supervisor._load_global_plan_state(global_plan_id) # Utilise la méthode existante
+        
+        if not plan_details:
+            raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
+        
+        # S'assurer que la réponse correspond au modèle GlobalPlanDetailResponse
+        # Il faudra peut-être mapper les champs si _load_global_plan_state ne retourne pas exactement ce format.
+        # Pour l'instant, on suppose que _load_global_plan_state retourne un dict compatible.
+        # Ajoutons global_plan_id au dictionnaire s'il n'y est pas déjà (c'est la clé du doc)
+        plan_details['global_plan_id'] = global_plan_id
+        
+        # Vérifier les champs obligatoires pour GlobalPlanDetailResponse et fournir des valeurs par défaut si manquant
+        # pour éviter les erreurs Pydantic.
+        # Ceci est important car _load_global_plan_state retourne ce qui est dans la DB,
+        # qui pourrait ne pas avoir tous les champs si le plan est à une étape précoce.
+        response_data = {
+            "global_plan_id": plan_details.get('global_plan_id', global_plan_id),
+            "user_id": plan_details.get('user_id', 'N/A'),
+            "raw_objective": plan_details.get('raw_objective', 'N/A'),
+            "clarified_objective": plan_details.get('clarified_objective'),
+            "current_supervisor_state": plan_details.get('current_supervisor_state', 'UNKNOWN'),
+            "task_type_estimation": plan_details.get('task_type_estimation'),
+            "last_question_to_user": plan_details.get('last_question_to_user'),
+            "conversation_history": plan_details.get('conversation_history', []),
+            "clarification_attempts": plan_details.get('clarification_attempts', 0),
+            "team1_plan_id": plan_details.get('team1_plan_id'),
+            "created_at": plan_details.get('created_at', datetime.now(timezone.utc).isoformat()), # Fallback
+            "updated_at": plan_details.get('updated_at', datetime.now(timezone.utc).isoformat()), # Fallback
+            "last_agent_response_artifact": plan_details.get('last_agent_response_artifact'),
+            "error_message": plan_details.get('error_message')
+        }
+        return GlobalPlanDetailResponse(**response_data)
+        
+    except HTTPException: # Re-lever les exceptions HTTP pour que FastAPI les gère
+        raise
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur récupération détails plan '{global_plan_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
+
+
+@app.get("/v1/global_plans_summary", response_model=List[GlobalPlanSummaryItem])
+async def get_all_global_plans_summary():
+    """
+    Récupère un résumé de tous les plans globaux, triés par date de mise à jour descendante.
+    """
+    logger.info("[GRA API] Demande de résumé de tous les plans globaux.")
+    summaries: List[GlobalPlanSummaryItem] = []
+    if not db:
+        logger.error("[GRA API] Client Firestore non disponible pour get_all_global_plans_summary.")
+        raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
+    try:
+        # Utiliser asyncio.to_thread pour l'opération Firestore bloquante
+        docs_stream = await asyncio.to_thread(
+            db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION).order_by("updated_at", direction=firestore.Query.DESCENDING).stream
+        )
+        
+        for doc in docs_stream: # doc est déjà un objet DocumentSnapshot après le stream complet
+            plan_data = doc.to_dict()
+            if plan_data: # S'assurer que les données existent
+                summaries.append(GlobalPlanSummaryItem(
+                    global_plan_id=doc.id, # L'ID du document est l'ID du plan
+                    raw_objective=plan_data.get("raw_objective", "Objectif non disponible"),
+                    current_supervisor_state=plan_data.get("current_supervisor_state", "État inconnu"),
+                    task_type_estimation=plan_data.get("task_type_estimation"),
+                    created_at=plan_data.get("created_at", ""),
+                    updated_at=plan_data.get("updated_at", "")
+                ))
+        
+        logger.info(f"[GRA API] {len(summaries)} résumés de plans globaux récupérés.")
+        return summaries
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur lors de la récupération des résumés de plans globaux: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
 # --- Endpoints du Magasin d'Artefacts ---
 
@@ -244,6 +439,37 @@ async def get_agents_status_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- NOUVEL Endpoint pour accepter l'objectif et lancer TEAM 1 ---
+@app.post("/v1/global_plans/{global_plan_id}/accept_and_plan", response_model=GlobalPlanResponse)
+async def accept_objective_and_trigger_team1_planning(
+    global_plan_id: str = Path(..., description="L'ID du plan global."),
+    request_body: AcceptObjectiveRequest = Body(None, description="Optionnellement, l'objectif finalisé par l'utilisateur.") # None comme défaut si corps vide
+):
+    """
+    Permet à l'utilisateur d'accepter l'objectif actuel (potentiellement enrichi ou modifié)
+    et de lancer la planification par TEAM 1.
+    """
+    logger.info(f"[GRA API] Requête d'acceptation d'objectif et lancement TEAM 1 pour plan '{global_plan_id}'.")
+    final_objective_from_user = request_body.user_final_objective if request_body else None
+    
+    try:
+        supervisor = GlobalSupervisorLogic()
+        # La méthode accept_objective_and_initiate_team1 s'occupe de choisir le meilleur objectif
+        # si user_final_objective est None.
+        result = await supervisor.accept_objective_and_initiate_team1(
+            global_plan_id=global_plan_id,
+            user_provided_objective=final_objective_from_user 
+        )
+        # La réponse de accept_objective_and_initiate_team1 devrait déjà être compatible
+        # avec GlobalPlanResponse (ou nous l'ajusterons si besoin).
+        # Elle devrait indiquer un statut comme OBJECTIVE_CLARIFIED ou TEAM1_PLANNING_INITIATED
+        return GlobalPlanResponse(**result)
+    except FileNotFoundError: # Si _load_global_plan_state retourne None et que accept_objective... le gère mal
+        logger.warning(f"[GRA API] Tentative d'accepter l'objectif pour un plan non trouvé: {global_plan_id}")
+        raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur lors de l'acceptation de l'objectif pour plan '{global_plan_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
 if __name__ == "__main__":
     logger.info("Démarrage du serveur du Gestionnaire de Ressources et d'Agents (GRA)...")
