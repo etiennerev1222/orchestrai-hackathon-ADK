@@ -1,0 +1,17 @@
+{
+  "id": "test-decompose-001",
+  "jsonrpc": "2.0",
+  "method": "a2a.sendMessage",
+  "params": {
+    "message": {
+      "messageId": "msg-decompose-test-001",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Voici le plan détaillé de TEAM 1 à décomposer : \n1. Phase de conception initiale du module X. \n2. Développement du backend pour le module X. \n3. Tests unitaires du backend. \n4. Développement du frontend pour le module X. \n5. Tests d'intégration du module X complet."
+        }
+      ]
+    }
+  }
+}

@@ -14,9 +14,9 @@ from src.shared.service_discovery import get_gra_base_url
 from src.clients.a2a_api_client import call_a2a_agent
 from src.agents.user_interaction_agent.logic import ACTION_CLARIFY_OBJECTIVE
 from src.orchestrators.planning_supervisor_logic import PlanningSupervisorLogic
-# Assurez-vous que TaskGraph et son TaskState sont importés correctement
-from src.shared.task_graph_management import TaskGraph, TaskState as Team1TaskStateEnum # Renommé pour clarté
-
+from src.shared.task_graph_management import TaskGraph, TaskState as Team1TaskStateEnum  # Renommé pour clarté
+from src.orchestrators.execution_supervisor_logic import ExecutionSupervisorLogic # NOUVEL IMPORT
+from src.shared.execution_task_graph_management import ExecutionTaskGraph
 from a2a.types import Task, TaskState, TextPart
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,14 @@ class GlobalPlanState:
     TEAM1_PLANNING_INITIATED = "TEAM1_PLANNING_INITIATED"
     TEAM1_PLANNING_COMPLETED = "TEAM1_PLANNING_COMPLETED"
     TEAM1_PLANNING_FAILED = "TEAM1_PLANNING_FAILED"
-    FAILED_MAX_CLARIFICATION_ATTEMPTS = "FAILED_MAX_CLARIFICATION_ATTEMPTS" # Nouvel état
+
+    # Nouveaux états pour TEAM 2
+    TEAM2_EXECUTION_INITIATING = "TEAM2_EXECUTION_INITIATING"
+    TEAM2_EXECUTION_IN_PROGRESS = "TEAM2_EXECUTION_IN_PROGRESS"
+    TEAM2_EXECUTION_COMPLETED = "TEAM2_EXECUTION_COMPLETED"
+    TEAM2_EXECUTION_FAILED = "TEAM2_EXECUTION_FAILED"
+
+    FAILED_MAX_CLARIFICATION_ATTEMPTS = "FAILED_MAX_CLARIFICATION_ATTEMPTS"
     FAILED_AGENT_ERROR = "FAILED_AGENT_ERROR"
 
 class GlobalSupervisorLogic:
@@ -412,12 +419,37 @@ class GlobalSupervisorLogic:
                         "team1_status": "COMPLETED_WITH_FAILURES"
                     })
                 else:
-                    logger.info(f"[GS] Plan TEAM 1 '{team1_plan_id}' complété avec succès (toutes les tâches terminales et aucune en échec).")
+                    logger.info(f"[GS] Plan TEAM 1 '{team1_plan_id}' complété avec succès.")
                     await self._save_global_plan_state(global_plan_id, {
                         "current_supervisor_state": GlobalPlanState.TEAM1_PLANNING_COMPLETED,
                         "team1_status": "COMPLETED_SUCCESSFULLY"
                     })
-                return # Sortir de la boucle de traitement de _process_team1_plan_fully
+                    
+                    # --- DÉBUT DE L'INITIATION DE TEAM 2 ---
+                    logger.info(f"[GS] Plan TEAM 1 complété, initiation de TEAM 2 pour plan global '{global_plan_id}'.")
+                    current_global_plan_data = await self._load_global_plan_state(global_plan_id)
+                    team1_final_plan_text = self._get_final_plan_text_from_team1(team1_plan_id) # Méthode à implémenter
+
+                    if team1_final_plan_text:
+                        await self._save_global_plan_state(global_plan_id, {
+                             "current_supervisor_state": "TEAM2_EXECUTION_INITIATING", # Nouvel état
+                             "team2_status": "PENDING_INITIALIZATION"
+                        })
+                        execution_supervisor = ExecutionSupervisorLogic(
+                            global_plan_id=global_plan_id,
+                            team1_plan_final_text=team1_final_plan_text
+                        )
+                        # Lancer l'exécution de TEAM 2 en tâche de fond
+                        asyncio.create_task(self._run_and_monitor_team2_execution(execution_supervisor, global_plan_id))
+                    else:
+                        logger.error(f"[GS] Impossible de récupérer le texte final du plan TEAM 1 '{team1_plan_id}'. TEAM 2 ne sera pas lancée.")
+                        await self._save_global_plan_state(global_plan_id, {
+                            "current_supervisor_state": GlobalPlanState.TEAM1_PLANNING_COMPLETED, # Reste à cet état
+                            "team2_status": "NOT_STARTED_NO_PLAN_TEXT",
+                            "error_message": "TEAM 1 final plan text could not be retrieved."
+                        })
+                    # --- FIN DE L'INITIATION DE TEAM 2 ---
+                return                    
 
             # Si une tâche a échoué et qu'il n'y a pas de mécanisme de replanification dans PlanningSupervisorLogic
             # qui pourrait la remettre en état non-terminal, la boucle pourrait continuer inutilement
@@ -446,57 +478,207 @@ class GlobalSupervisorLogic:
             "team1_status": "FAILED_TIMEOUT_MAX_CYCLES"
         })
 
-    # ... (main_test_global_supervisor - il faudra l'adapter pour tester la "force validation")
+    def _get_final_plan_text_from_team1(self, team1_plan_id: str) -> Optional[str]:
+        """
+        Récupère le texte du plan final approuvé par le ValidatorAgent de TEAM 1.
+        Ceci est une placeholder - la logique exacte dépendra de comment/où ce texte est stocké.
+        Probablement l'artefact de la dernière tâche de validation réussie du TaskGraph de TEAM 1.
+        """
+        logger.info(f"[GS] Tentative de récupération du texte final du plan TEAM 1 '{team1_plan_id}'.")
+        # Placeholder: Vous devrez implémenter la logique pour trouver le bon artefact
+        # dans le TaskGraph de team1_plan_id.
+        # Par exemple, trouver la dernière tâche ValidatorAgent COMPLETED et extraire son
+        # `final_plan` ou `evaluated_plan` de son artefact.
+        
+        # Simulation pour l'exemple :
+        team1_graph_manager = TaskGraph(plan_id=team1_plan_id) # Utilise le TaskGraph de TEAM 1
+        graph_data = team1_graph_manager.as_dict()
+        nodes = graph_data.get("nodes", {})
+        
+        # Chercher la dernière tâche de validation complétée
+        validation_tasks_completed = []
+        for task_id, node_data in nodes.items():
+            if node_data.get("assigned_agent") == "ValidatorAgentServer" and \
+               node_data.get("state") == "completed" and \
+               isinstance(node_data.get("artifact_ref"), dict):
+                # Vérifier si la validation était 'approved'
+                artifact_content = node_data.get("artifact_ref")
+                if artifact_content.get("validation_status") == "approved":
+                    validation_tasks_completed.append({
+                        "timestamp": node_data.get("history", [{}])[-1].get("timestamp", ""), # Timestamp de la dernière transition
+                        "plan_text": artifact_content.get("final_plan", artifact_content.get("evaluated_plan"))
+                    })
+        
+        if not validation_tasks_completed:
+            logger.warning(f"[GS] Aucune tâche de validation approuvée trouvée pour TEAM 1 '{team1_plan_id}'.")
+            return None
+            
+        # Trier par timestamp pour prendre la plus récente si plusieurs
+        validation_tasks_completed.sort(key=lambda x: x["timestamp"], reverse=True)
+        final_plan_text = validation_tasks_completed[0].get("plan_text")
+
+        if final_plan_text:
+            logger.info(f"[GS] Texte final du plan TEAM 1 récupéré pour '{team1_plan_id}'.")
+            return final_plan_text
+        else:
+            logger.warning(f"[GS] Texte final du plan TEAM 1 non trouvé dans l'artefact de validation pour '{team1_plan_id}'.")
+            return None
+
+
+    async def _run_and_monitor_team2_execution(self, execution_supervisor: ExecutionSupervisorLogic, global_plan_id: str):
+        logger.info(f"[GS] Lancement du traitement complet de TEAM 2 pour plan global '{global_plan_id}' (exec_id: {execution_supervisor.execution_plan_id})")
+        await self._save_global_plan_state(global_plan_id, {
+            "current_supervisor_state": "TEAM2_EXECUTION_IN_PROGRESS",
+            "team2_execution_plan_id": execution_supervisor.execution_plan_id, # Stocker l'ID du plan d'exécution
+            "team2_status": "RUNNING"
+        })
+        try:
+            await execution_supervisor.run_full_execution()
+            
+            # Après la fin de run_full_execution, récupérer le statut final
+            final_exec_status = execution_supervisor.task_graph.as_dict().get("overall_status", "UNKNOWN")
+            logger.info(f"[GS] TEAM 2 pour plan global '{global_plan_id}' terminée. Statut final exécution: {final_exec_status}")
+            
+            new_global_state = "TEAM2_EXECUTION_COMPLETED" if "COMPLETED" in final_exec_status.upper() else "TEAM2_EXECUTION_FAILED"
+            await self._save_global_plan_state(global_plan_id, {
+                "current_supervisor_state": new_global_state,
+                "team2_status": final_exec_status
+            })
+        except Exception as e:
+            logger.error(f"[GS] Erreur majeure durant l'exécution de TEAM 2 pour '{global_plan_id}': {e}", exc_info=True)
+            await self._save_global_plan_state(global_plan_id, {
+                "current_supervisor_state": "TEAM2_EXECUTION_FAILED",
+                "team2_status": "SUPERVISOR_ERROR",
+                "error_message": f"Erreur superviseur TEAM 2: {str(e)}"
+            })
 async def main_test_global_supervisor():
     supervisor = GlobalSupervisorLogic()
     if not supervisor.db:
         logger.error("Échec initialisation Firestore. Arrêt test.")
         return
 
-    # Scénario : Objectif -> Clarification -> Forcer l'acceptation -> Lancer TEAM 1
-    objective = "Créer un jeu de serpent en Pygame pour desktop."
-    logger.info(f"\n--- Test 'Force Acceptation': Objectif initial = '{objective}' ---")
+    # --- SCÉNARIO DE TEST : Objectif -> Clarification -> TEAM 1 (Succès Rapide) -> TEAM 2 (Décomposition) ---
     
-    # 1. Démarrer le plan global (devrait demander clarification)
-    response_step1 = await supervisor.start_new_global_plan(objective)
+    objective = "Planifier et exécuter le développement d'une petite application CLI de gestion de TODO list en Python."
+    user_id_for_test = f"test_user_{uuid.uuid4().hex[:6]}"
+
+    logger.info(f"\n--- TEST COMPLET GlobalSupervisor: Objectif initial = '{objective}' ---")
+    
+    # 1. Démarrer le plan global et simuler une clarification rapide
+    # ----------------------------------------------------------------
+    response_step1 = await supervisor.start_new_global_plan(raw_objective=objective, user_id=user_id_for_test)
     global_plan_id = response_step1.get("global_plan_id")
-    logger.info(f"Réponse Étape 1 (start_new_global_plan): {json.dumps(response_step1, indent=2, ensure_ascii=False)}")
-    if not global_plan_id: return
+    logger.info(f"Réponse Étape 1 (start_new_global_plan pour '{global_plan_id}'): {json.dumps(response_step1, indent=2, ensure_ascii=False)}")
+    if not global_plan_id:
+        logger.error("Aucun global_plan_id retourné. Arrêt du test.")
+        return
     
+    # Simuler une acceptation directe de l'objectif (ou après 1 tour si l'agent le demande)
     current_state_s1 = await supervisor._load_global_plan_state(global_plan_id)
-    logger.info(f"État Firestore après Étape 1: {json.dumps(current_state_s1, indent=2, ensure_ascii=False)}")
+    if current_state_s1 and current_state_s1.get("current_supervisor_state") == GlobalPlanState.CLARIFICATION_PENDING_USER_INPUT:
+        logger.info(f"Clarification demandée, réponse simulée pour '{global_plan_id}'...")
+        simulated_user_response = "Oui, la proposition me convient, les fonctionnalités de base sont suffisantes pour un CLI."
+        await supervisor.process_user_clarification_response(global_plan_id, simulated_user_response)
+        current_state_s1 = await supervisor._load_global_plan_state(global_plan_id) # Recharger
 
-    if response_step1.get("status") == "clarification_pending":
-        logger.info(f"Question de l'agent: {response_step1.get('question')}")
-        # Simuler que l'utilisateur ne répond pas, mais décide de forcer.
-        # L'objectif enrichi est dans last_agent_response_artifact.tentatively_enriched_objective
-        # Ou l'utilisateur pourrait fournir une version finale dans Streamlit.
-        # Pour le test, accept_objective_and_initiate_team1 va essayer de le trouver.
-        
-        logger.info(f"\n--- Test 'Force Acceptation': L'utilisateur force la clarification pour {global_plan_id} ---")
-        response_step2 = await supervisor.accept_objective_and_initiate_team1(global_plan_id)
-        logger.info(f"Réponse Étape 2 (accept_objective_and_initiate_team1): {json.dumps(response_step2, indent=2, ensure_ascii=False)}")
-        
-        current_state_s2 = await supervisor._load_global_plan_state(global_plan_id)
-        logger.info(f"État Firestore après Étape 2: {json.dumps(current_state_s2, indent=2, ensure_ascii=False)}")
+    if not (current_state_s1 and current_state_s1.get("current_supervisor_state") == GlobalPlanState.OBJECTIVE_CLARIFIED):
+        logger.info(f"Objectif non clarifié, forçage de l'acceptation pour '{global_plan_id}' pour passer à TEAM 1...")
+        await supervisor.accept_objective_and_initiate_team1(global_plan_id, current_state_s1.get("tentatively_enriched_objective_from_agent", objective))
+    
+    # 2. Attendre la complétion de TEAM 1 (on s'attend à ce qu'elle réussisse)
+    #    Pour ce test, on veut que TEAM 1 produise rapidement un plan validé.
+    #    Il faut donc s'assurer que les agents de TEAM 1 (Reformulator, Evaluator, Validator)
+    #    sont configurés (via leurs prompts LLM) pour converger rapidement vers un plan approuvé.
+    # ------------------------------------------------------------------------------------
+    logger.info(f"\n--- Attente de la complétion de TEAM 1 pour '{global_plan_id}' ---")
+    max_wait_cycles_team1 = 25 # Augmenter si les appels LLM de TEAM 1 sont longs
+    team1_completed_successfully = False
+    for cycle in range(max_wait_cycles_team1):
+        await asyncio.sleep(15) # Laisser plus de temps pour les appels LLM de TEAM 1
+        current_global_state = await supervisor._load_global_plan_state(global_plan_id)
+        supervisor_state = current_global_state.get("current_supervisor_state")
+        team1_status = current_global_state.get("team1_status")
+        logger.info(f"Cycle d'attente TEAM 1 ({cycle+1}/{max_wait_cycles_team1}) pour '{global_plan_id}': État Global = {supervisor_state}, Statut TEAM 1 = {team1_status}")
 
-        if current_state_s2 and current_state_s2.get("current_supervisor_state") == GlobalPlanState.TEAM1_PLANNING_INITIATED:
-            logger.info("TEAM 1 initiée. Laisser quelques secondes pour traitement en arrière-plan...")
-            # Laisser le temps à la tâche _process_team1_plan_fully de s'exécuter
-            # Le test se terminera ici, mais vous devriez voir les logs de TEAM 1 si elle s'exécute.
-            # Pour un test complet, il faudrait attendre la fin de la tâche asyncio.
-            await asyncio.sleep(30) # Augmenter pour laisser plus de temps à TEAM 1
-            final_state = await supervisor._load_global_plan_state(global_plan_id)
-            logger.info(f"État final (après attente pour TEAM 1) pour {global_plan_id}: {json.dumps(final_state, indent=2, ensure_ascii=False)}")
+        if supervisor_state == GlobalPlanState.TEAM1_PLANNING_COMPLETED:
+            logger.info(f"TEAM 1 COMPLÉTÉE avec succès pour '{global_plan_id}'.")
+            team1_completed_successfully = True
+            break
+        elif supervisor_state == GlobalPlanState.TEAM1_PLANNING_FAILED:
+            logger.error(f"TEAM 1 ÉCHOUÉE pour '{global_plan_id}'. Arrêt du test.")
+            return
+    
+    if not team1_completed_successfully:
+        logger.error(f"TEAM 1 n'a pas terminé avec succès après {max_wait_cycles_team1} cycles pour '{global_plan_id}'.")
+        final_state_doc_error = await supervisor._load_global_plan_state(global_plan_id)
+        logger.info(f"État final (erreur TEAM 1) pour '{global_plan_id}': {json.dumps(final_state_doc_error, indent=2, ensure_ascii=False)}")
+        return
+
+    # 3. TEAM 1 est complétée, vérifier l'initiation et la décomposition de TEAM 2
+    # -----------------------------------------------------------------------------
+    logger.info(f"\n--- Vérification de l'initiation et de la décomposition par TEAM 2 pour '{global_plan_id}' ---")
+    max_wait_cycles_team2_decomp = 10 # Cycles pour que la décomposition se fasse
+    team2_decomposition_done = False
+    execution_plan_id_for_team2 = None
+
+    for cycle in range(max_wait_cycles_team2_decomp):
+        await asyncio.sleep(10) # Laisser le temps à l'ExecutionSupervisor et à l'agent de décomposition
+        current_global_state = await supervisor._load_global_plan_state(global_plan_id)
+        supervisor_state_t2 = current_global_state.get("current_supervisor_state")
+        team2_status_detail = current_global_state.get("team2_status")
+        execution_plan_id_for_team2 = current_global_state.get("team2_execution_plan_id")
+
+        logger.info(f"Cycle d'attente Décomposition TEAM 2 ({cycle+1}/{max_wait_cycles_team2_decomp}) pour '{global_plan_id}': État Global = {supervisor_state_t2}, Statut TEAM 2 = {team2_status_detail}, ExecID = {execution_plan_id_for_team2}")
+
+        if execution_plan_id_for_team2:
+            # Vérifier le statut du plan d'exécution directement
+            exec_graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id_for_team2)
+            exec_graph_data = await asyncio.to_thread(exec_graph_manager.as_dict) # Utiliser asyncio.to_thread pour les appels bloquants
+            overall_exec_status = exec_graph_data.get("overall_status")
+            logger.info(f"  Statut du ExecutionTaskGraph '{execution_plan_id_for_team2}': {overall_exec_status}")
+            if overall_exec_status == "PLAN_DECOMPOSED" or overall_exec_status == "PLAN_DECOMPOSED_EMPTY":
+                logger.info(f"Décomposition par TEAM 2 pour '{execution_plan_id_for_team2}' terminée (statut: {overall_exec_status}).")
+                team2_decomposition_done = True
+                break
+            elif overall_exec_status == "FAILED" or "ERROR" in str(overall_exec_status).upper() : # Si le plan d'exécution lui-même a un statut d'erreur
+                logger.error(f"Le plan d'exécution TEAM 2 '{execution_plan_id_for_team2}' est en échec: {overall_exec_status}")
+                team2_decomposition_done = False # Marquer comme non réussi
+                break
+        
+        if supervisor_state_t2 == "TEAM2_EXECUTION_FAILED": # Si le superviseur global marque un échec pour TEAM2
+            logger.error(f"TEAM 2 a globalement échoué (selon GlobalSupervisor) pour '{global_plan_id}'.")
+            team2_decomposition_done = False
+            break
+            
+    if not team2_decomposition_done:
+        logger.error(f"La décomposition par TEAM 2 n'a pas abouti comme attendu pour '{global_plan_id}'.")
     else:
-        logger.info(f"L'objectif a été clarifié du premier coup ou une erreur est survenue : {response_step1.get('status')}")
-        if response_step1.get("status") == GlobalPlanState.OBJECTIVE_CLARIFIED: # Si c'est déjà clarifié
-             # _initiate_team1_planning a déjà été appelé par _trigger_clarification_step
-            logger.info("TEAM 1 devrait déjà être initiée. Laisser quelques secondes...")
-            await asyncio.sleep(30)
-            final_state = await supervisor._load_global_plan_state(global_plan_id)
-            logger.info(f"État final (après attente pour TEAM 1) pour {global_plan_id}: {json.dumps(final_state, indent=2, ensure_ascii=False)}")
+        logger.info(f"SUCCESS: La phase de décomposition de TEAM 2 semble avoir fonctionné pour exec_plan_id: {execution_plan_id_for_team2}!")
+        # Afficher le graphe d'exécution décomposé pour vérification
+        if execution_plan_id_for_team2:
+            exec_graph_manager_final = ExecutionTaskGraph(execution_plan_id=execution_plan_id_for_team2)
+            final_exec_graph_data = await asyncio.to_thread(exec_graph_manager_final.as_dict)
+            logger.info(f"\n--- Contenu final du ExecutionTaskGraph '{execution_plan_id_for_team2}' ---")
+            logger.info(json.dumps(final_exec_graph_data, indent=2, ensure_ascii=False))
+
+
+    final_state_doc = await supervisor._load_global_plan_state(global_plan_id)
+    logger.info(f"\n--- État final complet du document Firestore pour Global Plan ID '{global_plan_id}' ---")
+    logger.info(f"{json.dumps(final_state_doc, indent=2, ensure_ascii=False)}")
+    logger.info(f"--- FIN DU TEST pour Global Plan ID '{global_plan_id}' ---")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # Pour déboguer plus finement :
+    logging.getLogger("src.orchestrators.global_supervisor_logic").setLevel(logging.DEBUG)
+    logging.getLogger("src.orchestrators.execution_supervisor_logic").setLevel(logging.DEBUG)
+    logging.getLogger("src.shared.execution_task_graph_management").setLevel(logging.DEBUG) 
+    logging.getLogger("src.agents.decomposition_agent.logic").setLevel(logging.DEBUG)
+    # Ajoutez les loggers pour les nouveaux agents de TEAM 2 si vous voulez voir leur activité interne
+    logging.getLogger("src.agents.research_agent.logic").setLevel(logging.DEBUG)
+    logging.getLogger("src.agents.development_agent.logic").setLevel(logging.DEBUG)
+    logging.getLogger("src.agents.testing_agent.logic").setLevel(logging.DEBUG)
+    logging.getLogger("src.shared.llm_client").setLevel(logging.DEBUG) # Si vous voulez voir les appels LLM
+
     asyncio.run(main_test_global_supervisor())

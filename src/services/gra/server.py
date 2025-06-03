@@ -13,6 +13,7 @@ import asyncio
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
 import os
 import uuid
+from collections import Counter # Pour compter facilement
 
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,22 @@ class AcceptObjectiveRequest(BaseModel):
     # S'il est None, GlobalSupervisorLogic utilisera le dernier objectif enrichi ou clarifié.
     user_final_objective: Optional[str] = None 
 
+class AgentTaskCountStat(BaseModel):
+    agent_name: str
+    task_count: int
+
+class Team1AgentTasksCountResponse(BaseModel):
+    stats: List[AgentTaskCountStat]
+    last_updated: str
+
+class AllAgentTaskStats(BaseModel): # Nouveau modèle pour une réponse plus globale
+    agent_name: str
+    task_count: int
+    source_type: str # "global_plan" ou "team1_plan"
+
+class AllAgentTasksStatsResponse(BaseModel):
+    stats: List[AllAgentTaskStats]
+    last_updated: str
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -470,6 +487,151 @@ async def accept_objective_and_trigger_team1_planning(
     except Exception as e:
         logger.error(f"[GRA API] Erreur lors de l'acceptation de l'objectif pour plan '{global_plan_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
+
+@app.get("/v1/stats/team1_agent_tasks_count", response_model=Team1AgentTasksCountResponse)
+async def get_team1_agent_tasks_count_stats():
+    """
+    Récupère le nombre total de tâches (complétées ou échouées)
+    traitées par chaque agent de la TEAM 1 à travers tous les plans.
+    """
+    logger.info("[GRA API] Requête pour les statistiques de comptage des tâches des agents de TEAM 1.")
+    if not db:
+        logger.error("[GRA API] Client Firestore non disponible pour get_team1_agent_tasks_count_stats.")
+        raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
+
+    agent_task_counts = Counter()
+    processed_task_ids_for_counting = set() # Pour éviter de compter une tâche plusieurs fois si elle apparaît dans plusieurs snapshots
+
+    try:
+        # 1. Récupérer tous les plans globaux pour trouver les team1_plan_id
+        global_plans_ref = db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION)
+        global_plans_docs = await asyncio.to_thread(list, global_plans_ref.stream())
+
+        for global_plan_doc in global_plans_docs:
+            global_plan_data = global_plan_doc.to_dict()
+            team1_plan_id = global_plan_data.get("team1_plan_id")
+
+            if team1_plan_id:
+                # 2. Pour chaque team1_plan_id, récupérer son TaskGraph
+                task_graph_doc_ref = db.collection("task_graphs").document(team1_plan_id)
+                task_graph_doc = await asyncio.to_thread(task_graph_doc_ref.get)
+
+                if task_graph_doc.exists:
+                    task_graph_data = task_graph_doc.to_dict()
+                    nodes = task_graph_data.get("nodes", {})
+                    for task_id, task_node_data in nodes.items():
+                        # On ne compte que les tâches qui ont un agent assigné et sont dans un état terminal.
+                        # Et qui n'ont pas déjà été comptées (au cas où, bien que peu probable ici).
+                        agent_name = task_node_data.get("assigned_agent")
+                        task_state = task_node_data.get("state")
+
+                        if agent_name and task_state in [
+                            "completed", "failed", # États terminaux de TaskState dans task_graph_management.py
+                            "cancelled", "unable_to_complete" # Autres états terminaux potentiels
+                        ] and task_id not in processed_task_ids_for_counting:
+                            # On s'intéresse aux agents de la TEAM 1
+                            if agent_name in ["ReformulatorAgentServer", "EvaluatorAgentServer", "ValidatorAgentServer"]:
+                                agent_task_counts[agent_name] += 1
+                                processed_task_ids_for_counting.add(task_id)
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur lors de l'agrégation des statistiques des agents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur lors de l'agrégation des statistiques: {str(e)}")
+
+    response_stats = [
+        AgentTaskCountStat(agent_name=agent, task_count=count)
+        for agent, count in agent_task_counts.items()
+    ]
+
+    logger.info(f"[GRA API] Statistiques de comptage des tâches agents TEAM 1 générées: {response_stats}")
+    return Team1AgentTasksCountResponse(stats=response_stats, last_updated=datetime.now(timezone.utc).isoformat())
+
+@app.get("/v1/stats/agent_tasks", response_model=AllAgentTasksStatsResponse)
+async def get_all_agent_tasks_count_stats():
+    """
+    Récupère le nombre total de tâches (complétées ou échouées)
+    traitées par chaque agent à travers tous les global_plans (pour UserInteractionAgent)
+    et tous les task_graphs (pour les agents de TEAM 1).
+    """
+    logger.info("[GRA API] Requête pour les statistiques de comptage de toutes les tâches agents.")
+    if not db:
+        logger.error("[GRA API] Client Firestore non disponible pour get_all_agent_tasks_count_stats.")
+        raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
+
+    # Utiliser des compteurs séparés ou un compteur avec des clés composites
+    agent_task_counts = Counter() # Clé sera (agent_name, source_type)
+
+    processed_task_ids_for_counting = set() # Pour éviter double comptage si une logique complexe le permettait
+
+    try:
+        # 1. Traiter les tâches du UserInteractionAgent depuis les global_plans
+        #    On pourrait inférer l'achèvement d'une "tâche" de clarification par le UserInteractionAgent
+        #    en regardant le nombre de fois qu'un global_plan est passé à CLARIFICATION_PENDING_USER_INPUT
+        #    ou quand OBJECTIVE_CLARIFIED est atteint après des interactions.
+        #    Pour une approche plus directe, si le UserInteractionAgent crée des "tâches" A2A réelles
+        #    qui sont tracées, on les chercherait. Actuellement, son "travail" est plus implicite
+        #    dans l'état du global_plan.
+        #
+        #    Simplification : On va se baser sur le nombre de fois où l'agent UI a été sollicité et a répondu
+        #    (ce qui est stocké dans `last_agent_response_artifact` et `clarification_attempts`).
+        #    Ou, si l'on considère chaque appel A2A au UserInteractionAgent comme une "tâche traitée".
+        #    Adoptons une approche où chaque réponse de l'agent UI est comptée.
+
+        global_plans_ref = db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION)
+        global_plans_docs = await asyncio.to_thread(list, global_plans_ref.stream())
+
+        for global_plan_doc in global_plans_docs:
+            global_plan_data = global_plan_doc.to_dict()
+            # Chaque fois qu'il y a un last_agent_response_artifact, on peut considérer que l'agent UI a "traité" une demande.
+            # Ou, plus simplement, le nombre de clarification_attempts peut donner une idée.
+            # Si `clarification_attempts` > 0, l'agent UI a travaillé au moins une fois.
+            # Si l'état est `OBJECTIVE_CLARIFIED` ou `TEAM1_PLANNING_INITIATED`, et `clarification_attempts` > 0
+            # on peut compter cela comme une "tâche complétée" pour UserInteractionAgent.
+            # Si l'état est `FAILED_MAX_CLARIFICATION_ATTEMPTS` ou `FAILED_AGENT_ERROR` après des tentatives,
+            # on peut compter cela comme un "échec".
+
+            attempts = global_plan_data.get("clarification_attempts", 0)
+            if attempts > 0 : # Signifie que l'agent UI a été appelé au moins une fois
+                 # On pourrait affiner cela en vérifiant si l'objectif a été clarifié ou si on a atteint max_attempts
+                 # Pour la simplicité, on compte chaque "cycle" de clarification comme une tâche.
+                 # Ou, mieux, si l'agent UserInteractionAgent était un agent A2A standard dont on suivait les tâches,
+                 # on lirait ses tâches. Ici, on se base sur les traces laissées dans global_plan.
+                 # On va assumer pour cette stat que chaque appel (tentative) est une "tâche".
+                 agent_task_counts[("UserInteractionAgentServer", "global_plan_clarification")] += attempts
+
+
+            # 2. Traiter les tâches des agents de TEAM 1 depuis les task_graphs
+            team1_plan_id = global_plan_data.get("team1_plan_id")
+            if team1_plan_id:
+                task_graph_doc_ref = db.collection("task_graphs").document(team1_plan_id)
+                task_graph_doc = await asyncio.to_thread(task_graph_doc_ref.get)
+
+                if task_graph_doc.exists:
+                    task_graph_data = task_graph_doc.to_dict()
+                    nodes = task_graph_data.get("nodes", {})
+                    for task_id, task_node_data in nodes.items():
+                        agent_name = task_node_data.get("assigned_agent")
+                        task_state = task_node_data.get("state")
+
+                        # Agents de TEAM 1 spécifiques
+                        team1_agents = ["ReformulatorAgentServer", "EvaluatorAgentServer", "ValidatorAgentServer"]
+
+                        if agent_name in team1_agents and task_state in [
+                            "completed", "failed", "cancelled", "unable_to_complete"
+                        ] and task_id not in processed_task_ids_for_counting:
+                            agent_task_counts[(agent_name, "team1_plan_task")] += 1
+                            processed_task_ids_for_counting.add(task_id)
+                            
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur lors de l'agrégation des statistiques de tous les agents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur lors de l'agrégation des statistiques: {str(e)}")
+
+    response_stats = [
+        AllAgentTaskStats(agent_name=agent_key[0], task_count=count, source_type=agent_key[1])
+        for agent_key, count in agent_task_counts.items()
+    ]
+
+    logger.info(f"[GRA API] Statistiques de comptage de toutes les tâches agents générées: {response_stats}")
+    return AllAgentTasksStatsResponse(stats=response_stats, last_updated=datetime.now(timezone.utc).isoformat())
 
 if __name__ == "__main__":
     logger.info("Démarrage du serveur du Gestionnaire de Ressources et d'Agents (GRA)...")
