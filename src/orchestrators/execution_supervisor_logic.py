@@ -16,6 +16,11 @@ from src.clients.a2a_api_client import call_a2a_agent # À adapter si les agents
 from src.shared.execution_task_graph_management import ExecutionTaskNode, ExecutionTaskType # Assurez-vous que ExecutionTaskType est importé
 import json
 
+# --- AJOUT DES IMPORTS NÉCESSAIRES ---
+from src.agents.testing_agent.logic import AGENT_SKILL_SOFTWARE_TESTING
+from src.agents.development_agent.logic import AGENT_SKILL_CODING_PYTHON
+# --- FIN DE L'AJOUT ---
+
 # Ce logger de module est bien, mais les méthodes utiliseront self.logger
 logger = logging.getLogger(__name__) # Peut rester pour des logs au niveau du module si besoin
 if not logger.hasHandlers(): # S'assurer que le logger de module a un handler
