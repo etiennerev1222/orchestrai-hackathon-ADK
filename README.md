@@ -345,7 +345,7 @@ Pour lancer le système complet, le GRA et tous les agents doivent être démarr
     (Note : Ce script exécute la fonction `main_test_global_supervisor` qui simule le flux complet.)
 
 ## Structure du Projet (Principaux Dossiers et Fichiers)
-
+```Markdown
 orchestrai-hackathon-ADK/
 ├── src/
 │   ├── agents/
@@ -380,8 +380,7 @@ orchestrai-hackathon-ADK/
 ├── .gitignore
 ├── requirements.txt
 └── README.md                             (Ce fichier)
-
-
+```
 ## Pistes d'Évolution Futures
 
 * Logique de replanification plus sophistiquée dans `ExecutionSupervisorLogic` pour TEAM 2 (actuellement, la décomposition est initiale, mais des échecs d'exécution pourraient nécessiter une redécomposition partielle ou des tâches alternatives).

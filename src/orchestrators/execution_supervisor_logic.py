@@ -65,12 +65,27 @@ class ExecutionSupervisorLogic:
                 raise ConnectionError(msg)
         return self._gra_base_url
 
-    async def _get_agent_url_from_gra(self, skill: str) -> Optional[str]: # Similaire
+    async def _get_agent_url_from_gra(self, skill: str) -> Optional[str]: # Compléter cette méthode
         gra_url = await self._ensure_gra_url()
-        # ... (logique d'appel au GRA, identique à PlanningSupervisorLogic)
-        # Pour l'instant, on retourne None pour forcer la réflexion sur les agents
-        self.logger.warning(f"RECHERCHE D'AGENT POUR SKILL '{skill}' NON IMPLEMENTEE DANS ExecutionSupervisorLogic")
-        return None 
+        agent_target_url = None
+        try:
+            async with httpx.AsyncClient() as client: # Assurez-vous que httpx est importé
+                self.logger.info(f"[ExecutionSupervisor] Demande au GRA ({gra_url}) un agent avec la compétence: '{skill}'")
+                response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
+                response.raise_for_status()
+                data = response.json()
+                agent_target_url = data.get("url")
+                if agent_target_url:
+                    self.logger.info(f"[ExecutionSupervisor] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data.get('name')})")
+                else:
+                    self.logger.error(f"[ExecutionSupervisor] Aucune URL retournée par le GRA pour la compétence '{skill}'. Réponse: {data}")
+        except httpx.HTTPStatusError as e:
+            self.logger.error(f"[ExecutionSupervisor] Erreur HTTP ({e.response.status_code}) en contactant le GRA pour '{skill}' à {e.request.url}: {e.response.text}")
+        except httpx.RequestError as e:
+            self.logger.error(f"[ExecutionSupervisor] Erreur de requête en contactant le GRA pour '{skill}': {e}")
+        except Exception as e:
+            self.logger.error(f"[ExecutionSupervisor] Erreur inattendue en contactant le GRA pour '{skill}': {e}", exc_info=True)
+        return agent_target_url
 
     async def initialize_and_decompose_plan(self):
         """
@@ -263,17 +278,30 @@ class ExecutionSupervisorLogic:
     async def _get_all_available_execution_skills_from_gra(self) -> List[str]:
         """
         Récupère toutes les compétences uniques déclarées par les agents enregistrés auprès du GRA.
+        Cible les compétences qui semblent pertinentes pour l'exécution.
         """
-        self.logger.info(f"[{self.execution_plan_id}] Récupération de toutes les compétences d'exécution disponibles depuis le GRA.")
+        self.logger.info(f"[{self.execution_plan_id}] Récupération des compétences d'exécution disponibles depuis le GRA.")
         gra_url = await self._ensure_gra_url()
-        all_skills = set() # Utiliser un set pour éviter les doublons
+        all_skills = set()
+
+        # Liste des compétences que nous considérons comme "exécution" pour filtrer
+        # Cela évite de surcharger le prompt de l'agent de décomposition avec des skills de TEAM 1.
+        execution_related_skills_keywords = [
+            "coding", "python", "javascript", "java", # Développement
+            "research", "analysis", "synthesis",       # Recherche
+            "testing", "test_case", "validation",      # Test (attention, 'validation' est aussi pour TEAM 1)
+            "database_design", "api_design",           # Conception détaillée
+            "documentation",                            # Documentation
+            # "execution_plan_decomposition" # On ne veut pas qu'il s'appelle lui-même pour l'instant
+            # Ajoutez d'autres mots-clés si nécessaire
+        ]
+
 
         try:
             async with httpx.AsyncClient() as client:
-                # Utiliser l'endpoint existant qui liste tous les agents et leurs détails
                 response = await client.get(f"{gra_url}/agents_status", timeout=10.0)
                 response.raise_for_status()
-                agents_list = response.json() # Devrait être une liste de dictionnaires agent
+                agents_list = response.json()
 
                 if isinstance(agents_list, list):
                     for agent_info in agents_list:
@@ -281,23 +309,29 @@ class ExecutionSupervisorLogic:
                         if isinstance(agent_skills, list):
                             for skill in agent_skills:
                                 if isinstance(skill, str):
-                                    all_skills.add(skill)
+                                    # Filtrer pour ne garder que les compétences pertinentes pour l'exécution
+                                    if any(keyword in skill.lower() for keyword in execution_related_skills_keywords):
+                                        all_skills.add(skill)
                         else:
                             self.logger.warning(f"[{self.execution_plan_id}] Champ 'skills' mal formaté pour l'agent: {agent_info.get('name', 'Inconnu')}")
                 else:
                     self.logger.error(f"[{self.execution_plan_id}] Réponse de /agents_status du GRA n'est pas une liste: {agents_list}")
+            
+            # S'assurer que les compétences de base sont présentes si aucune n'est trouvée ou pour robustesse
+            if not all_skills:
+                 default_exec_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
+                 self.logger.warning(f"[{self.execution_plan_id}] Aucune compétence d'exécution spécifique trouvée via GRA, utilisation d'une liste par défaut: {default_exec_skills}")
+                 return default_exec_skills
 
-            self.logger.info(f"[{self.execution_plan_id}] Compétences d'exécution disponibles trouvées: {list(all_skills)}")
+            self.logger.info(f"[{self.execution_plan_id}] Compétences d'exécution disponibles trouvées et filtrées: {list(all_skills)}")
             return list(all_skills)
 
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"[{self.execution_plan_id}] Erreur HTTP en récupérant le statut des agents du GRA: {e.response.status_code} - {e.response.text}")
-        except httpx.RequestError as e:
-            self.logger.error(f"[{self.execution_plan_id}] Erreur de requête en récupérant le statut des agents du GRA: {e}")
         except Exception as e:
-            self.logger.error(f"[{self.execution_plan_id}] Erreur inattendue en récupérant les compétences: {e}", exc_info=True)
-
-        return [] # Retourner une liste vide en cas d'erreur
+            self.logger.error(f"[{self.execution_plan_id}] Erreur récupération compétences via GRA: {e}", exc_info=True)
+            # Retourner une liste de fallback en cas d'erreur majeure
+            default_exec_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
+            self.logger.warning(f"[{self.execution_plan_id}] Utilisation d'une liste de compétences par défaut due à une erreur GRA: {default_exec_skills}")
+            return default_exec_skills
 
     async def process_plan_execution(self):
         self.logger.info(f"[{self.execution_plan_id}] Début du cycle de traitement d'exécution.")
@@ -501,28 +535,6 @@ class ExecutionSupervisorLogic:
             node_obj.dependencies = list(set(node_obj.dependencies))
             self.task_graph.add_task(node_obj)
             self.logger.info(f"[{self.execution_plan_id}] Tâche (lot) '{node_obj.objective}' (ID: {node_obj.id}) ajoutée/résolue.")
-
-    async def _get_agent_url_from_gra(self, skill: str) -> Optional[str]: # Compléter cette méthode
-        gra_url = await self._ensure_gra_url()
-        agent_target_url = None
-        try:
-            async with httpx.AsyncClient() as client: # Assurez-vous que httpx est importé
-                self.logger.info(f"[ExecutionSupervisor] Demande au GRA ({gra_url}) un agent avec la compétence: '{skill}'")
-                response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
-                response.raise_for_status()
-                data = response.json()
-                agent_target_url = data.get("url")
-                if agent_target_url:
-                    self.logger.info(f"[ExecutionSupervisor] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data.get('name')})")
-                else:
-                    self.logger.error(f"[ExecutionSupervisor] Aucune URL retournée par le GRA pour la compétence '{skill}'. Réponse: {data}")
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"[ExecutionSupervisor] Erreur HTTP ({e.response.status_code}) en contactant le GRA pour '{skill}' à {e.request.url}: {e.response.text}")
-        except httpx.RequestError as e:
-            self.logger.error(f"[ExecutionSupervisor] Erreur de requête en contactant le GRA pour '{skill}': {e}")
-        except Exception as e:
-            self.logger.error(f"[ExecutionSupervisor] Erreur inattendue en contactant le GRA pour '{skill}': {e}", exc_info=True)
-        return agent_target_url
 
 
     async def run_full_execution(self):

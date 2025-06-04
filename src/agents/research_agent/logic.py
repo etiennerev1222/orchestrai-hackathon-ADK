@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Tuple # Ajout de Tuple
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
-
+import uuid
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO)
