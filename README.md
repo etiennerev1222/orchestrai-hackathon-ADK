@@ -1,277 +1,322 @@
-OrchestrAI Hackathon ADK - Système de Planification Multi-Agents Interactif
-Ce projet est une implémentation d'un système multi-agents pour la clarification interactive d'objectifs, suivie par la génération, l'évaluation, la validation et la révision itérative de plans. Il utilise un Agent Development Kit (ADK) basé sur le protocole A2A, avec une persistance des données via Firestore et une découverte de services gérée par un Gestionnaire de Ressources et d'Agents (GRA). Les agents intègrent des modèles de langage (LLM via Gemini) pour leur logique métier.
+# OrchestrAI Hackathon ADK - Système de Planification et d'Exécution Multi-Agents Interactif
 
-La principale évolution par rapport à une planification purement autonome est l'introduction d'un GlobalSupervisorLogic et d'un UserInteractionAgent, qui collaborent pour affiner l'objectif initial avec l'utilisateur avant de lancer le processus de planification détaillé (désormais appelé "TEAM 1").
+Ce projet est une implémentation d'un système multi-agents pour la clarification interactive d'objectifs, suivie par la génération, l'évaluation, la validation, la révision itérative de plans (TEAM 1), et enfin l'exécution décomposée de ces plans (TEAM 2). Il utilise un Agent Development Kit (ADK) basé sur le protocole A2A, avec une persistance des données via Firestore et une découverte de services gérée par un Gestionnaire de Ressources et d'Agents (GRA). Les agents intègrent des modèles de langage (LLM via Gemini) pour leur logique métier.
 
-Table des Matières
-Architecture Fonctionnelle
-Étape 1 : Clarification de l'Objectif (Orchestrée par GlobalSupervisorLogic)
-Étape 2 : Génération et Itération de Plan (TEAM 1 : PLAN GENERATION, Orchestrée par PlanningSupervisorLogic)
-Architecture Technique
-Concepts Clés Mis en Œuvre
-Architecture Générale Détaillée
-Prérequis
-Installation
-Utilisation
-Structure du Projet
-Pistes d'Évolution Futures
-Architecture Fonctionnelle
-Cette section décrit les grandes capacités du système et comment les différents composants interagissent pour atteindre l'objectif global de planification, désormais en deux phases distinctes.
+La principale évolution est l'introduction d'un `GlobalSupervisorLogic` et d'un `UserInteractionAgent` pour affiner l'objectif initial avec l'utilisateur (Phase de Clarification), le passage à une équipe de planification détaillée (TEAM 1 : PLAN GENERATION orchestrée par `PlanningSupervisorLogic`), et enfin, une nouvelle phase d'exécution du plan validé (TEAM 2 : PLAN EXECUTION orchestrée par `ExecutionSupervisorLogic`).
 
-Étape 1 : Clarification de l'Objectif (Orchestrée par GlobalSupervisorLogic)
-Cette phase cruciale a été ajoutée pour garantir que l'objectif soumis par l'utilisateur est suffisamment clair et détaillé avant d'engager des ressources dans la planification.
+## Table des Matières
 
-Soumission d'Objectif : L'utilisateur initie le processus en soumettant un objectif brut via l'interface Streamlit (), qui communique avec l'API du GRA ().
-Orchestration Globale : Le GlobalSupervisorLogic prend la main (). Il enregistre l'objectif initial et l'état du dialogue dans la collection global_plans de Firestore.
-Dialogue Interactif via UserInteractionAgent :
-Le GlobalSupervisorLogic invoque le UserInteractionAgent ().
-Cet agent utilise un LLM pour analyser l'objectif, estimer son type (ex: "Software Development", "Redaction/Research"), identifier les manques d'informations critiques pour la planification de haut niveau par TEAM 1, proposer des enrichissements, et si nécessaire, formuler une question précise à l'utilisateur. Il retourne un JSON structuré.
-L'état du plan global passe à CLARIFICATION_PENDING_USER_INPUT.
-Boucle de Clarification via Streamlit :
-L'interface affiche la question de l'agent, l'objectif enrichi proposé (éditable), et les éléments assumés par l'agent.
-L'utilisateur peut répondre à la question et/ou modifier directement l'objectif enrichi.
-En soumettant sa réponse, le GlobalSupervisorLogic peut relancer le UserInteractionAgent pour un nouveau cycle de clarification (jusqu'à MAX_CLARIFICATION_ATTEMPTS).
-Acceptation de l'Objectif : À tout moment, si l'objectif (enrichi par l'agent ou modifié par l'utilisateur) est jugé satisfaisant, l'utilisateur clique sur "Valider Objectif Actuel & Lancer TEAM 1". Le GlobalSupervisorLogic marque l'objectif comme OBJECTIVE_CLARIFIED et initie la phase suivante.
-Étape 2 : Génération et Itération de Plan (TEAM 1 : PLAN GENERATION, Orchestrée par PlanningSupervisorLogic)
-Une fois l'objectif clarifié et validé par l'utilisateur, cette phase prend en charge la création du plan détaillé.
+1.  [Architecture Fonctionnelle](#architecture-fonctionnelle)
+    * [Étape 1 : Clarification de l'Objectif (Orchestrée par GlobalSupervisorLogic)](#étape-1--clarification-de-lobjectif-orchestrée-par-globalsupervisorlogic)
+    * [Étape 2 : Génération et Itération de Plan (TEAM 1 : PLAN GENERATION, Orchestrée par PlanningSupervisorLogic)](#étape-2--génération-et-itération-de-plan-team-1--plan-generation-orchestrée-par-planningsupervisorlogic)
+    * [Étape 3 : Exécution du Plan (TEAM 2 : PLAN EXECUTION, Orchestrée par ExecutionSupervisorLogic)](#étape-3--exécution-du-plan-team-2--plan-execution-orchestrée-par-executionsupervisorlogic)
+2.  [Architecture Technique](#architecture-technique)
+3.  [Concepts Clés Mis en Œuvre](#concepts-clés-mis-en-œuvre)
+4.  [Architecture Générale Détaillée](#architecture-générale-détaillée)
+5.  [Prérequis](#prérequis)
+6.  [Installation](#installation)
+7.  [Utilisation](#utilisation)
+8.  [Structure du Projet](#structure-du-projet)
+9.  [Pistes d'Évolution Futures](#pistes-dévolution-futures)
 
-Orchestration Centralisée (TEAM 1) : Le PlanningSupervisorLogic pilote le flux de cette équipe d'agents. Il reçoit l'objectif clarifié du GlobalSupervisorLogic.
-Reformulation : L'ReformulatorAgent prend cet objectif (ou un plan à réviser avec feedback) et génère un plan d'action détaillé en utilisant un LLM.
-Évaluation : L'EvaluatorAgent analyse le plan reformulé, identifie forces/faiblesses, et donne un score de faisabilité (via LLM), retournant un JSON structuré.
-Validation : Le ValidatorAgent prend le plan et son évaluation, et (via LLM) approuve ou rejette le plan avec une justification.
-Boucle de Révision : En cas de rejet par le validateur, le PlanningSupervisorLogic intègre les commentaires de rejet dans un nouvel objectif et relance une reformulation (jusqu'à max_revisions). (Voir les logs pour un exemple de cette boucle).
-Capacités Transverses :
+## Architecture Fonctionnelle
 
-Découverte de Services : Les agents s'enregistrent auprès du GRA. Les superviseurs interrogent le GRA pour localiser les agents nécessaires en fonction de leurs compétences.
-Persistance des Données : L'état complet des plans globaux (collection global_plans) et des plans détaillés de TEAM 1 (graphe de tâches task_graphs, artefacts, historique) est stocké dans Firestore pour la résilience et le suivi. Les informations d'enregistrement des agents sont également persistées dans Firestore par le GRA ().
-Interface Utilisateur et Monitoring :
-Une application Streamlit permet de soumettre des objectifs, de gérer le dialogue de clarification, de lister les plans globaux et leur état, de visualiser les graphes de tâches de TEAM 1, de consulter les artefacts et de voir les agents enregistrés.
-Architecture Technique
-Cette section détaille les technologies, les protocoles et les composants techniques.
+Cette section décrit les grandes capacités du système et comment les différents composants interagissent pour atteindre l'objectif global, désormais en trois phases distinctes.
+https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit
+### Étape 1 : Clarification de l'Objectif (Orchestrée par `GlobalSupervisorLogic`)
 
-Langage et Frameworks Backend :
-Python 3.11+
-Agents et GRA : Serveurs ASGI basés sur Uvicorn.
-Les agents utilisent le SDK A2A (A2AStarletteApplication).
-Le GRA utilise FastAPI pour ses endpoints API.
-Logique Métier des Agents : Intégration de modèles de langage via l'API Gemini (gérée par src/shared/llm_client.py), supportant le mode JSON pour les sorties structurées.
-Base de Données :
-Google Cloud Firestore : Utilisé en mode NoSQL (orienté document) pour :
-Persistance des global_plans (collection global_plans).
-Persistance des TaskGraph de chaque plan de TEAM 1 (collection task_graphs).
-Registre des agents (collection agents gérée par le GRA).
-Publication de l'URL du GRA (document service_registry/gra_instance_config).
-Communication Inter-Services :
-Protocole A2A : Pour la communication entre les Superviseurs et les agents spécialisés, gérée par src/clients/a2a_api_client.py.
-API REST (HTTP/JSON) : Pour la communication entre :
-Les agents et le GRA (pour l'enregistrement).
-Les superviseurs et le GRA (pour la découverte d'agents).
-Le front-end Streamlit et le GRA (pour la soumission d'objectifs, le dialogue de clarification, et la récupération de données sur les plans).
-La bibliothèque httpx est utilisée pour les appels HTTP asynchrones.
-Front-End :
-Streamlit : Pour l'interface utilisateur de démonstration et de suivi.
-Graphviz : Pour la génération et l'affichage des graphes de tâches.
-Gestion des Tâches Asynchrones :
-asyncio est utilisé extensivement.
-Le GlobalSupervisorLogic lance le traitement des plans de TEAM 1 en tâche de fond (asyncio.create_task()) pour ne pas bloquer les requêtes HTTP et permettre au superviseur de gérer d'autres plans ou interactions.
-Concepts Clés Mis en Œuvre
-Architecture Microservices/Agents : Chaque agent et le GRA sont des services indépendants, favorisant la modularité et la scalabilité.
-Orchestration à Deux Niveaux : Le GlobalSupervisorLogic gère l'interaction utilisateur de haut niveau et le cycle de vie global, tandis que le PlanningSupervisorLogic orchestre la génération détaillée et autonome du plan.
-Agent Interactif (Human-in-the-Loop) : Introduction du UserInteractionAgent pour un dialogue collaboratif avec l'utilisateur afin de clarifier l'objectif, utilisant des états A2A comme input_required.
-Orchestration de Tâches (TEAM 1) : Le PlanningSupervisorLogic agit comme un orchestrateur, gérant un graphe de dépendances de tâches (TaskGraph).
-Service Discovery : Le GRA et le mécanisme de publication/découverte via Firestore permettent aux services de se trouver dynamiquement.
-Persistance des Données Structurée : Utilisation de collections Firestore distinctes (global_plans, task_graphs, agents) pour une meilleure organisation.
-Traitement Itératif et Réflexif (TEAM 1) : La boucle de révision permet au système d'apprendre des rejets et de tenter d'améliorer les plans.
-Intelligence Artificielle (LLM) : Les agents exploitent la puissance des LLM (Gemini) pour des tâches complexes de génération de texte, d'analyse, de dialogue et de prise de décision, y compris la génération de JSON structuré.
-Communication Asynchrone : L'ensemble du système est conçu pour fonctionner de manière asynchrone.
-Architecture Générale Détaillée
+Cette phase cruciale garantit que l'objectif soumis par l'utilisateur est suffisamment clair et détaillé avant d'engager des ressources dans la planification ou l'exécution.
+
+* **Soumission d'Objectif** : L'utilisateur initie le processus via l'interface Streamlit (`app_frontend.py`), qui communique avec l'API du GRA.
+* **Orchestration Globale** : Le `GlobalSupervisorLogic` enregistre l'objectif et gère l'état du dialogue dans la collection `global_plans` de Firestore.
+* **Dialogue Interactif via `UserInteractionAgent`** :
+    * Le `GlobalSupervisorLogic` invoque le `UserInteractionAgent`.
+    * Cet agent utilise un LLM pour analyser l'objectif, estimer son type (ex: "Software Development", "Redaction/Research"), identifier les manques d'informations critiques, proposer des enrichissements, et formuler des questions à l'utilisateur. Il retourne un JSON structuré.
+    * L'état du plan global passe à `CLARIFICATION_PENDING_USER_INPUT`.
+* **Boucle de Clarification via Streamlit** : L'interface affiche la question, l'objectif enrichi (éditable), et les éléments assumés. L'utilisateur répond ou modifie l'objectif.
+* **Acceptation de l'Objectif** : Si l'objectif est jugé satisfaisant, l'utilisateur valide, le `GlobalSupervisorLogic` marque l'objectif comme `OBJECTIVE_CLARIFIED` et initie la phase suivante (TEAM 1).
+
+### Étape 2 : Génération et Itération de Plan (TEAM 1 : PLAN GENERATION, Orchestrée par `PlanningSupervisorLogic`)
+
+Une fois l'objectif clarifié, cette phase crée un plan d'action détaillé.
+
+* **Orchestration Centralisée (TEAM 1)** : Le `PlanningSupervisorLogic` pilote le flux, recevant l'objectif clarifié du `GlobalSupervisorLogic`.
+* **Reformulation** : `ReformulatorAgent` génère un plan d'action détaillé via LLM.
+* **Évaluation** : `EvaluatorAgent` analyse le plan, identifie forces/faiblesses, et donne un score de faisabilité (via LLM), retournant un JSON.
+* **Validation** : `ValidatorAgent` approuve ou rejette le plan avec justification (via LLM).
+* **Boucle de Révision** : En cas de rejet, le `PlanningSupervisorLogic` intègre les commentaires et relance une reformulation (jusqu'à `max_revisions`).
+
+### Étape 3 : Exécution du Plan (TEAM 2 : PLAN EXECUTION, Orchestrée par `ExecutionSupervisorLogic`)
+
+Après la validation du plan détaillé par TEAM 1, cette nouvelle phase prend en charge son exécution concrète.
+
+* **Initiation par `GlobalSupervisorLogic`** : Une fois que TEAM 1 a produit un plan validé (`TEAM1_PLANNING_COMPLETED`), le `GlobalSupervisorLogic` initie TEAM 2. Il récupère le plan final de TEAM 1 et le transmet à `ExecutionSupervisorLogic`.
+* **Orchestration de l'Exécution (`ExecutionSupervisorLogic`)** :
+    * Ce superviseur prend le plan validé de TEAM 1.
+    * **Décomposition du Plan d'Exécution** : Il invoque le `DecompositionAgent`. Cet agent prend le plan textuel de TEAM 1 et le décompose en une structure JSON globale de tâches granulaires (un `ExecutionTaskGraph`) adaptées à l'exécution. Cette structure inclut le contexte global, les instructions, et une liste de tâches avec leurs descriptions, types (`executable`, `exploratory`, `container`), dépendances, instructions locales, critères d'acceptation et le type d'agent d'exécution suggéré.
+    * **Gestion de l'`ExecutionTaskGraph`** : `ExecutionSupervisorLogic` gère ce graphe de tâches d'exécution, stocké dans Firestore (collection `execution_task_graphs`).
+    * **Assignation et Exécution des Tâches** : Pour chaque tâche prête dans l'`ExecutionTaskGraph`:
+        * `ExecutionSupervisorLogic` identifie la compétence requise (ex: `coding_python`, `web_research`, `software_testing`).
+        * Il découvre un agent approprié via le GRA. Les agents d'exécution disponibles sont :
+            * `DevelopmentAgent`: Pour les tâches de génération de code (ex: compétence `coding_python`).
+            * `ResearchAgent`: Pour les tâches de recherche, d'analyse ou de synthèse de documents (compétences `general_analysis`, `web_research`, `document_synthesis`).
+            * `TestingAgent`: Pour tester les livrables, comme du code, par rapport à des spécifications (compétence `software_testing`).
+        * L'agent sélectionné exécute la tâche et produit des artefacts (ex: code source, rapport de recherche, rapport de test).
+    * **Gestion des Tâches Exploratoires** : Les tâches de type `exploratory` (souvent gérées par `ResearchAgent`) peuvent retourner des résultats qui incluent la définition de nouvelles sous-tâches, enrichissant dynamiquement l'`ExecutionTaskGraph`.
+* **Suivi et Finalisation** : `ExecutionSupervisorLogic` suit l'état de toutes les tâches d'exécution. Une fois toutes les tâches terminées, l'état global du plan d'exécution (`EXECUTION_COMPLETED_SUCCESSFULLY` ou `EXECUTION_COMPLETED_WITH_FAILURES`) est déterminé. Le `GlobalSupervisorLogic` met à jour l'état du `global_plan` en conséquence.
+
+### Capacités Transverses :
+
+* **Découverte de Services** : Les agents s'enregistrent auprès du GRA. Les superviseurs interrogent le GRA pour localiser les agents.
+* **Persistance des Données** :
+    * `global_plans`: État des plans globaux et dialogue de clarification.
+    * `task_graphs`: Plans détaillés de TEAM 1.
+    * `execution_task_graphs`: Plans d'exécution décomposés et état des tâches de TEAM 2. (Nouvelle collection)
+    * `agents`: Enregistrement des agents par le GRA.
+* **Interface Utilisateur et Monitoring (Streamlit)** : Permet la soumission d'objectifs, le dialogue de clarification, le listage des plans globaux, la visualisation des graphes de tâches (TEAM 1 et potentiellement TEAM 2), la consultation des artefacts et le statut des agents.
+
+## Architecture Technique
+```mermaid
+graph TD
+    subgraph "Phase 1: Clarification"
+        A[Utilisateur] -->|Objectif Initial| B(API Gateway / GRA)
+        B --> C{Global Supervisor}
+        C --o|Demande clarification| D[User Interaction Agent]
+        D --o|Affiche à l'utilisateur| E[Interface UI]
+        E --o|Réponse| C
+    end
+
+    C -->|Objectif Clarifié| F{Planning Supervisor}
+
+    subgraph "Phase 2: Planification (TEAM 1)"
+        F -->|Génère plan| G[Reformulator Agent]
+        G -->|Évalue plan| H[Evaluator Agent]
+        H -->|Valide plan| I[Validator Agent]
+        I -- "Si plan rejeté" --> F
+    end
+
+    I -- "Plan Validé" --> J{Execution Supervisor}
+
+    subgraph "Phase 3: Exécution (TEAM 2)"
+        J -->|1. Décomposer le plan| K[Decomposition Agent]
+        K -->|"2. Execution Task Graph"| J
+        J -- "3. Orchestre les tâches" --> L((Pool d'Agents d'Exécution))
+        subgraph L
+            direction LR
+            L1[Development Agent]
+            L2[Research Agent]
+            L3[Testing Agent]
+        end
+        L -- "4. Artefacts" --> J
+    end
+
+    J -->|Résultats Finaux| M[Output]
+```
+https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/49311d22-3e45-4a3a-bc95-dc778de81caf/version/v0.1/edit
+
+* **Langage et Frameworks Backend** :
+    * Python 3.11+
+    * Agents et GRA : Serveurs ASGI (Uvicorn), SDK A2A (`A2AStarletteApplication`), FastAPI pour le GRA.
+* **Logique Métier des Agents** : Modèles de langage Gemini (gérée par `src/shared/llm_client.py`), supportant le mode JSON.
+* **Base de Données (Google Cloud Firestore)** :
+    * `global_plans`
+    * `task_graphs` (pour TEAM 1)
+    * `execution_task_graphs` (pour TEAM 2)
+    * `agents` (registre GRA)
+    * Publication URL du GRA (`service_registry/gra_instance_config`)
+* **Communication Inter-Services** :
+    * Protocole A2A (via `src/clients/a2a_api_client.py`)
+    * API REST (HTTP/JSON) pour Streamlit <-> GRA, Agents <-> GRA.
+* **Front-End** : Streamlit, Graphviz.
+* **Gestion des Tâches Asynchrones** : `asyncio` utilisé extensivement. `GlobalSupervisorLogic` lance les traitements de TEAM 1 et TEAM 2 en tâches de fond.
+
+## Concepts Clés Mis en Œuvre
+
+* **Architecture Microservices/Agents** : Modularité et scalabilité.
+* **Orchestration à Plusieurs Niveaux** : `GlobalSupervisorLogic` (clarification, lancement TEAM 1 & 2), `PlanningSupervisorLogic` (TEAM 1), `ExecutionSupervisorLogic` (TEAM 2).
+* **Agent Interactif (Human-in-the-Loop)** : `UserInteractionAgent` pour la clarification.
+* **Orchestration de Tâches (TEAM 1 & TEAM 2)** : Gestion de graphes de tâches (`TaskGraph` pour TEAM 1, `ExecutionTaskGraph` pour TEAM 2).
+* **Décomposition de Plan d'Exécution (TEAM 2)** : Le `DecompositionAgent` structure le plan de TEAM 1 en tâches exécutables/exploratoires pour TEAM 2.
+* **Agents d'Exécution Spécialisés (TEAM 2)** : `DevelopmentAgent`, `ResearchAgent`, `TestingAgent` effectuent des tâches concrètes.
+* **Exécution de Plan Dynamique (TEAM 2)** : Les tâches exploratoires peuvent générer de nouvelles sous-tâches pendant l'exécution.
+* **Service Discovery** : GRA pour la découverte dynamique d'agents.
+* **Persistance des Données Structurée** : Collections Firestore distinctes.
+* **Traitement Itératif et Réflexif (TEAM 1)** : Boucle de révision.
+* **Intelligence Artificielle (LLM)** : Gemini pour la logique des agents.
+* **Communication Asynchrone**.
+
+## Architecture Générale Détaillée
+
 Le système est composé des principaux éléments suivants :
 
-Agents Spécialisés :
+* **Agents Spécialisés** :
+    * `UserInteractionAgent` : Analyse l'objectif, pose des questions, propose un objectif enrichi (JSON).
+    * `ReformulatorAgent` (TEAM 1) : Transforme un objectif en plan détaillé structuré.
+    * `EvaluatorAgent` (TEAM 1) : Analyse un plan, identifie forces/faiblesses, score de faisabilité (JSON).
+    * `ValidatorAgent` (TEAM 1) : Approuve ou rejette un plan évalué avec justification.
+    * `DecompositionAgent` (TEAM 2) : Décompose le plan validé de TEAM 1 en un `ExecutionTaskGraph` (JSON) pour TEAM 2.
+    * `DevelopmentAgent` (TEAM 2) : Génère du code source (ex: Python) basé sur des spécifications.
+    * `ResearchAgent` (TEAM 2) : Effectue des recherches, analyses, et peut proposer de nouvelles sous-tâches.
+    * `TestingAgent` (TEAM 2) : Teste des livrables (ex: code) et génère des rapports de test (JSON).
+    * Chaque agent est un serveur A2A autonome.
 
-UserInteractionAgent (Nouvel Agent) :
-Analyse l'objectif initial de l'utilisateur, identifie les ambiguïtés ou les manques.
-Pose des questions de clarification à l'utilisateur via un LLM.
-Propose un objectif enrichi et des éléments assumés.
-Retourne son analyse et ses questions au format JSON structuré.
-ReformulatorAgent : Prend un objectif (clarifié ou à réviser) et le transforme en un plan détaillé et structuré.
-EvaluatorAgent : Analyse un plan reformulé, identifie ses forces, faiblesses, risques et lui attribue un score de faisabilité. Retourne son analyse au format JSON.
-ValidatorAgent : Prend l'évaluation et le plan, et décide si le plan est approuvé ou rejeté, en fournissant une justification.
-Chaque agent est un serveur A2A autonome (basé sur Starlette/Uvicorn).
-Gestionnaire de Ressources et d'Agents (GRA) :
+* **Gestionnaire de Ressources et d'Agents (GRA)** : Service central (FastAPI/Uvicorn) utilisant Firestore.
+    * Registre d'Agents, API Gateway pour le Front-End.
 
-Un service central (basé sur FastAPI/Uvicorn) qui utilise Firestore pour la persistance.
-Registre d'Agents : Permet aux agents de s'enregistrer au démarrage (nom, URL, compétences) et aux superviseurs de les découvrir.
-Publication de sa propre URL : Le GRA publie sa propre URL dans un document Firestore connu (service_registry/gra_instance_config) pour que les autres services puissent le trouver dynamiquement.
-API Gateway pour le Front-End : Expose des endpoints API pour la gestion complète du cycle de vie des plans globaux (initiation, clarification, acceptation) et la consultation des plans détaillés de TEAM 1.
-Superviseurs (Orchestrateurs) :
+* **Superviseurs (Orchestrateurs)** :
+    * `GlobalSupervisorLogic` : Orchestre la phase de clarification interactive, gère le `GlobalPlan` sur Firestore, et initie TEAM 1 puis TEAM 2.
+    * `PlanningSupervisorLogic` (Orchestrateur de TEAM 1) : Gère le `TaskGraph` (planification détaillée) sur Firestore, orchestre les agents de TEAM 1, implémente la boucle de révision.
+    * `ExecutionSupervisorLogic` (Orchestrateur de TEAM 2) : Gère l'`ExecutionTaskGraph` sur Firestore, orchestre les agents de TEAM 2 (Decomposition, Development, Research, Testing) pour exécuter le plan.
 
-GlobalSupervisorLogic (Nouvel Orchestrateur) :
-Le cerveau de la phase de clarification interactive.
-Gère un GlobalPlan persistant sur Firestore (collection global_plans) pour suivre l'état du dialogue, l'historique de la conversation, les tentatives de clarification.
-Interroge le GRA pour trouver le UserInteractionAgent.
-Orchestre la séquence : Interaction Utilisateur -> Validation Utilisateur -> Lancement TEAM 1.
-PlanningSupervisorLogic (Orchestrateur de TEAM 1) :
-Le cerveau du système de génération de plan détaillé (TEAM 1).
-Gère un TaskGraph persistant sur Firestore (collection task_graphs) pour suivre l'état et les dépendances des tâches de planification.
-Interroge le GRA pour trouver les agents de TEAM 1 (Reformulator, Evaluator, Validator).
-Orchestre la séquence : Reformulator -> Evaluator -> Validator.
-Implémente une boucle de révision : si un plan est rejeté, il génère un nouvel objectif incluant le feedback et relance une reformulation (jusqu'à max_revisions).
-Client LLM Partagé :
+* **Client LLM Partagé** (`src/shared/llm_client.py`) : Interagit avec l'API Gemini.
+* **Front-End Streamlit** (`src/app_frontend.py`) : Interface utilisateur.
 
-Un module (src/shared/llm_client.py) pour interagir avec l'API Gemini, utilisé par la logique de tous les agents.
-Front-End Streamlit (src/app_frontend.py) :
+## Prérequis
 
-Une interface utilisateur pour soumettre de nouveaux objectifs, interagir durant la phase de clarification (répondre aux questions, modifier l'objectif proposé), valider l'objectif clarifié pour lancer TEAM 1, visualiser la liste des plans globaux, afficher les graphes de tâches de TEAM 1 (avec graphviz), et consulter les artefacts.
-Affiche également le statut des agents enregistrés auprès du GRA.
-Interagit avec le backend via des endpoints API REST exposés par le GRA.
-Prérequis
-Python 3.11+
-Compte Google Cloud avec un projet configuré et Firestore activé.
-Fichier de clé de compte de service JSON pour l'accès à Firestore (GOOGLE_APPLICATION_CREDENTIALS).
-Variables d'environnement configurées :
-GOOGLE_APPLICATION_CREDENTIALS : Chemin vers votre fichier de clé de service.
-GEMINI_API_KEY : Votre clé API pour Google Gemini.
-(Optionnel) GRA_PUBLIC_URL : Si l'URL publique du GRA doit être différente de http://localhost:8000 (par exemple, en cas de déploiement ou d'utilisation de tunnels).
-(Optionnel) AGENT_XXX_PUBLIC_URL : Si les URLs publiques des agents doivent être surchargées (par exemple AGENT_USERINTERACTIONAGENTSERVER_PUBLIC_URL).
-Les bibliothèques Python listées dans requirements.txt.
-Installation
-Clonez le dépôt :
+* Python 3.11+
+* Compte Google Cloud avec Firestore activé.
+* Fichier de clé de compte de service JSON (`GOOGLE_APPLICATION_CREDENTIALS`).
+* Variables d'environnement : `GOOGLE_APPLICATION_CREDENTIALS`, `GEMINI_API_KEY`.
+* (Optionnel) `GRA_PUBLIC_URL`, `AGENT_XXX_PUBLIC_URL`.
+* Bibliothèques Python listées dans `requirements.txt`.
+* Graphviz (installation système).
 
-Bash
+## Installation
 
-git clone <URL_DU_DEPOT>
-cd orchestrai-hackathon-ADK
-Créez un environnement virtuel et activez-le :
+1.  Clonez le dépôt.
+2.  Créez un environnement virtuel et activez-le.
+3.  Installez les dépendances :
+    ```bash
+    pip install -r requirements.txt
+    ```
+    Le fichier `requirements.txt` devrait contenir au minimum (adaptez si besoin) :
+    ```plaintext
+    firebase-admin
+    google-generativeai
+    httpx
+    uvicorn[standard]
+    fastapi
+    a2a-sdk
+    streamlit
+    graphviz
+    pydantic
+    ```
+4.  Configurez les variables d'environnement.
+5.  Installez Graphviz sur votre système si ce n'est pas déjà fait.
 
-Bash
+## Utilisation
 
-python -m venv venv
-source venv/bin/activate  # Sur Linux/macOS
-# venv\Scripts\activate    # Sur Windows
-Installez les dépendances :
-Le fichier requirements.txt devrait contenir au minimum (adaptez les versions si besoin) :
+Pour lancer le système complet, le GRA et tous les agents doivent être démarrés.
 
-Plaintext
+1.  **Démarrez le Gestionnaire de Ressources et d'Agents (GRA)** :
+    ```bash
+    python -m src.services.gra.server
+    ```
+    Vérifiez les logs pour la confirmation de la connexion à Firestore et la publication de son URL.
 
-# requirements.txt
-firebase-admin
-google-generativeai
-httpx
-uvicorn[standard]
-fastapi
-a2a-sdk
-streamlit
-graphviz
-pydantic
-Puis installez :
+2.  **Démarrez les Agents (chacun dans un nouveau terminal)** :
+    * Agent d'Interaction Utilisateur (`UserInteractionAgentServer`):
+        ```bash
+        python -m src.agents.user_interaction_agent.server
+        ```
+    * Agent Reformulateur (`ReformulatorAgentServer` - TEAM 1):
+        ```bash
+        python -m src.agents.reformulator.server
+        ```
+    * Agent Évaluateur (`EvaluatorAgentServer` - TEAM 1):
+        ```bash
+        python -m src.agents.evaluator.server
+        ```
+    * Agent Validateur (`ValidatorAgentServer` - TEAM 1):
+        ```bash
+        python -m src.agents.validator.server
+        ```
+    * Agent de Décomposition (`DecompositionAgentServer` - TEAM 2):
+        ```bash
+        python -m src.agents.decomposition_agent.server
+        ```
+    * Agent de Développement (`DevelopmentAgentServer` - TEAM 2):
+        ```bash
+        python -m src.agents.development_agent.server
+        ```
+    * Agent de Recherche (`ResearchAgentServer` - TEAM 2):
+        ```bash
+        python -m src.agents.research_agent.server
+        ```
+    * Agent de Test (`TestingAgentServer` - TEAM 2):
+        ```bash
+        python -m src.agents.testing_agent.server
+        ```
+    Vérifiez les logs de chaque agent pour confirmer leur enregistrement auprès du GRA.
 
-Bash
+3.  **Lancez l'Application Streamlit (Front-End)** :
+    ```bash
+    streamlit run src/app_frontend.py
+    ```
+    Ouvrez l'URL fournie par Streamlit (généralement `http://localhost:8501`) dans votre navigateur.
 
-pip install -r requirements.txt
-Configurez les variables d'environnement (voir section Prérequis).
+4.  **Utilisez l'Interface** :
+    * Soumettez un nouvel objectif.
+    * Interagissez avec l'`UserInteractionAgent` pour la clarification.
+    * Validez l'objectif pour lancer TEAM 1 (planification).
+    * TEAM 1 générera un plan. Si approuvé, TEAM 2 (exécution) sera initiée automatiquement par le `GlobalSupervisorLogic`.
+    * Suivez l'évolution des plans globaux et des graphes de tâches.
 
-(Si graphviz n'est pas déjà installé sur votre système) :
+5.  **Pour lancer un test complet du flux (Clarification -> TEAM 1 -> TEAM 2) via script backend** :
+    (Utile pour tester l'ensemble du pipeline sans l'interface Streamlit.)
+    Assurez-vous que le GRA et tous les agents (UserInteraction, TEAM 1, TEAM 2) sont en cours d'exécution, puis :
+    ```bash
+    python -m src.orchestrators.global_supervisor_logic
+    ```
+    (Note : Ce script exécute la fonction `main_test_global_supervisor` qui simule le flux complet.)
 
-Sur Debian/Ubuntu : sudo apt-get install graphviz
-Sur macOS (avec Homebrew) : brew install graphviz
-Utilisation
-Pour lancer le système complet, 4 agents et le GRA doivent être démarrés.
+## Structure du Projet (Principaux Dossiers et Fichiers)
 
-Démarrez le Gestionnaire de Ressources et d'Agents (GRA) :
-Ouvrez un terminal et exécutez :
-
-Bash
-
-python -m src.services.gra.server
-Vérifiez les logs pour la confirmation de la connexion à Firestore et la publication de son URL.
-
-Démarrez les Agents (chacun dans un nouveau terminal) :
-
-Agent d'Interaction Utilisateur (UserInteractionAgentServer):
-Bash
-
-python -m src.agents.user_interaction_agent.server
-Agent Reformulateur (ReformulatorAgentServer):
-Bash
-
-python -m src.agents.reformulator.server
-Agent Évaluateur (EvaluatorAgentServer):
-Bash
-
-python -m src.agents.evaluator.server
-Agent Validateur (ValidatorAgentServer):
-Bash
-
-python -m src.agents.validator.server
-Vérifiez les logs de chaque agent pour confirmer leur enregistrement auprès du GRA. Le GRA devrait aussi logger ces enregistrements.
-
-Lancez l'Application Streamlit (Front-End) :
-Ouvrez un nouveau terminal et exécutez :
-
-Bash
-
-streamlit run src/app_frontend.py
-Ouvrez l'URL fournie par Streamlit (généralement http://localhost:8501) dans votre navigateur.
-
-Utilisez l'Interface :
-
-Soumettez un nouvel objectif via le formulaire dans la barre latérale.
-Si l'UserInteractionAgent a besoin de clarifications, des questions et des propositions apparaîtront. Vous pourrez y répondre ou modifier l'objectif enrichi proposé.
-Cliquez sur "Soumettre Réponse pour Continuer Clarification" pour itérer avec l'agent, ou "Valider Objectif Actuel & Lancer TEAM 1" lorsque l'objectif est satisfaisant.
-Suivez l'évolution des plans globaux (phase de clarification) et des plans de TEAM 1 (graphe de tâches) dans la liste et la vue détaillée.
-Consultez le statut des agents.
-Pour lancer un plan TEAM 1 directement via le script (sans l'interface Streamlit et la phase de clarification globale) :
-(Ceci correspond à l'ancien mode de fonctionnement, utile pour tester TEAM 1 isolément si l'objectif est déjà clair).
-Assurez-vous que le GRA et les 3 agents de TEAM 1 (Reformulator, Evaluator, Validator) sont en cours d'exécution, puis :
-
-Bash
-
-python -m src.run_orchestrator
-(Note: run_orchestrator.py initie directement le PlanningSupervisorLogic)
-
-Structure du Projet (Principaux Dossiers et Fichiers)
 orchestrai-hackathon-ADK/
 ├── src/
 │   ├── agents/
-│   │   ├── user_interaction_agent/  # NOUVEL AGENT pour la clarification
-│   │   │   ├── logic.py
-│   │   │   ├── executor.py
-│   │   │   └── server.py
-│   │   ├── reformulator/
-│   │   │   ├── logic.py
-│   │   │   ├── executor.py
-│   │   │   └── server.py
-│   │   ├── evaluator/
-│   │   │   └── ... (idem)
-│   │   └── validator/
-│   │       └── ... (idem)
+│   │   ├── user_interaction_agent/   # Clarification
+│   │   ├── reformulator/             # TEAM 1
+│   │   ├── evaluator/                # TEAM 1
+│   │   ├── validator/                # TEAM 1
+│   │   ├── decomposition_agent/      # TEAM 2 (Nouveau)
+│   │   ├── development_agent/        # TEAM 2 (Nouveau)
+│   │   ├── research_agent/           # TEAM 2 (Nouveau)
+│   │   └── testing_agent/            # TEAM 2 (Nouveau)
+│   │       └── ... (logic.py, executor.py, server.py pour chaque)
 │   ├── clients/
 │   │   └── a2a_api_client.py
 │   ├── orchestrators/
-│   │   ├── global_supervisor_logic.py    # NOUVEAU superviseur pour la phase de clarification
-│   │   └── planning_supervisor_logic.py  # Superviseur pour TEAM 1 (planification détaillée)
+│   │   ├── global_supervisor_logic.py    # Orchestre Clarification, TEAM 1, TEAM 2
+│   │   ├── planning_supervisor_logic.py  # Orchestre TEAM 1 (planification)
+│   │   └── execution_supervisor_logic.py # Orchestre TEAM 2 (exécution) (Nouveau)
 │   ├── services/
 │   │   └── gra/
-│   │       └── server.py                 # Gestionnaire de Ressources et d'Agents (API Gateway)
+│   │       └── server.py                 # Gestionnaire de Ressources et d'Agents
 │   └── shared/
 │       ├── base_agent_executor.py
 │       ├── base_agent_logic.py
-│       ├── firebase_init.py              # Module d'initialisation centralisé pour Firestore
+│       ├── firebase_init.py
 │       ├── llm_client.py
 │       ├── service_discovery.py
-│       └── task_graph_management.py
-├── src/app_frontend.py                   # Interface Streamlit (mise à jour pour interaction)
-├── src/run_orchestrator.py               # Script pour lancer un plan TEAM 1 en backend
+│       ├── task_graph_management.py          # Pour TEAM 1
+│       └── execution_task_graph_management.py # Pour TEAM 2 (Nouveau)
+├── src/app_frontend.py                   # Interface Streamlit
+├── src/run_orchestrator.py               # Script pour lancer un plan TEAM 1 (planification) isolément
 ├── .gitignore
 ├── requirements.txt
 └── README.md                             (Ce fichier)
-Pistes d'Évolution Futures
-Implémentation de la "TEAM 2: EXECUTION" avec un ExecutionSupervisor et des agents d'exécution.
-Logique de replanification plus sophistiquée dans _handle_task_failure du PlanningSupervisorLogic.
-Interface utilisateur plus riche avec des mises à jour en temps réel (par exemple, via WebSockets) pour refléter l'avancement sans rafraîchissement manuel.
-Gestion plus fine des erreurs et des mécanismes de reessai (retry) à tous les niveaux.
-Sécurisation des API du GRA et des agents (authentification, autorisation).
-Amélioration de la robustesse de la découverte de services et de la gestion des pannes d'agents.
-Déploiement sur une plateforme Cloud (ex: Google Cloud Run pour les services, Cloud Functions pour des tâches asynchrones légères), en utilisant les variables d'environnement pour la configuration.
-Tests unitaires et d'intégration plus exhaustifs.
+
+
+## Pistes d'Évolution Futures
+
+* Logique de replanification plus sophistiquée dans `ExecutionSupervisorLogic` pour TEAM 2 (actuellement, la décomposition est initiale, mais des échecs d'exécution pourraient nécessiter une redécomposition partielle ou des tâches alternatives).
+* Interface utilisateur plus riche avec des mises à jour en temps réel (WebSockets).
+* Validation par l'utilisateur des livrables produits par TEAM 2.
+* Gestion plus fine des erreurs et mécanismes de reessai à tous les niveaux.
+* Sécurisation des API.
+* Amélioration de la robustesse de la découverte de services.
+* Déploiement sur une plateforme Cloud.
+* Tests unitaires et d'intégration plus exhaustifs.
+* Permettre à `ExecutionSupervisorLogic` de choisir dynamiquement des agents pour des compétences non pré-définies dans le plan décomposé, en se basant sur les capacités réelles des agents enregistrés.
+* Outillage pour visualiser l'`ExecutionTaskGraph` dans Streamlit, similaire à ce qui existe pour le `TaskGraph` de TEAM 1.
