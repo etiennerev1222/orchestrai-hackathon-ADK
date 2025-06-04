@@ -204,16 +204,38 @@ class ExecutionSupervisorLogic:
                  input_payload["deliverable"] = "// ATTENTION: Aucun livrable de code trouvé dans les dépendances directes."
         
         if task_node.input_data_refs:
-            input_payload["input_artifacts_content"] = {} 
-            self.logger.debug(f"[{self.execution_plan_id}] Traitement input_data_refs pour tâche {task_node.id}: {task_node.input_data_refs}")
-            for ref_name, gra_artifact_id_to_load in task_node.input_data_refs.items():
-                self.logger.info(f"[{self.execution_plan_id}] Tâche {task_node.id} a input_data_ref '{ref_name}' pointant vers GRA artifact ID: {gra_artifact_id_to_load}.")
-                artifact_content = await self._fetch_artifact_content(gra_artifact_id_to_load)
+            input_payload["input_artifacts_content"] = {}
+            self.logger.debug(
+                f"[{self.execution_plan_id}] Traitement input_data_refs pour tâche {task_node.id}: {task_node.input_data_refs}"
+            )
+            for ref_name, ref_value in task_node.input_data_refs.items():
+                resolved_artifact_id = ref_value
+                if ref_value in self._local_to_global_id_map_for_plan:
+                    global_id = self._local_to_global_id_map_for_plan[ref_value]
+                    dep_task = self.task_graph.get_task(global_id)
+                    if dep_task and dep_task.output_artifact_ref:
+                        resolved_artifact_id = dep_task.output_artifact_ref
+                        self.logger.info(
+                            f"[{self.execution_plan_id}] ID local '{ref_value}' résolu en tâche {global_id} avec artefact {resolved_artifact_id} pour ref '{ref_name}'."
+                        )
+                        task_node.input_data_refs[ref_name] = resolved_artifact_id
+                    else:
+                        self.logger.warning(
+                            f"[{self.execution_plan_id}] Tâche référencée {global_id} via ID local '{ref_value}' sans artefact disponible."
+                        )
+                else:
+                    self.logger.info(
+                        f"[{self.execution_plan_id}] Référence d'entrée '{ref_name}' utilise directement l'ID d'artefact {ref_value}."
+                    )
+
+                artifact_content = await self._fetch_artifact_content(resolved_artifact_id)
                 if artifact_content:
                     input_payload["input_artifacts_content"][ref_name] = artifact_content
                 else:
-                    input_payload["input_artifacts_content"][ref_name] = f"// ERREUR: Contenu de l'artefact GRA ID {gra_artifact_id_to_load} non récupérable pour input '{ref_name}'."
-            if not input_payload["input_artifacts_content"]: 
+                    input_payload["input_artifacts_content"][ref_name] = (
+                        f"// ERREUR: Contenu de l'artefact GRA ID {resolved_artifact_id} non récupérable pour input '{ref_name}'."
+                    )
+            if not input_payload["input_artifacts_content"]:
                 del input_payload["input_artifacts_content"]
         
         return json.dumps(input_payload, ensure_ascii=False, indent=2)
