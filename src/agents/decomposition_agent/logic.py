@@ -20,16 +20,9 @@ class DecompositionAgentLogic(BaseAgentLogic):
         self.logger = logging.getLogger(f"{__name__}.DecompositionAgentLogic")
         self.logger.info("Logique du DecompositionAgent initialisée.")
 
+
     async def process(self, input_data_str: str, context_id: str | None = None) -> Dict[str, Any]:
-        """
-        Décompose un plan textuel de TEAM 1 en une structure JSON globale.
-        L'input_data_str est attendu comme un JSON string contenant :
-        {
-            "team1_plan_text": "Le plan à décomposer...",
-            "available_execution_skills": ["skill1", "skill2", ...]
-        }
-        Retourne un dictionnaire Python prêt à être sérialisé en JSON.
-        """
+        # ... (parsing de input_data_str pour obtenir team1_plan_text et available_skills_list comme avant) ...
         self.logger.info(f"DecompositionAgent - Reçu input_data_str (contexte: {context_id}): '{input_data_str[:300]}...'")
 
         try:
@@ -39,12 +32,13 @@ class DecompositionAgentLogic(BaseAgentLogic):
         except json.JSONDecodeError as e:
             self.logger.error(f"DecompositionAgent: Input JSON invalide: {input_data_str}. Erreur: {e}")
             return {"error": "Input JSON invalide pour DecompositionAgent", "details": input_data_str}
-        except AttributeError: # Si input_data_str n'est pas un string (ex: déjà un dict par erreur)
+        except AttributeError: 
             self.logger.error(f"DecompositionAgent: input_data_str n'est pas une chaîne JSON. Reçu type: {type(input_data_str)}")
             return {"error": "Format d'input incorrect, attendu une chaîne JSON."}
 
 
         if not team1_plan_text:
+            # ... (gestion plan vide existante) ...
             self.logger.warning("Texte du plan de TEAM 1 vide, aucune décomposition possible.")
             return {
                 "global_context": "Plan de TEAM 1 vide fourni à l'agent de décomposition.",
@@ -52,45 +46,45 @@ class DecompositionAgentLogic(BaseAgentLogic):
                 "tasks": []
             }
         
-        # Préparer la chaîne des compétences pour le prompt
         if available_skills_list and all(isinstance(s, str) for s in available_skills_list):
             skills_string = ", ".join([f"'{s}'" for s in available_skills_list])
         else:
             self.logger.warning(f"Liste des compétences disponibles non fournie ou mal formatée, utilisation d'une liste par défaut pour le prompt. Reçu: {available_skills_list}")
-            # Fallback si la liste de compétences n'est pas passée ou est malformée
-            default_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
+            default_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design", "test_case_generation"] # Ajout de test_case_generation
             skills_string = ", ".join([f"'{s}'" for s in default_skills])
+            available_skills_list = default_skills # S'assurer que la liste utilisée plus bas est à jour
 
 
         system_prompt = (
-            "Tu es un chef de projet senior expert en décomposition de plans complexes en tâches actionnables et granulaires. "
-            "Ton rôle est de prendre un plan de projet détaillé (rédigé en langage naturel) et de le transformer en un objet JSON structuré. "
+            "Tu es un chef de projet expert en décomposition de plans en tâches granulaires et structurées. "
+            "Ton rôle est de prendre un plan de projet détaillé et de le transformer en un objet JSON structuré. "
             "Cet objet JSON DOIT avoir les clés racine suivantes et uniquement celles-ci : 'global_context' (string), 'instructions' (array of string), et 'tasks' (array of task objects).\n"
-            "Le 'global_context' doit être un résumé concis du plan original.\n"
-            "Les 'instructions' globales peuvent être une liste vide [] si aucune instruction de haut niveau ne s'applique à toutes les tâches.\n"
-            "La clé 'tasks' doit contenir une liste d'objets tâche.\n"
             "Pour chaque tâche dans la liste 'tasks' (et pour chaque tâche dans 'sous_taches'), tu dois fournir EXACTEMENT les clés suivantes :\n"
-            "- 'id': un identifiant textuel unique et court pour la tâche (ex: 'T01', 'T02.1'). Utilise une numérotation logique.\n"
-            "- 'nom': un nom court et descriptif pour la tâche (max 10 mots).\n"
-            "- 'description': une description détaillée de ce que la tâche doit accomplir.\n"
-            "- 'type': une chaîne de caractères choisie EXACTEMENT parmi 'executable', 'exploratory', ou 'container'.\n"
-            "- 'dependances': une liste de chaînes de caractères (peut être vide []), contenant les 'id' des autres tâches (que tu as définies dans la même liste 'tasks' ou 'sous_taches' parente) dont cette tâche dépend directement.\n"
-            "- 'instructions_locales': une liste de chaînes de caractères (peut être vide []) détaillant les étapes ou consignes spécifiques pour réaliser cette tâche.\n"
-            "- 'acceptance_criteria': une liste de chaînes de caractères (peut être vide []) décrivant les conditions claires pour considérer la tâche comme terminée avec succès.\n"
-            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences disponibles : [{skills_string}]. Choisis la compétence la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
-            "- 'sous_taches': une liste (peut être vide []) d'objets tâche imbriqués, suivant EXACTEMENT la même structure que les tâches principales (incluant toutes les clés mentionnées ci-dessus).\n"
-            "Assure-toi que la réponse est UNIQUEMENT l'objet JSON global structuré comme demandé, sans aucun texte, explication ou formatage en dehors de l'objet JSON lui-même."
+            "- 'id': un identifiant textuel local unique et court (ex: 'T01', 'T02.1').\n"
+            "- 'nom': un nom court et descriptif.\n"
+            "- 'description': une description détaillée.\n"
+            "- 'type': 'executable', 'exploratory', ou 'container'.\n"
+            "- 'dependances': une liste d'IDs locaux des tâches dont cette tâche dépend directement. Si une tâche d'exécution de tests (ex: avec compétence 'software_testing') dépend de code ET de cas de tests, elle doit lister les IDs des tâches ayant produit ces deux éléments.\n"
+            "- 'instructions_locales': liste de strings.\n"
+            "- 'acceptance_criteria': liste de strings.\n"
+            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences disponibles : [{skills_string}]. Choisis la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
+            "- 'input_data_refs': un dictionnaire optionnel (peut être omis ou vide {}). Si une tâche a besoin de l'artefact d'une tâche précédente comme input nommé, utilise ce champ. Par exemple, pour une tâche qui exécute des tests, tu pourrais avoir : `\"input_data_refs\": {\"code_to_test\": \"ID_TACHE_CODE\", \"test_cases_file\": \"ID_TACHE_GEN_TESTS\"}`. Les valeurs sont les 'id' locaux d'autres tâches.\n"
+            "- 'sous_taches': une liste vide [] ou une liste d'objets tâche imbriqués, suivant la même structure.\n"
+            "Assure-toi que la réponse est UNIQUEMENT l'objet JSON global."
         )
         
         prompt = (
-            f"Voici le plan détaillé (qui servira de base pour le 'global_context') à décomposer :\n\n"
+            f"Voici le plan détaillé à décomposer :\n\n"
             f"'''{team1_plan_text}'''\n\n"
-            f"Les compétences d'agent que tu DOIS utiliser pour le champ 'assigned_agent_type' sont : [{skills_string}].\n"
-            "Génère l'objet JSON structuré comme décrit dans les instructions système. "
-            "N'invente pas de nouvelles valeurs pour le champ 'type' ou 'assigned_agent_type' autres que celles explicitement autorisées."
+            f"Les compétences d'agent que tu DOIS utiliser pour 'assigned_agent_type' sont : [{skills_string}].\n"
+            "Pour les tâches d'exécution de tests (généralement assignées à 'software_testing'), si elles nécessitent à la fois du code et des cas de test, assure-toi que leurs 'dependances' incluent les IDs locaux des tâches qui produisent le code et celles qui produisent les cas de test. "
+            "De plus, pour de telles tâches, utilise 'input_data_refs' pour spécifier comment les artefacts des dépendances doivent être nommés en entrée. Par exemple : `\"input_data_refs\": {\"code_input\": \"ID_TACHE_DEV\", \"test_specifications\": \"ID_TACHE_GEN_CAS_TEST\"}`. Adapte les noms des clés dans `input_data_refs` pour qu'ils soient descriptifs.\n"
+            "Génère l'objet JSON structuré comme décrit. Sois rigoureux sur le format JSON et les types de données.\n"
+            "L'objet JSON global doit avoir les clés 'global_context', 'instructions', et 'tasks'."
         )
 
         try:
+            # ... (logique d'appel LLM et de parsing JSON existante) ...
             self.logger.debug(f"DecompositionAgentLogic - Prompt Système LLM:\n{system_prompt}")
             self.logger.debug(f"DecompositionAgentLogic - Prompt Utilisateur LLM:\n{prompt}")
             llm_response_str = await call_llm(prompt, system_prompt, json_mode=True)
@@ -102,11 +96,10 @@ class DecompositionAgentLogic(BaseAgentLogic):
                not all(k in decomposed_plan_json for k in ["global_context", "instructions", "tasks"]) or \
                not isinstance(decomposed_plan_json.get("tasks"), list):
                 self.logger.error(f"La réponse du LLM n'a pas la structure principale attendue. Réponse: {decomposed_plan_json}")
-                # Essayer de retourner une structure d'erreur minimale conforme au format global attendu par le superviseur
                 return {
                     "global_context": "Erreur de décomposition.", 
                     "instructions": ["Le LLM n'a pas retourné la structure JSON attendue."],
-                    "tasks": [{"id": "error_task", "nom": "Erreur LLM", "description": f"Réponse LLM incorrecte: {llm_response_str}", "type": "exploratory", "dependances": [], "instructions_locales": [], "acceptance_criteria": [], "assigned_agent_type": "general_analysis", "sous_taches": [] }],
+                    "tasks": [{"id": "error_task", "nom": "Erreur LLM", "description": f"Réponse LLM incorrecte: {llm_response_str}", "type": "exploratory", "dependances": [], "instructions_locales": [], "acceptance_criteria": [], "assigned_agent_type": "general_analysis", "sous_taches": [], "input_data_refs": {}}],
                     "error": "LLM response structure incorrect."
                 }
 
@@ -118,7 +111,7 @@ class DecompositionAgentLogic(BaseAgentLogic):
             return {
                 "global_context": "Erreur de décomposition.", 
                 "instructions": ["La réponse du LLM n'était pas un JSON valide."],
-                "tasks": [{"id": "error_task_json", "nom": "Erreur JSON LLM", "description": f"JSON Invalide: {llm_response_str}", "type": "exploratory", "dependances": [], "instructions_locales": [], "acceptance_criteria": [], "assigned_agent_type": "general_analysis", "sous_taches": [] }],
+                "tasks": [{"id": "error_task_json", "nom": "Erreur JSON LLM", "description": f"JSON Invalide: {llm_response_str}", "type": "exploratory", "dependances": [], "instructions_locales": [], "acceptance_criteria": [], "assigned_agent_type": "general_analysis", "sous_taches": [], "input_data_refs": {}}],
                 "error": "Invalid JSON response from LLM", 
                 "raw_response": llm_response_str
             }
@@ -127,6 +120,6 @@ class DecompositionAgentLogic(BaseAgentLogic):
             return {
                 "global_context": "Erreur de décomposition.", 
                 "instructions": [f"Erreur interne lors de l'appel LLM: {str(e)}"],
-                "tasks": [{"id": "error_task_llm_call", "nom": "Erreur Appel LLM", "description": f"Échec appel LLM: {str(e)}", "type": "exploratory", "dependances": [], "instructions_locales": [], "acceptance_criteria": [], "assigned_agent_type": "general_analysis", "sous_taches": [] }],
+                "tasks": [{"id": "error_task_llm_call", "nom": "Erreur Appel LLM", "description": f"Échec appel LLM: {str(e)}", "type": "exploratory", "dependances": [], "instructions_locales": [], "acceptance_criteria": [], "assigned_agent_type": "general_analysis", "sous_taches": [], "input_data_refs": {}}],
                 "error": f"LLM processing failed: {e}"
             }

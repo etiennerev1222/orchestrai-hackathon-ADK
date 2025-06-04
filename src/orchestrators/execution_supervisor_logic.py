@@ -14,16 +14,15 @@ from src.shared.execution_task_graph_management import (
 )
 from src.shared.service_discovery import get_gra_base_url
 from src.clients.a2a_api_client import call_a2a_agent
-from a2a.types import Artifact as A2ATypeArtifact # Alias pour éviter confusion avec le modèle Pydantic du GRA
-                                                # qui pourrait être importé si on voulait typer le payload.
+from a2a.types import Artifact as A2ATypeArtifact 
 
 from src.agents.testing_agent.logic import AGENT_SKILL_SOFTWARE_TESTING
 from src.agents.development_agent.logic import AGENT_SKILL_CODING_PYTHON
+from src.agents.decomposition_agent.logic import AGENT_SKILL_DECOMPOSE_EXECUTION_PLAN
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # Logger au niveau du module
 
 class ExecutionSupervisorLogic:
-    # ... (votre __init__ et _ensure_gra_url existants) ...
     def __init__(self, global_plan_id: str, team1_plan_final_text: str):
         self.global_plan_id = global_plan_id
         self.team1_plan_final_text = team1_plan_final_text
@@ -36,19 +35,40 @@ class ExecutionSupervisorLogic:
         self.logger = logging.getLogger(f"{__name__}.ExecutionSupervisorLogic.{self.execution_plan_id}")
         if not self.logger.hasHandlers() and not self.logger.propagate:
             if not logging.getLogger().hasHandlers():
-                logging.basicConfig(level=logging.INFO)
+                logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self.logger.info(f"ExecutionSupervisorLogic initialisé pour global_plan '{global_plan_id}'. Execution plan ID: '{self.execution_plan_id}'")
+
+    async def initialize_and_decompose_plan(self):
+        """
+        Tâche initiale : faire décomposer le plan textuel de TEAM 1 en ExecutionTaskGraph.
+        """
+        self.logger.info(f"[{self.execution_plan_id}] Initialisation et décomposition du plan de TEAM 1.")
+        self.task_graph.set_overall_status("INITIALIZING")
+        self._local_to_global_id_map_for_plan.clear() 
+
+        decomposition_task_id = f"decompose_{self.execution_plan_id}"
+        decomposition_task = ExecutionTaskNode(
+            task_id=decomposition_task_id,
+            objective="Décomposer le plan textuel de TEAM 1 en tâches d'exécution structurées.",
+            task_type=ExecutionTaskType.DECOMPOSITION,
+            assigned_agent_type=AGENT_SKILL_DECOMPOSE_EXECUTION_PLAN
+        )
+        self.task_graph.add_task(decomposition_task, is_root=True)
+        self.task_graph.update_task_state(decomposition_task_id, ExecutionTaskState.READY, "Prêt pour décomposition initiale.")
+        
+        self.logger.info(f"[{self.execution_plan_id}] Tâche de décomposition '{decomposition_task_id}' créée et marquée READY.")
+        self.task_graph.set_overall_status("PENDING_DECOMPOSITION")
 
     async def _ensure_gra_url(self):
         if not self._gra_base_url:
             self._gra_base_url = await get_gra_base_url()
             if not self._gra_base_url:
-                msg = "[ExecutionSupervisor] Impossible de découvrir l'URL du GRA."
-                self.logger.error(msg) # Utiliser self.logger
+                msg = f"[{self.execution_plan_id}] Impossible de découvrir l'URL du GRA."
+                self.logger.error(msg)
                 raise ConnectionError(msg)
         return self._gra_base_url
 
-    async def _get_agent_details_from_gra(self, skill: str) -> Optional[Dict[str, str]]: # Retourne nom et url
+    async def _get_agent_details_from_gra(self, skill: str) -> Optional[Dict[str, str]]:
         gra_url = await self._ensure_gra_url()
         agent_details = None
         try:
@@ -62,7 +82,6 @@ class ExecutionSupervisorLogic:
                     self.logger.info(f"[{self.execution_plan_id}] Détails pour '{skill}' obtenus du GRA: {agent_details}")
                 else:
                     self.logger.error(f"[{self.execution_plan_id}] Données incomplètes du GRA pour '{skill}'. Réponse: {data}")
-        # ... (gestion d'exceptions existante) ...
         except httpx.HTTPStatusError as e:
             self.logger.error(f"[{self.execution_plan_id}] Erreur HTTP ({e.response.status_code}) en contactant le GRA pour '{skill}' à {e.request.url}: {e.response.text}")
         except httpx.RequestError as e:
@@ -71,40 +90,31 @@ class ExecutionSupervisorLogic:
             self.logger.error(f"[{self.execution_plan_id}] Erreur inattendue en contactant le GRA pour '{skill}': {e}", exc_info=True)
         return agent_details
 
-
     async def _store_a2a_artifact_in_gra(self, 
                                           a2a_artifact_to_store: A2ATypeArtifact, 
                                           a2a_task_id: str, 
                                           a2a_context_id: str, 
                                           producing_agent_name: str) -> Optional[str]:
-        """
-        Prend un a2a.types.Artifact, le convertit et le stocke via l'endpoint /artifacts du GRA.
-        Retourne l'ID de l'artefact stocké par le GRA (ID Firestore).
-        """
         gra_url = await self._ensure_gra_url()
         if not gra_url:
             return None
 
-        # Convertir a2a.types.Artifact en payload pour le GRA
-        # Pour l'instant, on ne gère que les TextPart.
         content_for_gra: Optional[str | Dict[str, Any]] = None
         if a2a_artifact_to_store.parts:
             first_part = a2a_artifact_to_store.parts[0]
-            if hasattr(first_part, 'root') and hasattr(first_part.root, 'text'): # Structure A2A SDK plus récente
+            if hasattr(first_part, 'root') and hasattr(first_part.root, 'text'):
                  content_for_gra = first_part.root.text
-            elif hasattr(first_part, 'text'): # Structure plus simple
+            elif hasattr(first_part, 'text'):
                  content_for_gra = first_part.text
-            # Vous pourriez ajouter une logique ici pour d'autres types de parties (JsonPart, etc.)
-            # et les convertir en Dict[str, Any] pour content_for_gra.
 
         if content_for_gra is None:
             self.logger.warning(f"[{self.execution_plan_id}] L'artefact A2A (ID local: {a2a_artifact_to_store.artifactId}) n'a pas de contenu textuel extractible pour le stockage GRA.")
             return None
 
         gra_artifact_payload = {
-            "task_id": a2a_task_id, # ID de la tâche A2A qui a produit l'artefact
-            "context_id": a2a_context_id, # Contexte de la tâche A2A
-            "agent_name": producing_agent_name, # Nom de l'agent qui l'a produit
+            "task_id": a2a_task_id,
+            "context_id": a2a_context_id,
+            "agent_name": producing_agent_name,
             "content": content_for_gra 
         }
         
@@ -127,9 +137,6 @@ class ExecutionSupervisorLogic:
             return None
 
     async def _fetch_artifact_content(self, gra_artifact_id: str) -> Optional[str]:
-        """
-        Récupère le contenu textuel d'un artefact depuis le GRA en utilisant son ID GRA (Firestore).
-        """
         if not gra_artifact_id:
             self.logger.warning(f"[{self.execution_plan_id}] ID d'artefact GRA vide fourni pour récupération.")
             return None
@@ -139,37 +146,35 @@ class ExecutionSupervisorLogic:
                 self.logger.info(f"[{self.execution_plan_id}] Récupération de l'artefact GRA ID '{gra_artifact_id}'.")
                 response = await client.get(f"{gra_url}/artifacts/{gra_artifact_id}", timeout=10.0)
                 response.raise_for_status()
-                artifact_data_from_gra = response.json() # C'est le modèle Pydantic du GRA
+                artifact_data_from_gra = response.json()
                 
-                # Le contenu est directement sous la clé "content" dans le modèle du GRA
                 content = artifact_data_from_gra.get("content")
                 if isinstance(content, str):
                     return content
-                elif isinstance(content, dict): # Si le contenu était un JSON
+                elif isinstance(content, dict):
                     return json.dumps(content, ensure_ascii=False)
                 else:
                     self.logger.warning(f"[{self.execution_plan_id}] Artefact GRA ID '{gra_artifact_id}' a un contenu de type inattendu: {type(content)}.")
-                    return str(content) # Fallback
+                    return str(content)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 self.logger.error(f"[{self.execution_plan_id}] Artefact GRA ID '{gra_artifact_id}' non trouvé dans le GRA (404).")
             else:
                 self.logger.error(f"[{self.execution_plan_id}] Erreur HTTP lors de la récupération de l'artefact GRA ID '{gra_artifact_id}': {e}", exc_info=True)
-            return None # Important de retourner None en cas de 404 ou autre erreur HTTP
+            return None
         except Exception as e:
             self.logger.error(f"[{self.execution_plan_id}] Erreur lors de la récupération du contenu de l'artefact GRA ID '{gra_artifact_id}': {e}", exc_info=True)
             return None
 
-
     async def _prepare_input_for_execution_agent(self, task_node: ExecutionTaskNode) -> str:
-        # ... (début identique : payload de base) ...
         input_payload = {
             "objective": task_node.objective,
             "local_instructions": task_node.meta.get("local_instructions", []),
             "acceptance_criteria": task_node.meta.get("acceptance_criteria", []),
             "task_id": task_node.id,
             "execution_plan_id": self.execution_plan_id,
-            "task_type": task_node.task_type.value
+            "task_type": task_node.task_type.value,
+             "assigned_skill": task_node.assigned_agent_type 
         }
 
         if task_node.task_type == ExecutionTaskType.EXPLORATORY:
@@ -182,8 +187,8 @@ class ExecutionSupervisorLogic:
             found_deliverable = False
             for dep_id in task_node.dependencies:
                 dep_task_node = self.task_graph.get_task(dep_id)
-                if dep_task_node and dep_task_node.assigned_agent_type == AGENT_SKILL_CODING_PYTHON:
-                    if dep_task_node.output_artifact_ref: # Ceci est maintenant l'ID GRA de l'artefact
+                if dep_task_node and dep_task_node.assigned_agent_type == AGENT_SKILL_CODING_PYTHON: 
+                    if dep_task_node.output_artifact_ref: 
                         self.logger.info(f"[{self.execution_plan_id}] Tâche de test {task_node.id} dépend de {dep_id} (code). Récupération de l'artefact GRA ID: {dep_task_node.output_artifact_ref}.")
                         deliverable_content = await self._fetch_artifact_content(dep_task_node.output_artifact_ref)
                         if deliverable_content:
@@ -198,9 +203,8 @@ class ExecutionSupervisorLogic:
                  self.logger.warning(f"[{self.execution_plan_id}] Aucun livrable de code trouvé via dépendances pour tâche de test {task_node.id}.")
                  input_payload["deliverable"] = "// ATTENTION: Aucun livrable de code trouvé dans les dépendances directes."
         
-        # Gérer les input_data_refs plus génériques si nécessaire
         if task_node.input_data_refs:
-            input_payload["input_artifacts_content"] = {} # Pour stocker le contenu réel
+            input_payload["input_artifacts_content"] = {} 
             self.logger.debug(f"[{self.execution_plan_id}] Traitement input_data_refs pour tâche {task_node.id}: {task_node.input_data_refs}")
             for ref_name, gra_artifact_id_to_load in task_node.input_data_refs.items():
                 self.logger.info(f"[{self.execution_plan_id}] Tâche {task_node.id} a input_data_ref '{ref_name}' pointant vers GRA artifact ID: {gra_artifact_id_to_load}.")
@@ -209,19 +213,17 @@ class ExecutionSupervisorLogic:
                     input_payload["input_artifacts_content"][ref_name] = artifact_content
                 else:
                     input_payload["input_artifacts_content"][ref_name] = f"// ERREUR: Contenu de l'artefact GRA ID {gra_artifact_id_to_load} non récupérable pour input '{ref_name}'."
-            if not input_payload["input_artifacts_content"]: # Supprimer la clé si vide
+            if not input_payload["input_artifacts_content"]: 
                 del input_payload["input_artifacts_content"]
-
+        
         return json.dumps(input_payload, ensure_ascii=False, indent=2)
 
     async def process_plan_execution(self):
         self.logger.info(f"[{self.execution_plan_id}] Début du cycle de traitement d'exécution.")
         current_graph_snapshot_before_ready = self.task_graph.as_dict()
-        # ... (logique de get_ready_tasks et vérification de fin de plan inchangée) ...
         ready_tasks_nodes = self.task_graph.get_ready_tasks()
 
         if not ready_tasks_nodes:
-            # ... (gestion existante pour aucune tâche prête)
             self.logger.info(f"[{self.execution_plan_id}] Aucune tâche d'exécution prête pour ce cycle.")
             overall_status = current_graph_snapshot_before_ready.get("overall_status", "UNKNOWN")
             if overall_status.startswith("COMPLETED") or overall_status.startswith("FAILED") or overall_status.startswith("TIMEOUT") or overall_status == "PLAN_DECOMPOSED_EMPTY":
@@ -248,7 +250,6 @@ class ExecutionSupervisorLogic:
                     self.logger.info(f"[{self.execution_plan_id}] Toutes les tâches d'exécution sont terminales. Statut: {final_status}")
                     self.task_graph.set_overall_status(final_status)
             return
-
 
         for task_node_from_ready in ready_tasks_nodes:
             task_node = self.task_graph.get_task(task_node_from_ready.id)
@@ -277,14 +278,14 @@ class ExecutionSupervisorLogic:
                 self.task_graph.update_task_state(task_node.id, ExecutionTaskState.FAILED, "Type d'agent requis non spécifié.")
                 continue
 
-            agent_details = await self._get_agent_details_from_gra(agent_skill_needed) # Récupère url et name
+            agent_details = await self._get_agent_details_from_gra(agent_skill_needed)
             if not agent_details or not agent_details.get("url"):
                 self.logger.error(f"[{self.execution_plan_id}] Aucun agent pour '{agent_skill_needed}' (tâche {task_node.id}). Remise à READY.")
                 self.task_graph.update_task_state(task_node.id, ExecutionTaskState.READY, f"Agent pour '{agent_skill_needed}' non trouvé, en attente.")
                 continue
             
             agent_url = agent_details["url"]
-            agent_name_from_gra = agent_details.get("name", agent_skill_needed) # Nom réel de l'agent
+            agent_name_from_gra = agent_details.get("name", agent_skill_needed) 
 
             self.task_graph.update_task_state(task_node.id, ExecutionTaskState.WORKING, f"Appel agent {agent_name_from_gra} ({agent_skill_needed}) à {agent_url}.")
             
@@ -303,46 +304,41 @@ class ExecutionSupervisorLogic:
 
             if a2a_task_result and a2a_task_result.status:
                 a2a_state_val = a2a_task_result.status.state.value
-                gra_persisted_artifact_id: Optional[str] = None # ID de l'artefact stocké dans le GRA
+                gra_persisted_artifact_id: Optional[str] = None 
+                artifact_text_content = None 
 
                 if a2a_task_result.artifacts and len(a2a_task_result.artifacts) > 0:
-                    # On prend le premier artefact de la tâche A2A pour le stocker dans le GRA
                     first_a2a_artifact = a2a_task_result.artifacts[0]
                     gra_persisted_artifact_id = await self._store_a2a_artifact_in_gra(
                         first_a2a_artifact,
-                        a2a_task_result.id, # ID de la tâche A2A
-                        a2a_task_result.contextId, # Contexte de la tâche A2A
-                        agent_name_from_gra # Nom de l'agent qui a produit l'artefact
+                        a2a_task_result.id, 
+                        a2a_task_result.contextId, 
+                        agent_name_from_gra 
                     )
-                    # artifact_text_content est toujours utile pour des logs/résumés rapides
-                    # Il faudrait aussi le récupérer de first_a2a_artifact.parts[0].text par exemple
-                    artifact_text_content = None
                     if first_a2a_artifact.parts:
                         part_cont = first_a2a_artifact.parts[0]
                         if hasattr(part_cont, 'root') and hasattr(part_cont.root, 'text'): artifact_text_content = part_cont.root.text
                         elif hasattr(part_cont, 'text'): artifact_text_content = part_cont.text
-
-                # ... (logique de traitement des états A2A : completed, failed, etc.)
+                
                 if a2a_state_val == "completed":
                     if task_node.task_type == ExecutionTaskType.DECOMPOSITION:
-                        if artifact_text_content: # Ce contenu vient directement de l'artefact A2A
+                        if artifact_text_content: 
                             try:
                                 decomposed_plan_structure = json.loads(artifact_text_content)
                                 tasks_to_create = decomposed_plan_structure.get("tasks", [])
-                                # ... (logique existante pour _add_and_resolve_decomposed_tasks)
                                 if isinstance(tasks_to_create, list):
                                     if not tasks_to_create:
                                         self.task_graph.update_task_state(task_node.id, ExecutionTaskState.COMPLETED, "Décomposition OK, aucune tâche enfant produite.")
-                                        self.task_graph.set_overall_status("PLAN_DECOMPOSED_EMPTY") # ou COMPLETED si pas de tâches
+                                        self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id) 
+                                        self.task_graph.set_overall_status("PLAN_DECOMPOSED_EMPTY") 
                                     else:
-                                        # Utiliser gra_persisted_artifact_id pour la référence de la tâche de décomposition elle-même
                                         self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary="Plan décomposé.")
                                         await self._add_and_resolve_decomposed_tasks(tasks_to_create, task_node.id)
                                         self.task_graph.update_task_state(task_node.id, ExecutionTaskState.COMPLETED, "Décomposition OK, tâches enfants ajoutées.")
                                         self.task_graph.set_overall_status("PLAN_DECOMPOSED")
                                 else:
                                     self.task_graph.update_task_state(task_node.id, ExecutionTaskState.FAILED, "Format 'tasks' incorrect dans décomposition.")
-                                    self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id) # Sauver l'artefact même si structure interne KO
+                                    self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id) 
                             except json.JSONDecodeError:
                                 self.task_graph.update_task_state(task_node.id, ExecutionTaskState.FAILED, "Artefact décomposition JSON invalide.")
                                 self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id)
@@ -350,32 +346,26 @@ class ExecutionSupervisorLogic:
                             self.task_graph.update_task_state(task_node.id, ExecutionTaskState.FAILED, "Agent décomposition n'a pas retourné d'artefact textuel.")
                     
                     elif task_node.task_type == ExecutionTaskType.EXPLORATORY:
-                        # _process_completed_exploratory_task doit aussi utiliser gra_persisted_artifact_id
-                        # et potentiellement _fetch_artifact_content si elle a besoin du contenu.
-                        # Pour l'instant, elle prend artifact_text_content.
-                        self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary="Exploration terminée.")
+                        self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary="Exploration terminée (pré-traitement).")
                         await self._process_completed_exploratory_task(task_node, artifact_text_content)
-                        # L'état de la tâche exploratoire est géré dans _process_completed_exploratory_task
-
+                    
                     elif task_node.task_type == ExecutionTaskType.EXECUTABLE:
                         summary = f"Livrable par {agent_name_from_gra}."
                         if artifact_text_content and len(artifact_text_content) < 100: summary += f" Aperçu: {artifact_text_content[:50]}..."
-                        # Utiliser gra_persisted_artifact_id ici !
                         self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary=summary)
                         self.task_graph.update_task_state(task_node.id, ExecutionTaskState.COMPLETED, "Exécution OK.")
                     
-                    else: # CONTAINER, etc.
+                    else: 
                         self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id)
                         self.task_graph.update_task_state(task_node.id, ExecutionTaskState.COMPLETED, "Tâche traitée.")
                 
                 elif a2a_state_val == "failed":
-                    # ... (logique d'échec existante, mais aussi stocker l'artefact d'erreur s'il y en a un)
                     error_summary = f"Échec tâche A2A {a2a_task_result.id} pour {task_node.id} (agent {agent_name_from_gra})."
                     if artifact_text_content: error_summary += f" Détail: {artifact_text_content[:100]}"
-                    self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary=error_summary) # Stocker l'artefact d'erreur
+                    self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary=error_summary) 
                     self.task_graph.update_task_state(task_node.id, ExecutionTaskState.FAILED, error_summary)
 
-                else: # Autres états A2A (input_required, etc.)
+                else: 
                     unexpected_state_summary = f"État A2A inattendu: {a2a_state_val} pour {task_node.id}."
                     if artifact_text_content: unexpected_state_summary += f" Artefact: {artifact_text_content[:100]}"
                     self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary=unexpected_state_summary)
@@ -384,191 +374,6 @@ class ExecutionSupervisorLogic:
                 self.task_graph.update_task_state(task_node.id, ExecutionTaskState.FAILED, "Réponse agent A2A invalide/absente.")
         
         self.logger.info(f"[{self.execution_plan_id}] Fin du cycle de traitement d'exécution.")
-
-    # ... (le reste de la classe, y compris _get_all_available_execution_skills_from_gra, _add_and_resolve_decomposed_tasks, run_full_execution)
-    # ... ( _create_node_from_json_data et _process_completed_exploratory_task restent globalement les mêmes pour l'instant)
-
-    async def _get_all_available_execution_skills_from_gra(self) -> List[str]:
-        """
-        Récupère toutes les compétences uniques déclarées par les agents enregistrés auprès du GRA.
-        Cible les compétences qui semblent pertinentes pour l'exécution.
-        """
-        self.logger.info(f"[{self.execution_plan_id}] Récupération des compétences d'exécution disponibles depuis le GRA.")
-        gra_url = await self._ensure_gra_url()
-        all_skills = set()
-
-        execution_related_skills_keywords = [
-            "coding", "python", "javascript", "java", 
-            "research", "analysis", "synthesis",      
-            "testing", "test_case", 
-            "database_design", "api_design",         
-            "documentation", "document_synthesis",                       
-            # Exclure les compétences de planification/clarification pour la décomposition d'exécution
-             "execution_plan_decomposition" # L'agent de décomposition ne devrait pas se réassigner à lui-même directement.
-        ]
-        # Compétences spécifiques à exclure explicitement pour la décomposition, même si elles contiennent un mot-clé
-        excluded_skills_for_decomposition_assignment = [
-            "clarify_objective", "reformulation", "evaluation", "validation", # Compétences de TEAM 0 et TEAM 1
-            "execution_plan_decomposition" # Pour éviter qu'il ne s'appelle en boucle trop facilement
-        ]
-
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{gra_url}/agents_status", timeout=10.0)
-                response.raise_for_status()
-                agents_list = response.json()
-
-                if isinstance(agents_list, list):
-                    for agent_info in agents_list:
-                        agent_skills = agent_info.get("skills", [])
-                        if isinstance(agent_skills, list):
-                            for skill in agent_skills:
-                                if isinstance(skill, str) and skill not in excluded_skills_for_decomposition_assignment:
-                                    if any(keyword in skill.lower() for keyword in execution_related_skills_keywords):
-                                        all_skills.add(skill)
-                        else:
-                            self.logger.warning(f"[{self.execution_plan_id}] Champ 'skills' mal formaté pour l'agent: {agent_info.get('name', 'Inconnu')}")
-                else:
-                    self.logger.error(f"[{self.execution_plan_id}] Réponse de /agents_status du GRA n'est pas une liste: {agents_list}")
-            
-            if not all_skills:
-                 default_exec_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
-                 self.logger.warning(f"[{self.execution_plan_id}] Aucune compétence d'exécution spécifique trouvée/filtrée via GRA, utilisation liste défaut: {default_exec_skills}")
-                 return default_exec_skills
-
-            self.logger.info(f"[{self.execution_plan_id}] Compétences d'exécution disponibles filtrées: {list(all_skills)}")
-            return list(all_skills)
-
-        except Exception as e:
-            self.logger.error(f"[{self.execution_plan_id}] Erreur récupération compétences via GRA: {e}", exc_info=True)
-            default_exec_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
-            self.logger.warning(f"[{self.execution_plan_id}] Utilisation liste compétences défaut due à erreur GRA: {default_exec_skills}")
-            return default_exec_skills
-    # ...
-    async def _add_and_resolve_decomposed_tasks(self, tasks_json_list: List[Dict], initial_dependency_id: str, existing_local_id_map: Optional[Dict[str,str]] = None):
-        local_id_to_global_id_map = existing_local_id_map if existing_local_id_map is not None else {}
-        nodes_to_add_to_graph = {} 
-
-        def first_pass_create_nodes_recursive(task_list_json: List[Dict], current_parent_global_id: Optional[str]):
-            for task_json in task_list_json:
-                node_obj, _ = self._create_node_from_json_data(task_json, current_parent_global_id, local_id_to_global_id_map)
-                nodes_to_add_to_graph[node_obj.id] = (node_obj, task_json)
-                
-                json_sub_tasks = task_json.get("sous_taches", [])
-                if json_sub_tasks:
-                    first_pass_create_nodes_recursive(json_sub_tasks, node_obj.id)
-        
-        first_pass_create_nodes_recursive(tasks_json_list, None) 
-
-        for global_id, (node_obj, task_json_original) in nodes_to_add_to_graph.items():
-            # La dépendance à la tâche "mère" (décomposition ou exploration) est déjà gérée par le parent_id lors de la création du noeud ou doit être ajoutée explicitement si ce n'est pas une sous-tâche directe.
-            # Pour les tâches issues directement de la décomposition, leur parent logique est la tâche de décomposition.
-            if node_obj.parent_id is None: # Si c'est une tâche de premier niveau de ce lot
-                 node_obj.dependencies.append(initial_dependency_id)
-
-
-            local_deps = task_json_original.get("dependances", [])
-            for local_dep_id in local_deps:
-                if local_dep_id in local_id_to_global_id_map: 
-                    global_dep_id = local_id_to_global_id_map[local_dep_id]
-                    if global_dep_id != node_obj.id:
-                        node_obj.dependencies.append(global_dep_id)
-                    else:
-                        self.logger.warning(f"[{self.execution_plan_id}] Tentative d'auto-dépendance (lot) pour {global_id}. Ignorée.")
-                else:
-                    self.logger.warning(f"[{self.execution_plan_id}] Dépendance locale (lot) '{local_dep_id}' pour '{task_json_original.get('id')}' non trouvée parmi les tâches de ce lot. Elle sera ignorée ou doit pointer vers une tâche existante du plan global.")
-            
-            node_obj.dependencies = list(set(node_obj.dependencies))
-            self.task_graph.add_task(node_obj) # Ajoute la tâche avec ses dépendances mises à jour
-            self.logger.info(f"[{self.execution_plan_id}] Tâche (lot) '{node_obj.objective}' (ID: {node_obj.id}) ajoutée/résolue avec dépendances: {node_obj.dependencies}.")
-
-
-    def _create_node_from_json_data(self, task_data_dict: Dict[str, Any], assigned_parent_id: Optional[str], local_id_map: Dict[str,str]) -> tuple[ExecutionTaskNode, Dict[str,Any]]:
-        local_id = task_data_dict.get("id")
-        if not local_id:
-            self.logger.warning(f"[{self.execution_plan_id}] Tâche JSON sans 'id' local, génération d'un ID temporaire.")
-            local_id = f"temp_id_{uuid.uuid4().hex[:6]}"
-        
-        global_task_id = f"exec_{local_id.replace(' ', '_').replace('.', '_')}_{self.execution_plan_id[:4]}_{uuid.uuid4().hex[:4]}" # Rendre l'ID plus unique
-        
-        if local_id in local_id_map:
-            self.logger.warning(f"[{self.execution_plan_id}] ID local '{local_id}' déjà mappé. Ancien: {local_id_map[local_id]}, Nouveau: {global_task_id}. Cela peut arriver si les ID locaux ne sont pas uniques globalement dans le JSON de décomposition.")
-            # On pourrait choisir de réutiliser l'ancien global_id ou de continuer avec le nouveau.
-            # Pour l'instant, on écrase avec le nouveau, ce qui pourrait casser des dépendances si les ID locaux ne sont pas uniques à travers tout le JSON.
-            # Il est crucial que l'agent de décomposition fournisse des ID locaux uniques dans sa sortie.
-        local_id_map[local_id] = global_task_id
-
-        node_meta = {
-            "local_id_from_agent": local_id, # Sauvegarder l'ID local d'origine pour le débogage
-            "local_instructions": task_data_dict.get("instructions_locales", []),
-            "acceptance_criteria": task_data_dict.get("acceptance_criteria", [])
-        }
-        if task_data_dict.get("nom"):
-            node_meta["local_nom_from_agent"] = task_data_dict.get("nom")
-        
-        # Gestion prudente du type de tâche
-        task_type_str = task_data_dict.get("type", "exploratory").lower()
-        try:
-            task_type_enum = ExecutionTaskType(task_type_str)
-        except ValueError:
-            self.logger.warning(f"Type de tâche invalide '{task_type_str}' reçu de l'agent de décomposition pour tâche '{local_id}'. Utilisation de 'exploratory' par défaut.")
-            task_type_enum = ExecutionTaskType.EXPLORATORY
-
-        new_node = ExecutionTaskNode(
-            task_id=global_task_id,
-            objective=task_data_dict.get("description", task_data_dict.get("nom", "Objectif non défini")),
-            task_type=task_type_enum,
-            assigned_agent_type=task_data_dict.get("assigned_agent_type"), # Doit être une compétence valide
-            dependencies=[], # Sera rempli dans la 2ème passe ou par _add_and_resolve_decomposed_tasks
-            parent_id=assigned_parent_id, # Important pour la structure hiérarchique
-            meta=node_meta,
-            # input_data_refs reste vide pour l'instant, à remplir par une logique plus avancée si nécessaire
-        )
-        return new_node, task_data_dict # Retourner aussi task_data_dict pour la résolution des dépendances
-
-    async def _process_completed_exploratory_task(self, completed_task_node: ExecutionTaskNode, artifact_content_text: Optional[str]):
-        self.logger.info(f"[{self.execution_plan_id}] Traitement du résultat de la tâche exploratoire: {completed_task_node.id}")
-        if not artifact_content_text:
-            self.logger.warning(f"[{self.execution_plan_id}] Tâche exploratoire {completed_task_node.id} complétée sans artefact textuel pour de nouvelles tâches.")
-            # Mettre à jour l'état de la tâche exploratoire comme COMPLETED même si pas de nouvelles tâches
-            # Le résumé aurait pu être stocké via update_task_output avant d'appeler cette fonction
-            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.COMPLETED, "Exploration terminée, pas de nouvelles tâches spécifiées.")
-            return
-
-        try:
-            exploration_result = json.loads(artifact_content_text)
-            new_sub_tasks_dicts = exploration_result.get("new_sub_tasks", [])
-            summary = exploration_result.get("summary", f"Exploration par {completed_task_node.id} terminée.")
-
-            # Mettre à jour la tâche exploratoire avec son résumé
-            self.task_graph.update_task_output(completed_task_node.id, summary=summary) # L'artifact_ref a déjà été mis à jour avec l'ID GRA
-
-            if not isinstance(new_sub_tasks_dicts, list):
-                self.logger.error(f"[{self.execution_plan_id}] La clé 'new_sub_tasks' de l'artefact de {completed_task_node.id} n'est pas une liste.")
-                self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.FAILED, "Format incorrect de l'artefact pour les nouvelles sous-tâches.")
-                return
-
-            if not new_sub_tasks_dicts:
-                self.logger.info(f"[{self.execution_plan_id}] Tâche exploratoire {completed_task_node.id} n'a pas défini de nouvelles sous-tâches.")
-                self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.COMPLETED, summary)
-                return
-
-            self.logger.info(f"[{self.execution_plan_id}] Tâche exploratoire {completed_task_node.id} a défini {len(new_sub_tasks_dicts)} nouvelle(s) sous-tâche(s).")
-            
-            # Les nouvelles sous-tâches dépendront de la tâche exploratoire qui les a générées.
-            # Le parent_id des nouvelles sous-tâches sera l'ID de completed_task_node.
-            await self._add_and_resolve_decomposed_tasks(new_sub_tasks_dicts, completed_task_node.id, self._local_to_global_id_map_for_plan)
-            
-            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.COMPLETED, f"{summary} {len(new_sub_tasks_dicts)} nouvelles sous-tâches ajoutées.")
-
-        except json.JSONDecodeError:
-            self.logger.error(f"[{self.execution_plan_id}] Artefact de la tâche exploratoire {completed_task_node.id} est un JSON invalide: {artifact_content_text}")
-            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.FAILED, "Artefact d'exploration JSON invalide.")
-        except Exception as e:
-            self.logger.error(f"[{self.execution_plan_id}] Erreur lors du traitement du résultat de la tâche exploratoire {completed_task_node.id}: {e}", exc_info=True)
-            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.FAILED, f"Erreur traitement résultat exploration: {str(e)}")
-
 
     async def run_full_execution(self):
         await self.initialize_and_decompose_plan()
@@ -585,24 +390,22 @@ class ExecutionSupervisorLogic:
             if overall_status == "EXECUTION_COMPLETED_SUCCESSFULLY" or \
                overall_status == "EXECUTION_COMPLETED_WITH_FAILURES" or \
                overall_status.startswith("FAILED") or \
-               overall_status == "TIMEOUT_EXECUTION": # Ajout de TIMEOUT_EXECUTION
+               overall_status == "TIMEOUT_EXECUTION":
                 self.logger.info(f"[{self.execution_plan_id}] Statut global du plan d'exécution est terminal ({overall_status}). Arrêt de run_full_execution.")
                 break 
 
-            if not all_nodes and overall_status == "PENDING_DECOMPOSITION": # Si aucune tâche n'a encore été créée par la décomposition
+            if not all_nodes and overall_status == "PENDING_DECOMPOSITION":
                 self.logger.info(f"[{self.execution_plan_id}] En attente de la décomposition initiale. Cycle {i+1}.")
-                await asyncio.sleep(5) # Attendre un peu avant le prochain cycle
+                await asyncio.sleep(5) 
                 continue
 
-            # Vérifier si toutes les tâches sont terminales
             non_terminal_tasks = [
                 nid for nid, ndata in all_nodes.items() 
-                if ExecutionTaskState(ndata.get("state", ExecutionTaskState.PENDING)) not in [ # Vérifier explicitement PENDING
+                if ExecutionTaskState(ndata.get("state", ExecutionTaskState.PENDING)) not in [
                     ExecutionTaskState.COMPLETED, ExecutionTaskState.FAILED, ExecutionTaskState.CANCELLED
                 ]
             ]
 
-            # Si le plan a été décomposé (ou la décomposition est vide) et qu'il n'y a plus de tâches non terminales
             if (overall_status.startswith("PLAN_DECOMPOSED") or overall_status == "PLAN_DECOMPOSED_EMPTY") and not non_terminal_tasks:
                 has_failed_tasks_in_graph = any(ExecutionTaskState(ndata.get("state")) == ExecutionTaskState.FAILED for ndata in all_nodes.values())
                 final_plan_status = "EXECUTION_COMPLETED_WITH_FAILURES" if has_failed_tasks_in_graph else "EXECUTION_COMPLETED_SUCCESSFULLY"
@@ -613,9 +416,186 @@ class ExecutionSupervisorLogic:
             if i == max_cycles - 1:
                 self.logger.warning(f"[{self.execution_plan_id}] Nombre maximum de cycles d'exécution ({max_cycles}) atteint.")
                 if overall_status not in ["EXECUTION_COMPLETED_SUCCESSFULLY", "EXECUTION_COMPLETED_WITH_FAILURES"]:
-                    self.task_graph.set_overall_status("TIMEOUT_EXECUTION") # Nouvel état pour timeout
+                    self.task_graph.set_overall_status("TIMEOUT_EXECUTION")
                 break 
             await asyncio.sleep(5)         
         
-        final_status = self.task_graph.as_dict().get("overall_status")
+        final_status = self.task_graph.as_dict().get("overall_status", "UNKNOWN")
         self.logger.info(f"[{self.execution_plan_id}] Exécution terminée avec le statut: {final_status}")
+
+    async def _get_all_available_execution_skills_from_gra(self) -> List[str]:
+        self.logger.info(f"[{self.execution_plan_id}] Récupération des compétences d'exécution disponibles depuis le GRA.")
+        gra_url = await self._ensure_gra_url()
+        all_skills = set()
+        execution_related_skills_keywords = [
+            "coding", "python", "javascript", "java", 
+            "research", "analysis", "synthesis",      
+            "testing", "test_case", 
+            "database_design", "api_design",         
+            "documentation", "document_synthesis",                       
+             "execution_plan_decomposition" 
+        ]
+        excluded_skills_for_decomposition_assignment = [
+            "clarify_objective", "reformulation", "evaluation", "validation", 
+            "execution_plan_decomposition" 
+        ]
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{gra_url}/agents_status", timeout=10.0)
+                response.raise_for_status()
+                agents_list = response.json()
+                if isinstance(agents_list, list):
+                    for agent_info in agents_list:
+                        agent_skills = agent_info.get("skills", [])
+                        if isinstance(agent_skills, list):
+                            for skill in agent_skills:
+                                if isinstance(skill, str) and skill not in excluded_skills_for_decomposition_assignment:
+                                    if any(keyword in skill.lower() for keyword in execution_related_skills_keywords):
+                                        all_skills.add(skill)
+                        else:
+                            self.logger.warning(f"[{self.execution_plan_id}] Champ 'skills' mal formaté pour l'agent: {agent_info.get('name', 'Inconnu')}")
+                else:
+                    self.logger.error(f"[{self.execution_plan_id}] Réponse de /agents_status du GRA n'est pas une liste: {agents_list}")
+            if not all_skills:
+                 default_exec_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
+                 self.logger.warning(f"[{self.execution_plan_id}] Aucune compétence d'exécution spécifique trouvée/filtrée via GRA, utilisation liste défaut: {default_exec_skills}")
+                 return default_exec_skills
+            self.logger.info(f"[{self.execution_plan_id}] Compétences d'exécution disponibles filtrées: {list(all_skills)}")
+            return list(all_skills)
+        except Exception as e:
+            self.logger.error(f"[{self.execution_plan_id}] Erreur récupération compétences via GRA: {e}", exc_info=True)
+            default_exec_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
+            self.logger.warning(f"[{self.execution_plan_id}] Utilisation liste compétences défaut due à erreur GRA: {default_exec_skills}")
+            return default_exec_skills
+
+    async def _add_and_resolve_decomposed_tasks(self, tasks_json_list: List[Dict], initial_dependency_id: str, existing_local_id_map: Optional[Dict[str,str]] = None):
+        local_id_to_global_id_map = existing_local_id_map if existing_local_id_map is not None else {}
+        if not existing_local_id_map: # Si c'est le premier appel pour ce plan, initialiser la map partagée
+            self._local_to_global_id_map_for_plan.clear()
+            local_id_to_global_id_map = self._local_to_global_id_map_for_plan
+
+
+        nodes_to_add_to_graph = {} 
+        def first_pass_create_nodes_recursive(task_list_json: List[Dict], current_parent_global_id: Optional[str]):
+            for task_json in task_list_json:
+                node_obj, _ = self._create_node_from_json_data(task_json, current_parent_global_id, local_id_to_global_id_map)
+                nodes_to_add_to_graph[node_obj.id] = (node_obj, task_json)
+                json_sub_tasks = task_json.get("sous_taches", [])
+                if json_sub_tasks:
+                    first_pass_create_nodes_recursive(json_sub_tasks, node_obj.id)
+        
+        first_pass_create_nodes_recursive(tasks_json_list, None) # Le parent est initial_dependency_id pour les tâches de premier niveau de ce lot
+
+        for global_id, (node_obj, task_json_original) in nodes_to_add_to_graph.items():
+            if node_obj.parent_id is None: # Tâche de premier niveau de ce lot
+                 node_obj.dependencies.append(initial_dependency_id)
+
+            local_deps = task_json_original.get("dependances", [])
+            for local_dep_id in local_deps:
+                if local_dep_id in local_id_to_global_id_map: 
+                    global_dep_id = local_id_to_global_id_map[local_dep_id]
+                    if global_dep_id != node_obj.id:
+                        node_obj.dependencies.append(global_dep_id)
+                    else:
+                        self.logger.warning(f"[{self.execution_plan_id}] Tentative d'auto-dépendance (lot) pour {global_id}. Ignorée.")
+                else:
+                    # Tenter de résoudre la dépendance par rapport à des tâches déjà existantes dans le graphe global
+                    # Ceci est une heuristique simple ; une résolution de dépendance plus complexe pourrait être nécessaire
+                    # si les ID locaux ne sont pas uniques ou si les dépendances croisent des lots de décomposition.
+                    # Pour l'instant, on logue si non trouvé dans la map locale du lot.
+                    self.logger.warning(f"[{self.execution_plan_id}] Dépendance locale (lot) '{local_dep_id}' pour '{task_json_original.get('id')}' non trouvée dans la map actuelle. Si elle réfère à une tâche hors de ce lot, elle doit être déjà dans le graphe avec un ID global connu.")
+            
+            node_obj.dependencies = list(set(node_obj.dependencies)) # Dédoublonnage
+            self.task_graph.add_task(node_obj)
+            self.logger.info(f"[{self.execution_plan_id}] Tâche (lot) '{node_obj.objective}' (ID: {node_obj.id}) ajoutée/résolue avec parent '{node_obj.parent_id}' et dépendances: {node_obj.dependencies}.")
+
+    def _create_node_from_json_data(self, task_data_dict: Dict[str, Any], assigned_parent_id: Optional[str], local_id_map: Dict[str,str]) -> tuple[ExecutionTaskNode, Dict[str,Any]]:
+        local_id = task_data_dict.get("id")
+        if not local_id:
+            local_id = f"generated_local_id_{uuid.uuid4().hex[:6]}"
+            self.logger.warning(f"[{self.execution_plan_id}] Tâche JSON sans 'id' local, génération d'un ID local: {local_id}")
+        
+        # Générer un ID global unique, préfixé pour éviter collisions et faciliter le débogage.
+        # Remplacer les points par des underscores pour éviter problèmes potentiels avec certains systèmes/DB.
+        clean_local_id = local_id.replace(' ', '_').replace('.', '_')
+        global_task_id = f"exec_task_{clean_local_id}_{uuid.uuid4().hex[:6]}"
+        
+        if local_id in local_id_map:
+            # Si l'ID local a déjà été mappé, cela signifie que l'agent de décomposition
+            # a potentiellement utilisé des ID locaux non uniques. On logue un avertissement
+            # mais on continue avec le nouvel ID global généré pour éviter les conflits d'ID globaux.
+            # Les dépendances qui référençaient l'ancien mapping de cet ID local pourraient être incorrectes.
+            self.logger.warning(f"[{self.execution_plan_id}] L'ID local '{local_id}' a déjà été mappé à '{local_id_map[local_id]}'. Il est maintenant ré-mappé à '{global_task_id}'. Vérifiez l'unicité des ID locaux fournis par l'agent de décomposition.")
+        local_id_map[local_id] = global_task_id # Mettre à jour/ajouter le mapping
+
+        node_meta = {
+            "local_id_from_agent": local_id,
+            "local_instructions": task_data_dict.get("instructions_locales", []),
+            "acceptance_criteria": task_data_dict.get("acceptance_criteria", [])
+        }
+        if task_data_dict.get("nom"): # 'nom' est optionnel mais utile
+            node_meta["local_nom_from_agent"] = task_data_dict.get("nom")
+        
+        task_type_str = task_data_dict.get("type", "exploratory").lower()
+        try:
+            task_type_enum = ExecutionTaskType(task_type_str)
+        except ValueError:
+            self.logger.warning(f"[{self.execution_plan_id}] Type de tâche invalide '{task_type_str}' pour ID local '{local_id}'. Utilisation de 'exploratory' par défaut.")
+            task_type_enum = ExecutionTaskType.EXPLORATORY
+
+        new_node = ExecutionTaskNode(
+            task_id=global_task_id,
+            objective=task_data_dict.get("description", task_data_dict.get("nom", "Objectif non défini par l'agent")),
+            task_type=task_type_enum,
+            assigned_agent_type=task_data_dict.get("assigned_agent_type"),
+            dependencies=[], # Sera rempli plus tard par _add_and_resolve_decomposed_tasks
+            parent_id=assigned_parent_id, 
+            meta=node_meta,
+            input_data_refs=task_data_dict.get("input_data_refs", {}) # Transférer si fourni
+        )
+        return new_node, task_data_dict
+
+    async def _process_completed_exploratory_task(self, completed_task_node: ExecutionTaskNode, artifact_content_text: Optional[str]):
+        self.logger.info(f"[{self.execution_plan_id}] Traitement du résultat de la tâche exploratoire: {completed_task_node.id}")
+        if not artifact_content_text:
+            self.logger.warning(f"[{self.execution_plan_id}] Tâche exploratoire {completed_task_node.id} complétée sans artefact textuel pour de nouvelles tâches.")
+            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.COMPLETED, "Exploration terminée, pas de nouvelles tâches spécifiées.")
+            return
+
+        try:
+            exploration_result = json.loads(artifact_content_text)
+            new_sub_tasks_dicts = exploration_result.get("new_sub_tasks", [])
+            summary_from_artifact = exploration_result.get("summary", f"Exploration par {completed_task_node.id} terminée.")
+
+            # L'artifact_ref de completed_task_node (l'ID GRA) a déjà été mis à jour.
+            # On met à jour le résumé de la tâche sur la base du contenu de l'artefact.
+            self.task_graph.update_task_output(task_id=completed_task_node.id, summary=summary_from_artifact)
+
+            if not isinstance(new_sub_tasks_dicts, list):
+                self.logger.error(f"[{self.execution_plan_id}] La clé 'new_sub_tasks' de {completed_task_node.id} n'est pas une liste.")
+                self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.FAILED, "Format incorrect de l'artefact (new_sub_tasks).")
+                return
+
+            if not new_sub_tasks_dicts:
+                self.logger.info(f"[{self.execution_plan_id}] Tâche exploratoire {completed_task_node.id} n'a pas défini de nouvelles sous-tâches.")
+                self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.COMPLETED, summary_from_artifact)
+                return
+
+            self.logger.info(f"[{self.execution_plan_id}] Tâche exploratoire {completed_task_node.id} a défini {len(new_sub_tasks_dicts)} nouvelle(s) sous-tâche(s).")
+            
+            # Les nouvelles sous-tâches dépendront de la tâche exploratoire qui les a générées (initial_dependency_id).
+            # Le parent_id des tâches de premier niveau de ce lot sera completed_task_node.id.
+            await self._add_and_resolve_decomposed_tasks(
+                tasks_json_list=new_sub_tasks_dicts, 
+                initial_dependency_id=completed_task_node.id, # Les nouvelles tâches dépendent de la tâche exploratoire mère
+                existing_local_id_map=self._local_to_global_id_map_for_plan # Utiliser la map du plan global
+            )
+            
+            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.COMPLETED, f"{summary_from_artifact} {len(new_sub_tasks_dicts)} nouvelles sous-tâches ajoutées.")
+
+        except json.JSONDecodeError:
+            self.logger.error(f"[{self.execution_plan_id}] Artefact de la tâche exploratoire {completed_task_node.id} JSON invalide: {artifact_content_text}")
+            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.FAILED, "Artefact d'exploration JSON invalide.")
+        except Exception as e:
+            self.logger.error(f"[{self.execution_plan_id}] Erreur traitement résultat tâche exploratoire {completed_task_node.id}: {e}", exc_info=True)
+            self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.FAILED, f"Erreur traitement résultat exploration: {str(e)}")
