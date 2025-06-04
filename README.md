@@ -22,6 +22,42 @@ La principale évolution est l'introduction d'un `GlobalSupervisorLogic` et d'un
 ## Architecture Fonctionnelle
 
 Cette section décrit les grandes capacités du système et comment les différents composants interagissent pour atteindre l'objectif global, désormais en trois phases distinctes.
+```mermaid
+graph TD
+    subgraph "Phase 1: Clarification"
+        A[Utilisateur] -->|Objectif Initial| B(API Gateway / GRA)
+        B --> C{Global Supervisor}
+        C --o|Demande clarification| D[User Interaction Agent]
+        D --o|Affiche à l'utilisateur| E[Interface UI]
+        E --o|Réponse| C
+    end
+
+    C -->|Objectif Clarifié| F{Planning Supervisor}
+
+    subgraph "Phase 2: Planification (TEAM 1)"
+        F -->|Génère plan| G[Reformulator Agent]
+        G -->|Évalue plan| H[Evaluator Agent]
+        H -->|Valide plan| I[Validator Agent]
+        I -- "Si plan rejeté" --> F
+    end
+
+    I -- "Plan Validé" --> J{Execution Supervisor}
+
+    subgraph "Phase 3: Exécution (TEAM 2)"
+        J -->|1. Décomposer le plan| K[Decomposition Agent]
+        K -->|"2. Execution Task Graph"| J
+        J -- "3. Orchestre les tâches" --> L((Pool d'Agents d'Exécution))
+        subgraph L
+            direction LR
+            L1[Development Agent]
+            L2[Research Agent]
+            L3[Testing Agent]
+        end
+        L -- "4. Artefacts" --> J
+    end
+
+    J -->|Résultats Finaux| M[Output]
+```
 https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit
 ### Étape 1 : Clarification de l'Objectif (Orchestrée par `GlobalSupervisorLogic`)
 
@@ -76,41 +112,79 @@ Après la validation du plan détaillé par TEAM 1, cette nouvelle phase prend e
 * **Interface Utilisateur et Monitoring (Streamlit)** : Permet la soumission d'objectifs, le dialogue de clarification, le listage des plans globaux, la visualisation des graphes de tâches (TEAM 1 et potentiellement TEAM 2), la consultation des artefacts et le statut des agents.
 
 ## Architecture Technique
+
 ```mermaid
-graph TD
-    subgraph "Phase 1: Clarification"
-        A[Utilisateur] -->|Objectif Initial| B(API Gateway / GRA)
-        B --> C{Global Supervisor}
-        C --o|Demande clarification| D[User Interaction Agent]
-        D --o|Affiche à l'utilisateur| E[Interface UI]
-        E --o|Réponse| C
+graph LR
+    subgraph "User & Frontend"
+        User[(Utilisateur)] --> StreamlitUI[Streamlit UI]
     end
 
-    C -->|Objectif Clarifié| F{Planning Supervisor}
-
-    subgraph "Phase 2: Planification (TEAM 1)"
-        F -->|Génère plan| G[Reformulator Agent]
-        G -->|Évalue plan| H[Evaluator Agent]
-        H -->|Valide plan| I[Validator Agent]
-        I -- "Si plan rejeté" --> F
+    subgraph "Backend Services & Orchestration"
+        GRA[fa:fa-server GRA / API Gateway]
+        GlobalSupervisor[fa:fa-brain Global Supervisor]
+        PlanningSupervisor[fa:fa-clipboard-list Planning Supervisor]
+        ExecutionSupervisor[fa:fa-cogs Execution Supervisor]
     end
 
-    I -- "Plan Validé" --> J{Execution Supervisor}
+    subgraph "Shared Services"
+        Firestore[(fa:fa-database Firestore)]
+        GeminiLLM[(fa:fa-robot Gemini LLM)]
+    end
 
-    subgraph "Phase 3: Exécution (TEAM 2)"
-        J -->|1. Décomposer le plan| K[Decomposition Agent]
-        K -->|"2. Execution Task Graph"| J
-        J -- "3. Orchestre les tâches" --> L((Pool d'Agents d'Exécution))
-        subgraph L
-            direction LR
-            L1[Development Agent]
-            L2[Research Agent]
-            L3[Testing Agent]
+    subgraph "Agents"
+        UserInteractionAgent[fa:fa-comments User Interaction Agent]
+        DecompositionAgent[fa:fa-sitemap Decomposition Agent]
+
+        subgraph "TEAM 1 Agents"
+            direction TB
+            Reformulator
+            Evaluator
+            Validator
         end
-        L -- "4. Artefacts" --> J
+
+        subgraph "TEAM 2 Execution Agents"
+            direction TB
+            DevelopmentAgent[fa:fa-code Development]
+            ResearchAgent[fa:fa-search Research]
+            TestingAgent[fa:fa-check-square Testing]
+        end
     end
 
-    J -->|Résultats Finaux| M[Output]
+    %% --- FLOW & INTERACTIONS ---
+
+    %% User Flow
+    StreamlitUI -- "REST API" --> GRA
+
+    %% Orchestration Flow
+    GRA -- "Déclenche" --> GlobalSupervisor
+    GlobalSupervisor -- "Initie TEAM 1" --> PlanningSupervisor
+    GlobalSupervisor -- "Initie TEAM 2" --> ExecutionSupervisor
+
+    %% Supervisor <-> Agent Communication
+    GlobalSupervisor <--> |"A2A"| UserInteractionAgent
+    PlanningSupervisor <--> |"A2A"| Reformulator
+    PlanningSupervisor <--> |"A2A"| Evaluator
+    PlanningSupervisor <--> |"A2A"| Validator
+    ExecutionSupervisor <--> |"A2A"| DecompositionAgent
+    ExecutionSupervisor <--> |"A2A"| DevelopmentAgent
+    ExecutionSupervisor <--> |"A2A"| ResearchAgent
+    ExecutionSupervisor <--> |"A2A"| TestingAgent
+
+    %% Database Connections
+    GRA -- "R/W: Registre Agents" --> Firestore
+    GlobalSupervisor -- "R/W: global_plans" --> Firestore
+    PlanningSupervisor -- "R/W: task_graphs" --> Firestore
+    ExecutionSupervisor -- "R/W: execution_task_graphs" --> Firestore
+
+    %% LLM Connections
+    UserInteractionAgent -- "API Call" --> GeminiLLM
+    Reformulator -- "API Call" --> GeminiLLM
+    Evaluator -- "API Call" --> GeminiLLM
+    Validator -- "API Call" --> GeminiLLM
+    DecompositionAgent -- "API Call" --> GeminiLLM
+    DevelopmentAgent -- "API Call" --> GeminiLLM
+    ResearchAgent -- "API Call" --> GeminiLLM
+    TestingAgent -- "API Call" --> GeminiLLM
 ```
 https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/49311d22-3e45-4a3a-bc95-dc778de81caf/version/v0.1/edit
 
