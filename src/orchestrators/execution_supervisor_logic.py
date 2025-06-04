@@ -174,7 +174,7 @@ class ExecutionSupervisorLogic:
             "task_id": task_node.id,
             "execution_plan_id": self.execution_plan_id,
             "task_type": task_node.task_type.value,
-             "assigned_skill": task_node.assigned_agent_type 
+            "assigned_skill": task_node.assigned_agent_type 
         }
 
         if task_node.task_type == ExecutionTaskType.EXPLORATORY:

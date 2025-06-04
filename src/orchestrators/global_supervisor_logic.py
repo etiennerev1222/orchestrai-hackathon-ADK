@@ -620,51 +620,48 @@ async def main_test_global_supervisor():
     max_wait_cycles_team2_decomp = 10 # Cycles pour que la décomposition se fasse
     team2_decomposition_done = False
     execution_plan_id_for_team2 = None
+    max_overall_cycles = 40 # Augmenter si besoin pour couvrir TEAM1 + TEAM2 + sleeps
+    final_plan_status_reached = False
 
-    for cycle in range(max_wait_cycles_team2_decomp):
-        await asyncio.sleep(10) # Laisser le temps à l'ExecutionSupervisor et à l'agent de décomposition
-        current_global_state = await supervisor._load_global_plan_state(global_plan_id)
-        supervisor_state_t2 = current_global_state.get("current_supervisor_state")
-        team2_status_detail = current_global_state.get("team2_status")
-        execution_plan_id_for_team2 = current_global_state.get("team2_execution_plan_id")
-
-        logger.info(f"Cycle d'attente Décomposition TEAM 2 ({cycle+1}/{max_wait_cycles_team2_decomp}) pour '{global_plan_id}': État Global = {supervisor_state_t2}, Statut TEAM 2 = {team2_status_detail}, ExecID = {execution_plan_id_for_team2}")
-
-        if execution_plan_id_for_team2:
-            # Vérifier le statut du plan d'exécution directement
-            exec_graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id_for_team2)
-            exec_graph_data = await asyncio.to_thread(exec_graph_manager.as_dict) # Utiliser asyncio.to_thread pour les appels bloquants
-            overall_exec_status = exec_graph_data.get("overall_status")
-            logger.info(f"  Statut du ExecutionTaskGraph '{execution_plan_id_for_team2}': {overall_exec_status}")
-            if overall_exec_status == "PLAN_DECOMPOSED" or overall_exec_status == "PLAN_DECOMPOSED_EMPTY":
-                logger.info(f"Décomposition par TEAM 2 pour '{execution_plan_id_for_team2}' terminée (statut: {overall_exec_status}).")
-                team2_decomposition_done = True
-                break
-            elif overall_exec_status == "FAILED" or "ERROR" in str(overall_exec_status).upper() : # Si le plan d'exécution lui-même a un statut d'erreur
-                logger.error(f"Le plan d'exécution TEAM 2 '{execution_plan_id_for_team2}' est en échec: {overall_exec_status}")
-                team2_decomposition_done = False # Marquer comme non réussi
-                break
-        
-        if supervisor_state_t2 == "TEAM2_EXECUTION_FAILED": # Si le superviseur global marque un échec pour TEAM2
-            logger.error(f"TEAM 2 a globalement échoué (selon GlobalSupervisor) pour '{global_plan_id}'.")
-            team2_decomposition_done = False
+    for cycle in range(max_overall_cycles):
+        await asyncio.sleep(10) # Délai entre les vérifications de l'état global
+        current_global_plan_doc = await supervisor._load_global_plan_state(global_plan_id)
+        if not current_global_plan_doc:
+            logger.error(f"Impossible de charger l'état du plan global '{global_plan_id}'. Arrêt.")
             break
-            
-    if not team2_decomposition_done:
-        logger.error(f"La décomposition par TEAM 2 n'a pas abouti comme attendu pour '{global_plan_id}'.")
-    else:
-        logger.info(f"SUCCESS: La phase de décomposition de TEAM 2 semble avoir fonctionné pour exec_plan_id: {execution_plan_id_for_team2}!")
-        # Afficher le graphe d'exécution décomposé pour vérification
-        if execution_plan_id_for_team2:
-            exec_graph_manager_final = ExecutionTaskGraph(execution_plan_id=execution_plan_id_for_team2)
-            final_exec_graph_data = await asyncio.to_thread(exec_graph_manager_final.as_dict)
-            logger.info(f"\n--- Contenu final du ExecutionTaskGraph '{execution_plan_id_for_team2}' ---")
-            logger.info(json.dumps(final_exec_graph_data, indent=2, ensure_ascii=False))
 
+        current_supervisor_state = current_global_plan_doc.get("current_supervisor_state")
+        team1_status = current_global_plan_doc.get("team1_status")
+        team2_status = current_global_plan_doc.get("team2_status")
+        team1_plan_id = current_global_plan_doc.get("team1_plan_id", "N/A")
+        team2_exec_id = current_global_plan_doc.get("team2_execution_plan_id", "N/A")
 
-    final_state_doc = await supervisor._load_global_plan_state(global_plan_id)
+        logger.info(f"Cycle Global {cycle+1}/{max_overall_cycles} pour '{global_plan_id}': "
+                    f"État Sup Glob='{current_supervisor_state}', T1 Stat='{team1_status}' (ID:{team1_plan_id}), T2 Stat='{team2_status}' (ID:{team2_exec_id})")
+
+        if current_supervisor_state == GlobalPlanState.TEAM2_EXECUTION_COMPLETED:
+            if team2_status == "EXECUTION_COMPLETED_SUCCESSFULLY":
+                logger.info(f"🎉 Plan Global '{global_plan_id}' COMPLÉTÉ AVEC SUCCÈS (TEAM 1 & TEAM 2 OK).")
+            else:
+                logger.warning(f"🏁 Plan Global '{global_plan_id}' : TEAM 2 terminée mais avec statut '{team2_status}'.")
+            final_plan_status_reached = True
+            break
+        elif current_supervisor_state == GlobalPlanState.TEAM1_PLANNING_FAILED or \
+             current_supervisor_state == GlobalPlanState.TEAM2_EXECUTION_FAILED or \
+             current_supervisor_state == GlobalPlanState.FAILED_MAX_CLARIFICATION_ATTEMPTS or \
+             current_supervisor_state == GlobalPlanState.FAILED_AGENT_ERROR:
+            logger.error(f"❌ Échec du Plan Global '{global_plan_id}'. État: {current_supervisor_state}.")
+            final_plan_status_reached = True
+            break
+        
+        if cycle == max_overall_cycles - 1:
+            logger.error(f"TIMEOUT: Le plan global '{global_plan_id}' n'a pas atteint un état final après {max_overall_cycles} cycles.")
+            break
+
+    # Affichage final
+    final_doc = await supervisor._load_global_plan_state(global_plan_id)
     logger.info(f"\n--- État final complet du document Firestore pour Global Plan ID '{global_plan_id}' ---")
-    logger.info(f"{json.dumps(final_state_doc, indent=2, ensure_ascii=False)}")
+    logger.info(f"{json.dumps(final_doc, indent=2, ensure_ascii=False)}")
     logger.info(f"--- FIN DU TEST pour Global Plan ID '{global_plan_id}' ---")
 
 
