@@ -122,31 +122,78 @@ class ExecutionSupervisorLogic:
 # from src.clients.a2a_api_client import call_a2a_agent
 # import json
 # import httpx # Si _get_agent_url_from_gra l'utilise, comme dans l'exemple précédent
+    async def _fetch_artifact_content(self, artifact_id: str) -> Optional[str]:
+        """
+        Récupère le contenu textuel d'un artefact depuis le GRA.
+        """
+        if not artifact_id:
+            return None
+        try:
+            gra_url = await self._ensure_gra_url()
+            async with httpx.AsyncClient() as client:
+                self.logger.info(f"[{self.execution_plan_id}] Récupération de l'artefact '{artifact_id}' depuis le GRA.")
+                response = await client.get(f"{gra_url}/artifacts/{artifact_id}", timeout=10.0)
+                response.raise_for_status()
+                artifact_data = response.json() # L'artefact A2A complet
+                
+                # Extraire le contenu textuel de la première partie de l'artefact
+                if artifact_data and artifact_data.get("parts"):
+                    first_part = artifact_data["parts"][0]
+                    if first_part.get("type") == "text" and "text" in first_part:
+                        return first_part["text"]
+                    # Gérer d'autres types de parties si nécessaire
+                self.logger.warning(f"[{self.execution_plan_id}] Artefact '{artifact_id}' n'a pas de contenu textuel extractible dans sa première partie.")
+                return None
+        except Exception as e:
+            self.logger.error(f"[{self.execution_plan_id}] Erreur lors de la récupération du contenu de l'artefact '{artifact_id}': {e}", exc_info=True)
+            return None
     async def _prepare_input_for_execution_agent(self, task_node: ExecutionTaskNode) -> str:
-        """
-        Prépare la chaîne d'input JSON pour un agent d'exécution.
-        Inclut l'objectif, les instructions locales, les critères d'acceptation,
-        et potentiellement les références aux artefacts des dépendances.
-        """
         input_payload = {
             "objective": task_node.objective,
             "local_instructions": task_node.meta.get("local_instructions", []),
             "acceptance_criteria": task_node.meta.get("acceptance_criteria", []),
-            "task_id": task_node.id, # L'agent pourrait vouloir connaître son task_id
-            "execution_plan_id": self.execution_plan_id
+            "task_id": task_node.id,
+            "execution_plan_id": self.execution_plan_id,
+            "task_type": task_node.task_type.value
         }
 
-        # Logique pour charger les artefacts des dépendances si input_data_refs est rempli
-        # Ceci est une version simplifiée. Dans un cas réel, il faudrait une manière
-        # de récupérer le *contenu* des artefacts depuis Firestore ou un magasin d'artefacts.
-        # Pour l'instant, on passe juste les références. L'agent devra les interpréter.
+        if task_node.task_type == ExecutionTaskType.EXPLORATORY:
+            available_skills = await self._get_all_available_execution_skills_from_gra()
+            input_payload["available_execution_skills"] = available_skills
+
+        # NOUVELLE LOGIQUE pour injecter le contenu des artefacts des dépendances
+        # Ceci est une convention : si une tâche de test dépend d'une tâche de dev,
+        # on injecte le livrable.
+        # Une approche plus robuste utiliserait les `input_data_refs` si le `DecompositionAgent`
+        # était instruit de les remplir. Pour l'instant, inférons par convention.
+        
+        if task_node.assigned_agent_type == AGENT_SKILL_SOFTWARE_TESTING and task_node.dependencies:
+            self.logger.debug(f"[{self.execution_plan_id}] Tâche de test {task_node.id}. Recherche du livrable parmi les dépendances: {task_node.dependencies}")
+            for dep_id in task_node.dependencies:
+                dep_task_node = self.task_graph.get_task(dep_id)
+                if dep_task_node and dep_task_node.assigned_agent_type == AGENT_SKILL_CODING_PYTHON: # Convention
+                    if dep_task_node.output_artifact_ref:
+                        self.logger.info(f"[{self.execution_plan_id}] Tâche de test {task_node.id} dépend de la tâche de code {dep_id}. Tentative de récupération de l'artefact {dep_task_node.output_artifact_ref}.")
+                        deliverable_content = await self._fetch_artifact_content(dep_task_node.output_artifact_ref)
+                        if deliverable_content:
+                            input_payload["deliverable"] = deliverable_content
+                            self.logger.info(f"[{self.execution_plan_id}] Livrable (code) de {dep_id} injecté pour la tâche de test {task_node.id}.")
+                        else:
+                            self.logger.warning(f"[{self.execution_plan_id}] Impossible de récupérer le contenu du livrable de {dep_id} pour la tâche de test {task_node.id}.")
+                            input_payload["deliverable"] = f"// ERREUR: Contenu du livrable de la tâche {dep_id} (artefact {dep_task_node.output_artifact_ref}) non récupérable."
+                        break # On prend le premier livrable de code trouvé
+            if "deliverable" not in input_payload:
+                 self.logger.warning(f"[{self.execution_plan_id}] Aucun livrable de code trouvé dans les dépendances pour la tâche de test {task_node.id}.")
+                 input_payload["deliverable"] = "// ATTENTION: Aucun livrable de code trouvé dans les dépendances directes."
+
+
+        # L'ancienne logique input_data_refs peut coexister ou être remplacée/affinée
+        # Pour l'instant, laissons-la pour d'autres usages potentiels
         if task_node.input_data_refs:
-            input_payload["input_artifacts"] = {}
+            input_payload["input_artifacts_references"] = {} # Renommé pour clarté
             for ref_name, artifact_id_or_ref in task_node.input_data_refs.items():
-                # Idéalement, ici, on chargerait le contenu de l'artefact
-                # Pour l'instant, on ne passe que la référence
-                self.logger.info(f"[{self.execution_plan_id}] Tâche {task_node.id} nécessite artefact '{ref_name}': {artifact_id_or_ref} (passage de la référence).")
-                input_payload["input_artifacts"][ref_name] = {"artifact_id_or_ref": artifact_id_or_ref, "content_placeholder": f"Contenu de l'artefact {artifact_id_or_ref} à charger"}
+                self.logger.info(f"[{self.execution_plan_id}] Tâche {task_node.id} a une référence d'input_data_refs '{ref_name}': {artifact_id_or_ref}.")
+                input_payload["input_artifacts_references"][ref_name] = {"artifact_id_or_ref": artifact_id_or_ref}
         
         return json.dumps(input_payload, ensure_ascii=False, indent=2)
 
