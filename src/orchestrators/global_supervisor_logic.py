@@ -603,7 +603,7 @@ async def main_test_global_supervisor():
         if supervisor_state == GlobalPlanState.TEAM1_PLANNING_COMPLETED:
             logger.info(f"TEAM 1 COMPLÉTÉE avec succès pour '{global_plan_id}'.")
             team1_completed_successfully = True
-            break
+            
         elif supervisor_state == GlobalPlanState.TEAM1_PLANNING_FAILED:
             logger.error(f"TEAM 1 ÉCHOUÉE pour '{global_plan_id}'. Arrêt du test.")
             return

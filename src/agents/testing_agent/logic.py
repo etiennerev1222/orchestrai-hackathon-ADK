@@ -21,6 +21,7 @@ class TestingAgentLogic(BaseAgentLogic):
         self.logger = logging.getLogger(f"{__name__}.TestingAgentLogic")
         self.logger.info("Logique du TestingAgent initialisée.")
 
+
     async def process(self, input_data_str: str, context_id: str | None = None) -> str:
         try:
             input_payload = json.loads(input_data_str)
@@ -69,7 +70,8 @@ class TestingAgentLogic(BaseAgentLogic):
                 })
         
         elif assigned_skill == AGENT_SKILL_SOFTWARE_TESTING:
-            self.logger.info(f"TestingAgent: Mode 'software_testing' pour l'objectif: '{objective}'")
+            
+            self.logger.info(f"TestingAgent: Mode '{AGENT_SKILL_SOFTWARE_TESTING}' pour l'objectif: '{objective}'")
             
             # Utiliser les clés définies dans input_data_refs par le DecompositionAgent
             deliverable_code = input_payload.get("code_input") # ou "deliverable", selon ce que DecompositionAgent a mis
@@ -81,7 +83,8 @@ class TestingAgentLogic(BaseAgentLogic):
                 return json.dumps({
                     "test_status": "error", 
                     "summary": "Livrable 'code_input' manquant pour l'exécution des tests.",
-                    # ...
+                    "passed_criteria": [], "failed_criteria": acceptance_criteria,
+                    "identified_issues_or_bugs": ["Le contenu du code à tester n'a pas été fourni."]
                 })
 
             system_prompt_st = (
@@ -93,6 +96,32 @@ class TestingAgentLogic(BaseAgentLogic):
             )
             
             test_cases_prompt_section = ""
+
+            if test_cases_to_execute_str :
+                # S'assurer que c'est une chaîne pour le prompt, même si c'est une liste de cas de test
+                formatted_test_cases = ""
+                if isinstance(test_cases_to_execute_str , list):
+                    formatted_test_cases = "\n- ".join(test_cases_to_execute_str)
+                    if formatted_test_cases: formatted_test_cases = "- " + formatted_test_cases
+                elif isinstance(test_cases_to_execute_str, str):
+                     # Si c'est déjà une chaîne (par exemple, un JSON de cas de test de l'étape précédente)
+                    try: # Essayons de le parser pour le formater joliment si c'est un JSON de la tâche TCG
+                        parsed_tc_artifact = json.loads(test_cases_to_execute_str)
+                        if "generated_test_cases" in parsed_tc_artifact and isinstance(parsed_tc_artifact["generated_test_cases"], list):
+                            formatted_test_cases = "\n- ".join(parsed_tc_artifact["generated_test_cases"])
+                            if formatted_test_cases: formatted_test_cases = "- " + formatted_test_cases
+                        else: # Pas le format attendu, on le prend tel quel
+                            formatted_test_cases = test_cases_to_execute_str
+                    except json.JSONDecodeError: # Ce n'est pas un JSON, on le prend tel quel
+                        formatted_test_cases = test_cases_to_execute_str
+                
+                if formatted_test_cases:
+                    test_cases_prompt_section = (
+                        "Cas de test à exécuter/vérifier (en plus des critères d'acceptation) :\n"
+                        f"'''\n{formatted_test_cases}\n'''\n\n"
+                    )
+
+
             if test_cases_to_execute_str:
                 test_cases_prompt_section = (
                     "Cas de test à exécuter/vérifier (en plus des critères d'acceptation) :\n"

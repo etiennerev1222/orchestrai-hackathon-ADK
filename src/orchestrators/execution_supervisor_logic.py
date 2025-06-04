@@ -354,6 +354,10 @@ class ExecutionSupervisorLogic:
                         if artifact_text_content and len(artifact_text_content) < 100: summary += f" Aperçu: {artifact_text_content[:50]}..."
                         self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary=summary)
                         self.task_graph.update_task_state(task_node.id, ExecutionTaskState.COMPLETED, "Exécution OK.")
+                                                # <<< AJOUT D'UN LOG DE DÉBOGAGE ICI >>>
+                        self.logger.info(f"[{self.execution_plan_id}] APPEL update_task_output pour TÂCHE EXECUTABLE {task_node.id}: artifact_ref='{gra_persisted_artifact_id}', summary='{summary}'")
+
+
                     
                     else: 
                         self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id)

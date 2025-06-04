@@ -79,6 +79,9 @@ class ExecutionTaskNode:
         data = self.__dict__.copy()
         data['task_type'] = self.task_type.value
         data['state'] = self.state.value
+        # Pour le débogage, s'assurer explicitement que output_artifact_ref est là
+        data['output_artifact_ref'] = self.output_artifact_ref 
+
         return data
 
     @staticmethod
@@ -152,11 +155,12 @@ class ExecutionTaskGraph:
         self.doc_ref.set(graph_data)
 
     def add_task(self, task_node: ExecutionTaskNode, is_root: bool = False):
-        self.logger.debug(f"Ajout/Mise à jour tâche: {task_node.id}, état: {task_node.state.value}")
+        self.logger.debug(f"[{self.execution_plan_id}] ExecutionTaskGraph.add_task pour {task_node.id}, état: {task_node.state.value}, output_artifact_ref initial: {task_node.output_artifact_ref}") # Log initial de l'objet
+        
         graph_data = self._get_graph_data()
         nodes = graph_data.get("nodes", {})
         
-        nodes[task_node.id] = task_node.to_dict()
+        nodes[task_node.id] = task_node.to_dict() # Convertit l'objet en dict pour Firestore
         graph_data["nodes"] = nodes
 
         if is_root and task_node.id not in graph_data.get("root_task_ids", []):
@@ -176,25 +180,22 @@ class ExecutionTaskGraph:
             return ExecutionTaskNode.from_dict(node_data)
         return None
 
-    def update_task_state(self, task_id: str, new_state: ExecutionTaskState, details: Optional[str] = None):
-        task_node = self.get_task(task_id)
-        if not task_node:
-            raise ValueError(f"Tâche d'exécution {task_id} introuvable.")
-        
-        task_node.update_state(new_state, details)
-        # Pour sauvegarder, on ré-ajoute la tâche (ce qui met à jour son dict)
-        self.add_task(task_node) 
-
     def update_task_output(self, task_id: str, artifact_ref: Optional[str] = None, summary: Optional[str] = None):
-        task_node = self.get_task(task_id)
-        if not task_node:
-            raise ValueError(f"Tâche d'exécution {task_id} introuvable.")
+        task_node_obj = self.get_task(task_id) 
+        if not task_node_obj:
+            # Lever une erreur ou logger et retourner si la tâche n'est pas trouvée
+            self.logger.error(f"[{self.execution_plan_id}] Tâche {task_id} non trouvée dans update_task_output.")
+            raise ValueError(f"Tâche d'exécution {task_id} introuvable pour update_task_output.")
+        
+        self.logger.debug(f"[{self.execution_plan_id}] update_task_output pour {task_id}: artifact_ref='{artifact_ref}', summary='{summary}'. Current task output_artifact_ref='{task_node_obj.output_artifact_ref}'")
+
         if artifact_ref is not None:
-            task_node.output_artifact_ref = artifact_ref
+            task_node_obj.output_artifact_ref = artifact_ref
         if summary is not None:
-            task_node.result_summary = summary
-        task_node.updated_at = datetime.utcnow().isoformat()
-        self.add_task(task_node)
+            task_node_obj.result_summary = summary
+        task_node_obj.updated_at = datetime.utcnow().isoformat() # Assurez-vous que datetime est importé
+        
+        self.add_task(task_node_obj) # Sauvegarde l'objet mis à jour
 
 
     def get_ready_tasks(self) -> List[ExecutionTaskNode]:
@@ -251,7 +252,17 @@ class ExecutionTaskGraph:
         
         self.logger.debug(f"get_ready_tasks: Tâches prêtes trouvées pour {self.execution_plan_id}: {[t.id for t in ready_tasks]}")
         return ready_tasks
-    
+    # Dans la classe ExecutionTaskGraph de src/shared/execution_task_graph_management.py
+
+    def update_task_state(self, task_id: str, new_state: ExecutionTaskState, details: Optional[str] = None):
+        task_node = self.get_task(task_id)
+        if not task_node:
+            self.logger.error(f"[{self.execution_plan_id}] Tâche {task_id} non trouvée dans update_task_state.")
+            raise ValueError(f"Tâche d'exécution {task_id} introuvable pour update_task_state.")
+
+        task_node.update_state(new_state, details) # Ceci appelle la méthode de l'objet ExecutionTaskNode
+        task_node.updated_at = datetime.utcnow().isoformat() # S'assurer que datetime est importé et que updated_at est mis à jour
+        self.add_task(task_node) # Sauvegarder le nœud mis à jour
 
     def set_overall_status(self, status: str):
         graph_data = self._get_graph_data()
