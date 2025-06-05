@@ -392,4 +392,4 @@ orchestrai-hackathon-ADK/
 * Déploiement sur une plateforme Cloud.
 * Tests unitaires et d'intégration plus exhaustifs.
 * Permettre à `ExecutionSupervisorLogic` de choisir dynamiquement des agents pour des compétences non pré-définies dans le plan décomposé, en se basant sur les capacités réelles des agents enregistrés.
-* Outillage pour visualiser l'`ExecutionTaskGraph` dans Streamlit, similaire à ce qui existe pour le `TaskGraph` de TEAM 1.
+* Outillage pour visualiser l'`ExecutionTaskGraph` dans Streamlit, désormais réalisé avec `streamlit-agraph` pour une exploration interactive du graphe TEAM 2.
