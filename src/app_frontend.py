@@ -340,19 +340,21 @@ with st.sidebar:
     if not st.session_state.global_plans_summary_list:
         st.info("Aucun plan global. Lancez un nouveau plan.")
     else:
-        plan_options = {plan['global_plan_id']: f"{plan['raw_objective'][:30]}{'...' if len(plan['raw_objective']) > 30 else ''} (État: {plan.get('current_supervisor_state', 'N/A')})" for plan in st.session_state.global_plans_summary_list}
-        
-        # S'assurer que active_global_plan_id est valide ou None
+        plan_options = {
+            plan['global_plan_id']: f"{plan['raw_objective'][:30]}{'...' if len(plan['raw_objective']) > 30 else ''} (État: {plan.get('current_supervisor_state', 'N/A')})"
+            for plan in st.session_state.global_plans_summary_list
+        }
+
         current_active_id = st.session_state.active_global_plan_id
         if current_active_id not in plan_options:
-            current_active_id = None # ou le premier de la liste si vous préférez
+            current_active_id = None
 
-        selected_id = st.radio( # Radio peut être mieux pour peu d'options, sinon selectbox
+        selected_id = st.selectbox(
             "Sélectionnez un Plan :",
             options=list(plan_options.keys()),
             format_func=lambda x: plan_options[x],
-            index = list(plan_options.keys()).index(current_active_id) if current_active_id else 0,
-            key="global_plan_selector_sidebar_radio"
+            index=list(plan_options.keys()).index(current_active_id) if current_active_id else 0,
+            key="global_plan_selector_sidebar_selectbox",
         )
         
         if selected_id != st.session_state.active_global_plan_id:
@@ -373,20 +375,6 @@ with st.sidebar:
                 refresh_active_global_plan_details()
         st.rerun()
 
-    st.markdown("---")
-    st.header("📡 Statut des Agents (Sidebar)")
-    if st.session_state.agents_status:
-        for agent_info in st.session_state.agents_status:
-            agent_name = agent_info.get('name', 'Agent Inconnu')
-            health_status_text = agent_info.get("health_status", "❓")
-            health_color = agent_info.get("health_color", "grey")
-            status_indicator_html = f"<span style='color: {health_color};'>●</span> {health_status_text.split(' ')[-1]}"
-            with st.expander(f"{agent_name}"):
-                st.markdown(status_indicator_html, unsafe_allow_html=True)
-                st.caption(f"URL: {agent_info.get('url', 'N/A')}")
-                st.caption(f"Compétences: {', '.join(agent_info.get('skills', []))}")
-    else:
-        st.info("Statut des agents non disponible.")
 
 # --- Zone d'affichage principale ---
 # Statut des agents en haut (peut être redondant avec la sidebar, à vous de choisir)
@@ -394,9 +382,17 @@ with st.sidebar:
 # ... (votre logique d'affichage horizontal si vous la gardez) ...
 # st.markdown("---")
 
-main_col, artifact_col = st.columns([0.65, 0.35]) # Ajuster les proportions
+main_col, artifact_col = st.columns([0.65, 0.35])  # Ajuster les proportions
 
 with main_col:
+    if st.session_state.agents_status:
+        status_parts = []
+        for agent in st.session_state.agents_status:
+            name = agent.get("name", "Agent")
+            color = agent.get("health_color", "grey")
+            text = agent.get("health_status", "")
+            status_parts.append(f"<span style='color:{color};'>●</span> {name} ({text.split(' ')[-1]})")
+        st.markdown("### 📡 Statut des Agents : " + " | ".join(status_parts), unsafe_allow_html=True)
     st.header("🔍 Plan Actif & Graphes")
     if not st.session_state.active_global_plan_id or not st.session_state.active_global_plan_details:
         st.info("Sélectionnez un plan dans la barre latérale ou lancez un nouveau plan.")
@@ -565,16 +561,22 @@ with artifact_col:
     st.header("📄 Artefacts Produits (TEAM 2)")
     if st.session_state.current_execution_graph_details:
         exec_nodes = st.session_state.current_execution_graph_details.get("nodes", {})
-        found_artifacts = False
-        for node_id, node_info in exec_nodes.items():
-            if node_info.get("state") == ExecutionTaskState.COMPLETED.value and node_info.get("output_artifact_ref"):
-                found_artifacts = True
-                artifact_button_label = node_info.get("meta", {}).get("local_nom_from_agent", node_info.get("objective", node_id))
-                if st.button(f"Voir: {artifact_button_label[:40]}...", key=f"view_art_t2_{node_id}"):
-                    handle_select_task_for_artifact(node_id, node_info.get("output_artifact_ref"))
-                    # Pas besoin de st.rerun() ici, la colonne d'artefact se mettra à jour
-        if not found_artifacts:
-            st.caption("Aucun artefact produit pour TEAM 2 pour l'instant.")    
+        artifact_options = {
+            node_id: node_info.get("meta", {}).get("local_nom_from_agent", node_info.get("objective", node_id))
+            for node_id, node_info in exec_nodes.items()
+            if node_info.get("state") == ExecutionTaskState.COMPLETED.value and node_info.get("output_artifact_ref")
+        }
+        if artifact_options:
+            selected_art = st.selectbox(
+                "Choisir un artefact :",
+                options=list(artifact_options.keys()),
+                format_func=lambda x: artifact_options[x][:40],
+                key="artifact_selector",
+            )
+            if selected_art and selected_art != st.session_state.selected_artifact_task_id:
+                handle_select_task_for_artifact(selected_art, exec_nodes[selected_art].get("output_artifact_ref"))
+        else:
+            st.caption("Aucun artefact produit pour TEAM 2 pour l'instant.")
     st.header("📄 Artefact Sélectionné")
     if st.session_state.selected_artifact_task_id:
         st.markdown(f"**Artefact de la tâche :**")
