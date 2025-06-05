@@ -9,6 +9,7 @@ import graphviz
 import pandas as pd # Pour manipuler les données pour le graphe
 import sys
 import pathlib
+from streamlit_agraph import agraph, Node, Edge, Config # L'import peut varier légèrement
 
 # Ajout pour le chemin (si app_frontend.py est dans src et vous l'exécutez depuis la racine du projet)
 # Si vous exécutez streamlit run src/app_frontend.py depuis la racine,
@@ -477,6 +478,9 @@ with main_col:
         if team2_exec_id and plan.get("current_supervisor_state", "").startswith("TEAM2_"):
             st.markdown("---")
             st.subheader(f"📈 Graphe d'Exécution (TEAM 2 : `{team2_exec_id}`)")
+
+
+            
             if st.session_state.current_execution_graph_id_loaded != team2_exec_id:
                 with st.spinner(f"Chargement du graphe d'exécution {team2_exec_id}..."):
                     st.session_state.current_execution_graph_details = asyncio.run(get_execution_task_graph_details_from_api(team2_exec_id))
@@ -534,6 +538,19 @@ with main_col:
 
 
 with artifact_col:
+    st.header("📄 Artefacts Produits (TEAM 2)")
+    if st.session_state.current_execution_graph_details:
+        exec_nodes = st.session_state.current_execution_graph_details.get("nodes", {})
+        found_artifacts = False
+        for node_id, node_info in exec_nodes.items():
+            if node_info.get("state") == ExecutionTaskState.COMPLETED.value and node_info.get("output_artifact_ref"):
+                found_artifacts = True
+                artifact_button_label = node_info.get("meta", {}).get("local_nom_from_agent", node_info.get("objective", node_id))
+                if st.button(f"Voir: {artifact_button_label[:40]}...", key=f"view_art_t2_{node_id}"):
+                    handle_select_task_for_artifact(node_id, node_info.get("output_artifact_ref"))
+                    # Pas besoin de st.rerun() ici, la colonne d'artefact se mettra à jour
+        if not found_artifacts:
+            st.caption("Aucun artefact produit pour TEAM 2 pour l'instant.")    
     st.header("📄 Artefact Sélectionné")
     if st.session_state.selected_artifact_task_id:
         st.markdown(f"**Artefact de la tâche :**")

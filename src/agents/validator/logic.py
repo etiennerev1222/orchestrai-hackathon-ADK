@@ -28,23 +28,30 @@ class ValidatorAgentLogic(BaseAgentLogic):
             }
 
         # La seule et unique instruction système pour le validateur.
+                # --- NOUVEAU PROMPT SYSTÈME ---
         system_prompt = (
-            "Tu es un directeur de projet senior. Ton rôle est de prendre une décision finale (Approuvé ou Rejeté) "
-            "sur un projet en te basant sur l'analyse fournie par ton équipe. "
-            "Tu dois justifier ta décision et retourner le résultat au format JSON uniquement."
+            "Tu es un chef de projet expérimenté et pragmatique. Ta mission est de valider si un plan d'action est suffisamment mûr pour être transmis à l'équipe d'exécution (TEAM 2). "
+            "Tu n'exiges pas la perfection, mais la clarté et la cohérence. Un plan 'approuvé' signifie que l'équipe d'exécution a une base de travail solide pour commencer à décomposer le projet en tâches techniques, même si certains détails devront être affinés par eux."
+            "\nTa décision doit se baser sur les critères suivants :\n"
+            "1.  **Faisabilité Générale :** Le score de faisabilité est-il raisonnable (par exemple, 6/10 ou plus) ?\n"
+            "2.  **Blocage Critique :** Les faiblesses identifiées sont-elles des obstacles insurmontables qui empêcheraient totalement le démarrage, ou sont-ce des risques gérables et des points de vigilance pour l'équipe d'exécution ?\n"
+            "Un manque de détails techniques fins n'est PAS un bloqueur, mais un objectif principal contradictoire ou un budget manifestement irréaliste en est un.\n"
+            "Justifie toujours ta décision de manière constructive et retourne le résultat UNIQUEMENT au format JSON."
         )
         
         evaluation_str = json.dumps(evaluation_result, indent=2, ensure_ascii=False)
 
+          # --- NOUVEAU PROMPT UTILISATEUR ---
         prompt = (
-            "Voici l'évaluation d'un plan de projet :\n"
+            "Voici l'évaluation d'un plan produit par la TEAM 1. Analyse-la en gardant à l'esprit que tu dois décider si ce plan est 'assez bon pour commencer l'exécution'.\n\n"
             f"'''{evaluation_str}'''\n\n"
-            "En te basant sur cette analyse, et en particulier sur le score de faisabilité et les faiblesses identifiées, "
-            "décide si le plan doit être 'approved' ou 'rejected'. "
-            "Si le score est inférieur à 5 ou si des faiblesses critiques sont mentionnées, tu devrais probablement le rejeter. "
-            "Justifie ta décision et precises le point d'amélioration dans 'validation_comments'.\n"
+            "Prends ta décision en suivant ces règles :\n"
+            "- **SI** le `feasibility_score` est de 6 ou plus ET que les `weaknesses` sont des points de vigilance ou des détails à affiner plutôt que des bloqueurs fondamentaux, **ALORS** approuve le plan (`validation_status`: 'approved'). Tes `validation_comments` peuvent inclure des recommandations pour l'équipe d'exécution.\n"
+            "- **SI** le `feasibility_score` est de 5 ou moins OU si une faiblesse majeure empêche toute forme de démarrage (ex: 'objectif incompréhensible', 'budget 10x trop faible'), **ALORS** rejette le plan (`validation_status`: 'rejected'). Tes `validation_comments` doivent expliquer clairement et de manière concise le ou les bloqueurs à corriger pour la TEAM 1.\n\n"
             "Retourne ta décision exclusivement sous la forme d'un objet JSON avec les clés : "
-            "'validation_status' ('approved' ou 'rejected') et 'validation_comments' (ta justification)."
+            "'validation_status' ('approved' ou 'rejected'), "
+            "'validation_comments' (ta justification constructive), "
+            "et 'final_plan' (le texte de 'evaluated_plan' si tu l'approuves, sinon `null`)."
         )
         
         try:

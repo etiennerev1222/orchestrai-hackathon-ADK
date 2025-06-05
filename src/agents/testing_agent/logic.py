@@ -20,6 +20,8 @@ class TestingAgentLogic(BaseAgentLogic):
         super().__init__()
         self.logger = logging.getLogger(f"{__name__}.TestingAgentLogic")
         self.logger.info("Logique du TestingAgent initialisée.")
+# src/agents/testing_agent/logic.py
+# ... (imports et début de la classe TestingAgentLogic) ...
 
     async def process(self, input_data_str: str, context_id: str | None = None) -> str:
         try:
@@ -34,19 +36,20 @@ class TestingAgentLogic(BaseAgentLogic):
 
         except json.JSONDecodeError as e:
             self.logger.error(f"TestingAgent: Input JSON invalide: {input_data_str}. Erreur: {e}")
-            return json.dumps({"test_status": "error", "summary": "Input JSON invalide pour TestingAgent", "details": input_data_str, "generated_test_cases": []})
+            return json.dumps({
+                "test_status": "error", "summary": "Input JSON invalide pour TestingAgent", 
+                "details": input_data_str, "generated_test_cases": [], 
+                "passed_criteria": [], "failed_criteria": [], "identified_issues_or_bugs": []
+            })
 
         self.logger.info(f"TestingAgent - Tâche (Objectif: '{objective}', Compétence: {assigned_skill}) reçue (contexte: {context_id})")
         self.logger.debug(f"TestingAgent - Payload d'input complet reçu: {json.dumps(input_payload, indent=2)}")
 
 
         if assigned_skill == AGENT_SKILL_TEST_CASE_GENERATION:
+            # ... (votre logique pour test_case_generation, qui semble bien fonctionner maintenant)
             self.logger.info(f"TestingAgent: Mode '{AGENT_SKILL_TEST_CASE_GENERATION}' pour l'objectif: '{objective}'")
-            
-            # Pour la génération de cas de test, l'input pertinent est l'objectif de la tâche T04.1,
-            # et potentiellement les specs de la fonctionnalité pour laquelle générer des tests.
-            # Si 'input_artifacts_content' contient des specs (ex: sous 'feature_spec_id'), utilisez-les.
-            feature_spec_content = input_artifacts_content.get("feature_spec_id", "") # Clé utilisée dans le log pour T04.1
+            feature_spec_content = input_artifacts_content.get("feature_spec_id", "") # ou une autre clé si définie par DecompositionAgent
             
             system_prompt_tcg = (
                 "Tu es un ingénieur QA expert en création de cas de test. "
@@ -79,30 +82,33 @@ class TestingAgentLogic(BaseAgentLogic):
                 return llm_response_tcg_str 
             except Exception as e:
                 self.logger.error(f"TestingAgent (test_case_generation) - Échec: {e}", exc_info=True)
-                return json.dumps({"error": f"Erreur LLM lors de la génération des cas de test: {str(e)}","generated_test_cases": []})
+                return json.dumps({"error": f"Erreur LLM lors de la génération des cas de test: {str(e)}", "generated_test_cases": [] })
         
         elif assigned_skill == AGENT_SKILL_SOFTWARE_TESTING:
             self.logger.info(f"TestingAgent: Mode '{AGENT_SKILL_SOFTWARE_TESTING}' pour l'objectif: '{objective}'")
             
-            # <<< MODIFICATION ICI : Lire depuis input_artifacts_content >>>
+            # --- MODIFICATION CLÉ ICI ---
             deliverable_code = input_artifacts_content.get("code_to_test") 
-            test_cases_str_or_list = input_artifacts_content.get("test_cases_file") # C'est la clé utilisée dans le log pour T05
-            # <<< FIN DE LA MODIFICATION >>>
+            test_cases_str_or_list = input_artifacts_content.get("test_cases_file") 
+            # --- FIN DE LA MODIFICATION ---
 
-            self.logger.info(f"TestingAgent (software_testing) - code_to_test reçu: {'Présent' if deliverable_code else 'Manquant'}")
-            self.logger.info(f"TestingAgent (software_testing) - test_cases_file reçu: {'Présent' if test_cases_str_or_list else 'Manquant'}")
+            self.logger.info(f"TestingAgent (software_testing) code_to_test: {'Présent' if deliverable_code else 'MANQUANT OU VIDE'}")
+            self.logger.info(f"TestingAgent (software_testing) test_cases_file: {'Présent' if test_cases_str_or_list else 'MANQUANT OU VIDE'}")
+            if isinstance(deliverable_code, str) and deliverable_code.strip(): # S'assurer que ce n'est pas juste des espaces
+                 self.logger.debug(f"TestingAgent (software_testing) deliverable_code (début): {deliverable_code[:200]}...")
+            if isinstance(test_cases_str_or_list, str) and test_cases_str_or_list.strip():
+                 self.logger.debug(f"TestingAgent (software_testing) test_cases_str_or_list (début): {test_cases_str_or_list[:200]}...")
 
 
             if not deliverable_code or (isinstance(deliverable_code, str) and (deliverable_code.startswith("// ERREUR:") or deliverable_code.startswith("// ATTENTION:"))):
-                self.logger.warning(f"TestingAgent (software_testing): Livrable 'code_to_test' non valide ou manquant. Contenu: '{deliverable_code}'")
+                self.logger.warning(f"TestingAgent (software_testing): Livrable 'code_to_test' non valide ou manquant dans input_artifacts_content. Contenu: '{deliverable_code}'")
                 return json.dumps({
                     "test_status": "error", 
                     "summary": "Livrable 'code_to_test' (attendu dans input_artifacts_content) non valide ou manquant pour l'exécution des tests.",
-                    "passed_criteria": [], "failed_criteria": acceptance_criteria,
-                    "identified_issues_or_bugs": [f"Le contenu du code à tester (attendu via 'code_to_test') n'a pas été fourni correctement. Reçu: {deliverable_code}"]
+                    "passed_criteria": [], "failed_criteria": acceptance_criteria, # Utiliser les critères de la tâche elle-même
+                    "identified_issues_or_bugs": [f"Le contenu du code à tester (attendu via 'code_to_test' dans input_artifacts_content) n'a pas été fourni correctement. Reçu: {deliverable_code}"]
                 })
             
-            # ... (Le reste de votre logique pour formater test_cases_str_or_list et construire prompt_st reste identique)
             formatted_test_cases = ""
             if test_cases_str_or_list and isinstance(test_cases_str_or_list, str):
                 try:
@@ -111,15 +117,16 @@ class TestingAgentLogic(BaseAgentLogic):
                         formatted_test_cases = "\n- ".join(parsed_tc_artifact["generated_test_cases"])
                         if formatted_test_cases: formatted_test_cases = "- " + formatted_test_cases
                     else:
+                        self.logger.warning(f"TestingAgent (software_testing): 'generated_test_cases' non trouvé ou pas une liste dans test_cases_file. Utilisation brute: {test_cases_str_or_list[:100]}")
                         formatted_test_cases = test_cases_str_or_list 
                 except json.JSONDecodeError:
+                    self.logger.warning(f"TestingAgent (software_testing): test_cases_file n'est pas un JSON valide. Utilisation brute: {test_cases_str_or_list[:100]}")
                     formatted_test_cases = test_cases_str_or_list
-            elif isinstance(test_cases_str_or_list, list):
+            elif isinstance(test_cases_str_or_list, list): # Au cas où ce serait déjà une liste
                  formatted_test_cases = "\n- ".join(test_cases_str_or_list)
                  if formatted_test_cases: formatted_test_cases = "- " + formatted_test_cases
             
-            self.logger.info(f"TestingAgent (software_testing) - Cas de test formatés pour prompt: {formatted_test_cases[:300] if formatted_test_cases else 'Aucun'}")
-
+            self.logger.info(f"TestingAgent (software_testing) - Cas de test formatés pour prompt (début): {formatted_test_cases[:300] if formatted_test_cases else 'Aucun cas de test spécifique fourni.'}")
 
             test_cases_prompt_section = ""
             if formatted_test_cases:
@@ -128,14 +135,14 @@ class TestingAgentLogic(BaseAgentLogic):
                     f"'''\n{formatted_test_cases}\n'''\n\n"
                 )
             
-            system_prompt_st = (
+            system_prompt_st = ( # ... (identique à avant)
                 "Tu es un ingénieur QA expert et un testeur logiciel rigoureux. "
                 "Ta mission est d'analyser un livrable de code fourni, ainsi qu'une liste de cas de test (si fournie), "
                 "par rapport à son objectif, ses instructions de développement et ses critères d'acceptation. "
                 "Tu dois déterminer si le livrable est conforme. Identifie les points de succès et les échecs ou bugs potentiels. "
                 "Fournis un rapport de test concis au format JSON."
             )
-            prompt_st = (
+            prompt_st = ( # ... (identique à avant, s'assurant d'utiliser deliverable_code et test_cases_prompt_section)
                 f"Objectif du développement qui a produit ce livrable : {objective}\n\n"
                 f"Critères d'acceptation généraux de la tâche de test actuelle :\n"
                 f"{'- ' + chr(10) + '- '.join(acceptance_criteria) if acceptance_criteria else 'Non spécifiés.'}\n\n"
@@ -171,9 +178,9 @@ class TestingAgentLogic(BaseAgentLogic):
                     "identified_issues_or_bugs": [f"Erreur interne de l'agent de test: {str(e)}"]
                 })
         else:
-            self.logger.warning(f"TestingAgent: Compétence assignée '{assigned_skill}' non reconnue ou non gérée explicitement. Objectif: '{objective}'")
+            self.logger.warning(f"TestingAgent: Compétence assignée '{assigned_skill}' non reconnue ou non gérée explicitement pour l'objectif: '{objective}'")
             return json.dumps({
-                "test_status": "error", "summary": f"Compétence '{assigned_skill}' non gérée par le TestingAgent.",
+                "test_status": "error", "summary": f"Compétence '{assigned_skill}' non gérée par TestingAgent.",
                 "generated_test_cases": [], 
                 "passed_criteria": [], "failed_criteria": acceptance_criteria, "identified_issues_or_bugs": []
             })
