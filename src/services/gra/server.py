@@ -14,6 +14,7 @@ from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, Glo
 import os
 import uuid
 from collections import Counter # Pour compter facilement
+from src.shared.execution_task_graph_management import ExecutionTaskGraph # Assurez-vous de l'importer
 
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class GlobalPlanDetailResponse(BaseModel): # Pour GET /global_plans/{global_plan
     conversation_history: List[Dict[str, str]] = []
     clarification_attempts: int = 0
     team1_plan_id: Optional[str] = None
+    team2_execution_plan_id: Optional[str] = None 
     created_at: str # ISO format string
     updated_at: str # ISO format string
     last_agent_response_artifact: Optional[Dict[str, Any]] = None # Pourrait être verbeux, mais utile pour debug
@@ -262,6 +264,7 @@ async def get_global_plan_details(
             "conversation_history": plan_details.get('conversation_history', []),
             "clarification_attempts": plan_details.get('clarification_attempts', 0),
             "team1_plan_id": plan_details.get('team1_plan_id'),
+            "team2_execution_plan_id": plan_details.get('team2_execution_plan_id'), # <--- VÉRIFIEZ/AJOUTEZ CETTE LIGNE
             "created_at": plan_details.get('created_at', datetime.now(timezone.utc).isoformat()), # Fallback
             "updated_at": plan_details.get('updated_at', datetime.now(timezone.utc).isoformat()), # Fallback
             "last_agent_response_artifact": plan_details.get('last_agent_response_artifact'),
@@ -632,6 +635,37 @@ async def get_all_agent_tasks_count_stats():
 
     logger.info(f"[GRA API] Statistiques de comptage de toutes les tâches agents générées: {response_stats}")
     return AllAgentTasksStatsResponse(stats=response_stats, last_updated=datetime.now(timezone.utc).isoformat())
+
+
+
+
+@app.get("/v1/execution_task_graphs/{execution_plan_id}")
+async def get_execution_task_graph_details_endpoint(execution_plan_id: str):
+    """Récupère les détails complets (ExecutionTaskGraph) d'un plan d'exécution spécifique."""
+    try:
+        graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id)
+        plan_data = await asyncio.to_thread(graph_manager.as_dict) # Utiliser to_thread pour les opérations bloquantes de Firestore
+        
+        # Vérifier si le graphe existe réellement ou est vide après la lecture
+        if not plan_data or not plan_data.get("nodes"): # Si "nodes" est vide ou absent, le graphe n'a pas été peuplé
+            # Vérifier aussi le overall_status pour voir s'il est juste en PENDING_DECOMPOSITION
+            if plan_data and plan_data.get("overall_status") in ["INITIALIZING", "PENDING_DECOMPOSITION"]:
+                 logger.info(f"[GRA] Plan d'exécution '{execution_plan_id}' trouvé mais en attente de décomposition.")
+                 # Retourner quand même les données pour que le frontend puisse afficher le statut
+            else:
+                logger.warning(f"[GRA] Plan d'exécution '{execution_plan_id}' non trouvé ou vide.")
+                raise HTTPException(status_code=404, detail=f"Plan d'exécution '{execution_plan_id}' non trouvé ou vide.")
+        
+        logger.info(f"[GRA] Détails du plan d'exécution '{execution_plan_id}' récupérés.")
+        return plan_data
+    except HTTPException: # Re-lever les exceptions HTTP
+        raise
+    except ValueError as ve: # Par exemple, si execution_plan_id est vide dans le constructeur de ExecutionTaskGraph
+        logger.error(f"[GRA] Erreur de valeur pour get_execution_task_graph_details_endpoint: {ve}")
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[GRA] Erreur lors de la récupération des détails du plan d'exécution '{execution_plan_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
 if __name__ == "__main__":
     logger.info("Démarrage du serveur du Gestionnaire de Ressources et d'Agents (GRA)...")
