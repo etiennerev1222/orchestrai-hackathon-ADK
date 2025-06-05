@@ -504,32 +504,56 @@ with main_col:
                                 handle_select_task_for_artifact(node_id, node_info.get("output_artifact_ref"))
                                 # st.rerun() # Le rerun est géré par handle_select_task si besoin d'update immédiat de la colonne artifact
                     
-                    # Affichage du graphe Graphviz pour TEAM 2
+                    # Affichage du graphe interactif via streamlit-agraph pour TEAM 2
                     try:
-                        dot_exec = graphviz.Digraph(comment=f'Execution Task Graph for {team2_exec_id}')
-                        dot_exec.attr(rankdir='TB')
+                        a_nodes: List[Node] = []
+                        a_edges: List[Edge] = []
+                        start_node_id = f"decompose_{team2_exec_id}"
+                        start_added = False
                         for node_id, node_info in nodes_data_t2.items():
-                            # ... (votre logique de création de label et couleur de nœud)
-                            label_lines = [f"ID: {node_id[:12]}...", f"Obj: {node_info.get('objective', 'N/A')[:30]}...", f"Ag: {node_info.get('assigned_agent_type', 'N/A')}", f"State: {node_info.get('state', 'N/A')}"]
-                            label = "\\n".join(label_lines)
-                            color = "grey" # Default
-                            node_state_val = node_info.get('state')
-                            if node_state_val == ExecutionTaskState.COMPLETED.value: color = "lightgreen"
-                            elif node_state_val == ExecutionTaskState.FAILED.value: color = "lightcoral"
-                            # ... (autres couleurs)
-                            dot_exec.node(node_id, label=label, shape="box", style="filled", fillcolor=color)
-                            dependencies = node_info.get("dependencies", [])
-                            for dep_id in dependencies:
-                                if dep_id in nodes_data_t2:
-                                    dot_exec.edge(dep_id, node_id)
-                                elif dep_id == f"decompose_{team2_exec_id}": # Parent de décomposition
-                                     if f"decompose_{team2_exec_id}" not in nodes_data_t2:
-                                        dot_exec.node(dep_id, label=f"Start: Decomp.", shape="ellipse", style="filled", fillcolor="purple")
-                                     dot_exec.edge(dep_id, node_id)
+                            node_state_val = node_info.get("state")
+                            color = "grey"
+                            if node_state_val == ExecutionTaskState.COMPLETED.value:
+                                color = "lightgreen"
+                            elif node_state_val == ExecutionTaskState.FAILED.value:
+                                color = "lightcoral"
 
-                        st.graphviz_chart(dot_exec, use_container_width=True)
+                            label = node_info.get("objective", node_id)[:30]
+                            a_nodes.append(
+                                Node(
+                                    id=node_id,
+                                    title=node_id,
+                                    label=label,
+                                    color=color,
+                                    shape="box",
+                                )
+                            )
+
+                            for dep_id in node_info.get("dependencies", []):
+                                if dep_id in nodes_data_t2:
+                                    a_edges.append(Edge(source=dep_id, target=node_id))
+                                elif dep_id == start_node_id:
+                                    if not start_added:
+                                        a_nodes.append(
+                                            Node(
+                                                id=start_node_id,
+                                                label="Start: Decomp.",
+                                                color="purple",
+                                                shape="ellipse",
+                                            )
+                                        )
+                                        start_added = True
+                                    a_edges.append(Edge(source=start_node_id, target=node_id))
+
+                        config = Config(
+                            height=600,
+                            width=800,
+                            directed=True,
+                            hierarchical=True,
+                        )
+                        agraph(nodes=a_nodes, edges=a_edges, config=config)
                     except Exception as e:
-                        st.error(f"Erreur génération graphe TEAM 2: {e}")
+                        st.error(f"Erreur génération graphe TEAM 2 avec agraph: {e}")
                 
                 with st.expander("Données brutes graphe TEAM 2", expanded=False):
                     st.json(st.session_state.current_execution_graph_details)
