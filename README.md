@@ -340,6 +340,12 @@ Pour lancer le système complet, le GRA et tous les agents doivent être démarr
     ```
     Ouvrez l'URL fournie par Streamlit (généralement `http://localhost:8501`) dans votre navigateur.
 
+    Vous pouvez également tester une interface React très simple disponible dans le dossier `react_frontend` :
+    ```bash
+    cd react_frontend && python -m http.server 8000
+    ```
+    Puis ouvrez [http://localhost:8000/index.html](http://localhost:8000/index.html).
+
 4.  **Utilisez l'Interface** :
     * Soumettez un nouvel objectif.
     * Interagissez avec l'`UserInteractionAgent` pour la clarification.
