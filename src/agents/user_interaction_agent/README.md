@@ -1,5 +1,11 @@
 # user_interaction_agent
 
-**Français :** Cet agent sert d'interface conversationnelle pour clarifier l'objectif soumis par l'utilisateur. Il s'appuie sur un LLM pour proposer des questions et des compléments d'information.
+**Français :**
+- Sert d'interface conversationnelle pour la clarification d'objectif.
+- Propose des questions et des hypothèses via un LLM.
+- Retourne un objectif enrichi structuré.
 
-**English:** This agent is a conversational interface used to clarify the user objective. It relies on an LLM to suggest questions and additional information.
+**English:**
+- Conversational interface used to clarify the user objective.
+- Suggests questions and assumptions using an LLM.
+- Returns a structured enriched objective.

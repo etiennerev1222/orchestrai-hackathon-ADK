@@ -1,5 +1,11 @@
 # docs
 
-**Français :** Ce dossier contient les images et autres ressources utiles à la documentation technique du projet. Les diagrammes d'architecture présents ici sont référencés dans le README principal.
+**Français :**
+- Contient les images et ressources pour la documentation technique.
+- Les diagrammes d'architecture y sont référencés par le README principal.
+- Peut également stocker des captures d'écran de l'interface Streamlit.
 
-**English:** This folder stores images and assets used in the project documentation. Architecture diagrams referenced in the main README are located here.
+**English:**
+- Holds images and assets for the technical documentation.
+- Architecture diagrams referenced by the main README live here.
+- May also store screenshots of the Streamlit interface.

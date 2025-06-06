@@ -1,5 +1,11 @@
 # reformulator
 
-**Français :** Cet agent génère un plan d'action détaillé à partir de l'objectif clarifié. Il restructure les informations fournies par l'utilisateur en tâches hiérarchisées.
+**Français :**
+- Génère un plan d'action détaillé à partir de l'objectif clarifié.
+- Structure les tâches et leurs dépendances.
+- Produit un `TaskGraph` utilisé par TEAM&nbsp;1.
 
-**English:** This agent generates a detailed action plan from the clarified objective. It restructures the user's input into a hierarchy of tasks.
+**English:**
+- Creates a detailed action plan from the clarified objective.
+- Structures tasks and dependencies.
+- Produces a `TaskGraph` consumed by TEAM&nbsp;1.

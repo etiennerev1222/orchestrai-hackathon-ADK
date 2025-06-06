@@ -1,5 +1,11 @@
 # gra
 
-**Français :** Implémentation du Gestionnaire de Ressources et d'Agents (GRA). Il offre des points d'API pour enregistrer les agents et les découvrir dynamiquement.
+**Français :**
+- Implémente le Gestionnaire de Ressources et d'Agents (GRA).
+- Permet l'enregistrement et la découverte des agents via REST.
+- Sert de point d'entrée unique pour le front-end et les orchestrateurs.
 
-**English:** Implementation of the Resource and Agent Manager (GRA). It exposes API endpoints to register agents and discover them dynamically.
+**English:**
+- Implements the Resource and Agent Manager (GRA).
+- Allows agent registration and discovery through REST endpoints.
+- Serves as a single entry point for the front-end and supervisors.

@@ -1,5 +1,11 @@
 # development_agent
 
-**Français :** Agent dédié aux tâches de développement logiciel (génération de code, modifications, refactoring). Il exécute les tâches marquées `executable` du plan d'exécution.
+**Français :**
+- Réalise les tâches de développement logiciel.
+- Génère ou modifie du code selon le plan.
+- Produit des artefacts de code exécutables.
 
-**English:** Agent dedicated to software development tasks such as code generation or refactoring. It executes the `executable` tasks of the execution plan.
+**English:**
+- Performs software development tasks.
+- Generates or modifies code according to the plan.
+- Produces runnable code artifacts.

@@ -1,5 +1,11 @@
 # testing_agent
 
-**Français :** Agent chargé de réaliser les tests des livrables générés durant l'exécution. Il vérifie la conformité avec les spécifications.
+**Français :**
+- Exécute les tests sur les livrables produits.
+- Vérifie la conformité avec les critères d'acceptation.
+- Retourne les rapports de test à l'exécution.
 
-**English:** Agent responsible for testing the deliverables generated during execution. It checks conformity with the specifications.
+**English:**
+- Runs tests on produced deliverables.
+- Checks compliance with the acceptance criteria.
+- Returns test reports to the execution phase.
