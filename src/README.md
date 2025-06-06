@@ -1,5 +1,21 @@
 # src
 
-**Français :** Racine du code applicatif. On y trouve l'interface Streamlit (`app_frontend.py`), les clients et la logique d'orchestration dans `orchestrators`.
+**Français :**
+- Racine du code applicatif.
+- `app_frontend.py` : tableau de bord Streamlit interactif.
+- Sous-dossiers :
+  - `agents/` pour toutes les implémentations d'agents.
+  - `orchestrators/` pour les logiques de supervision.
+  - `clients/` pour l'accès API.
+  - `services/` pour les services internes.
+  - `shared/` pour les utilitaires communs.
 
-**English:** Root of the application code. This directory hosts the Streamlit interface (`app_frontend.py`), the API clients and the orchestration logic under `orchestrators`.
+**English:**
+- Root of the application code.
+- `app_frontend.py`: interactive Streamlit dashboard.
+- Subfolders:
+  - `agents/` for all agent implementations.
+  - `orchestrators/` for supervision logics.
+  - `clients/` for API access.
+  - `services/` for internal services.
+  - `shared/` for common utilities.

@@ -1,5 +1,11 @@
 # clients
 
-**Français :** Clients HTTP permettant la communication avec les agents via le protocole A2A. Le fichier principal `a2a_api_client.py` facilite les appels REST.
+**Français :**
+- Clients HTTP pour communiquer avec les agents via le protocole A2A.
+- `a2a_api_client.py` offre des fonctions haut niveau pour envoyer messages et récupérer tâches.
+- Utilisé par l'interface Streamlit et les orchestrateurs.
 
-**English:** HTTP clients used to communicate with agents through the A2A protocol. The main file `a2a_api_client.py` simplifies REST calls.
+**English:**
+- HTTP clients to communicate with agents through the A2A protocol.
+- `a2a_api_client.py` exposes high level helpers to send messages and fetch tasks.
+- Used by the Streamlit interface and the supervisors.

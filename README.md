@@ -1,8 +1,19 @@
 # OrchestrAI Hackathon ADK - Système de Planification et d'Exécution Multi-Agents Interactif
 
+## English Summary
+This repository hosts an interactive multi-agent system built for the OrchestrAI hackathon. Users submit an initial objective through the Streamlit dashboard. The system clarifies the goal with the `UserInteractionAgent`, generates and validates a plan with TEAM&nbsp;1 (`Reformulator`, `Evaluator`, `Validator`) and then executes it with TEAM&nbsp;2 (`Decomposition`, `Development`, `Research`, `Testing`). Supervisors orchestrate each phase and all agents register to the Resource and Agent Manager (GRA). Data is stored in Firestore and the interface displays interactive task graphs thanks to *streamlit-agraph*.
+
 Ce projet est une implémentation d'un système multi-agents pour la clarification interactive d'objectifs, suivie par la génération, l'évaluation, la validation, la révision itérative de plans (TEAM 1), et enfin l'exécution décomposée de ces plans (TEAM 2). Il utilise un Agent Development Kit (ADK) basé sur le protocole A2A, avec une persistance des données via Firestore et une découverte de services gérée par un Gestionnaire de Ressources et d'Agents (GRA). Les agents intègrent des modèles de langage (LLM via Gemini) pour leur logique métier.
 
 La principale évolution est l'introduction d'un `GlobalSupervisorLogic` et d'un `UserInteractionAgent` pour affiner l'objectif initial avec l'utilisateur (Phase de Clarification), le passage à une équipe de planification détaillée (TEAM 1 : PLAN GENERATION orchestrée par `PlanningSupervisorLogic`), et enfin, une nouvelle phase d'exécution du plan validé (TEAM 2 : PLAN EXECUTION orchestrée par `ExecutionSupervisorLogic`).
+
+### Principaux modules
+- `src/app_frontend.py` : Tableau de bord Streamlit avec graphes interactifs.
+- `src/agents/` : Implémentations des agents (clarification, planification, exécution).
+- `src/orchestrators/` : Superviseurs orchestrant chaque phase du projet.
+- `src/services/` : Services internes dont le Gestionnaire de Ressources et d'Agents (GRA).
+- `src/shared/` : Utilitaires communs (gestion des graphes, logique et exécuteurs de base).
+The English version of these summaries is provided in each module's `README.md`.
 
 ## Table des Matières
 

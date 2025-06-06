@@ -1,5 +1,13 @@
 # orchestrators
 
-**Français :** Contient la logique de supervision du projet. Les fichiers `planning_supervisor_logic.py` et `execution_supervisor_logic.py` orchestrent respectivement la génération de plan (TEAM 1) et son exécution (TEAM 2).
+**Français :**
+- Logiques de supervision du projet.
+- `global_supervisor_logic.py` orchestre l'ensemble du flux.
+- `planning_supervisor_logic.py` pilote TEAM&nbsp;1 et gère le `TaskGraph`.
+- `execution_supervisor_logic.py` pilote TEAM&nbsp;2 et gère l'`ExecutionTaskGraph`.
 
-**English:** Contains the supervisory logic for the project. The files `planning_supervisor_logic.py` and `execution_supervisor_logic.py` orchestrate plan generation (TEAM 1) and its execution (TEAM 2) respectively.
+**English:**
+- Supervisory logic for the project.
+- `global_supervisor_logic.py` orchestrates the whole flow.
+- `planning_supervisor_logic.py` drives TEAM&nbsp;1 and manages the `TaskGraph`.
+- `execution_supervisor_logic.py` drives TEAM&nbsp;2 and manages the `ExecutionTaskGraph`.

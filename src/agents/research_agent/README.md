@@ -1,5 +1,11 @@
 # research_agent
 
-**Français :** Agent spécialisé dans la recherche documentaire ou Web. Il récupère des informations et peut synthétiser des documents pour alimenter le plan d'exécution.
+**Français :**
+- Spécialisé dans la recherche documentaire ou Web.
+- Fournit des synthèses et des références.
+- Alimente le plan d'exécution en informations.
 
-**English:** Agent specialized in document and web research. It gathers information and can summarize documents to feed into the execution plan.
+**English:**
+- Specialized in document and web research.
+- Provides summaries and references.
+- Feeds the execution plan with gathered information.

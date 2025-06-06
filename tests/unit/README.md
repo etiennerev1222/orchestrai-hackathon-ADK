@@ -1,5 +1,11 @@
 # unit
 
-**Français :** Tests unitaires vérifiant la logique interne des composants, comme la décomposition de plan.
+**Français :**
+- Tests unitaires ciblant la logique interne des composants.
+- Exemple : vérifie la décomposition de plan.
+- Exécutés automatiquement par la suite de tests.
 
-**English:** Unit tests verifying the internal logic of components, such as the plan decomposition.
+**English:**
+- Unit tests targeting the internal logic of components.
+- Example: check plan decomposition.
+- Executed automatically by the test suite.
