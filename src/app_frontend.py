@@ -165,7 +165,8 @@ def initialize_session_state():
         'current_execution_graph_details': None, 'current_execution_graph_id_loaded': None,
         'selected_artifact_content': None, 'selected_artifact_task_id': None,
         'new_objective_sidebar_key': "", 'clarification_response_input_key': "",
-        'editable_enriched_objective_text': ""
+        'editable_enriched_objective_text': "",
+        'show_artifact_modal': False
     }
     for key, default_value in keys_to_init.items():
         if key not in st.session_state:
@@ -197,8 +198,26 @@ def handle_node_click(node_id: str, is_team1: bool):
     else: # Artefact est un ID à récupérer via API
         content = asyncio.run(get_artifact_content_from_api(artifact_ref))
         st.session_state.selected_artifact_content = content or "Contenu de l'artefact non trouvé ou vide."
-    
+
+    st.session_state.show_artifact_modal = True
+
     # On ne fait pas de st.rerun() ici, on laisse le flux naturel de Streamlit mettre à jour l'UI.
+
+def render_artifact_content(content: Any, display_key: str):
+    """Affiche le contenu d'un artefact dans le bon format."""
+    if content == "Chargement...":
+        st.info(content)
+    elif content:
+        try:
+            parsed_json = json.loads(content)
+            st.json(parsed_json, key=f"{display_key}_json")
+        except (json.JSONDecodeError, TypeError):
+            if "```python" in content or "import " in content:
+                st.code(content, language="python", line_numbers=True, key=f"{display_key}_code")
+            else:
+                st.text_area("Contenu :", value=str(content), height=600, disabled=True, key=f"{display_key}_textarea")
+    else:
+        st.info("Aucun contenu d'artefact à afficher.")
 def display_agent_status_bar(agents_status: List[Dict[str, Any]]):
     """Affiche une barre de statut propre et visuellement agréable pour les agents."""
     st.subheader("📡 Statut des Agents")
@@ -396,6 +415,13 @@ with main_col:
     else:
         st.info("Sélectionnez un plan dans la barre latérale pour commencer.")
 
+    # Affichage d'un modal pour les artefacts lorsqu'un nœud est sélectionné
+    if st.session_state.get('show_artifact_modal'):
+        with st.modal("Artefact"):
+            st.markdown(f"**Tâche :** `{st.session_state.selected_artifact_task_id}`")
+            modal_display_key = f"modal_art_display_{st.session_state.selected_artifact_task_id}"
+            render_artifact_content(st.session_state.get('selected_artifact_content'), modal_display_key)
+        st.session_state.show_artifact_modal = False
 
 with artifact_col:
     st.header("📄 Artefact Sélectionné")
@@ -404,19 +430,6 @@ with artifact_col:
 
         content = st.session_state.get('selected_artifact_content')
         display_key = f"art_display_{st.session_state.selected_artifact_task_id}"
-
-        if content == "Chargement...":
-            st.info(content)
-        elif content:
-            try:
-                parsed_json = json.loads(content)
-                st.json(parsed_json, key=f"{display_key}_json")
-            except (json.JSONDecodeError, TypeError):
-                if "```python" in content or "import " in content:
-                    st.code(content, language="python", line_numbers=True, key=f"{display_key}_code")
-                else:
-                    st.text_area("Contenu :", value=str(content), height=600, disabled=True, key=f"{display_key}_textarea")
-        else:
-            st.info("Aucun contenu d'artefact à afficher.")
+        render_artifact_content(content, display_key)
     else:
         st.info("Cliquez sur un nœud dans un graphe pour voir son artefact.")
