@@ -6,7 +6,6 @@ import asyncio
 import json 
 from typing import Dict, Any, Optional, List
 import os
-import graphviz
 from streamlit_agraph import agraph, Node, Edge, Config
 import sys
 import pathlib
@@ -15,6 +14,7 @@ import pathlib
 # Permet au script de trouver les modules dans le dossier 'src'
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 from src.shared.execution_task_graph_management import ExecutionTaskState
+from src.shared.task_graph_management import TaskState
 
 # --- Constantes et Classes ---
 class GlobalPlanState:
@@ -293,25 +293,68 @@ with main_col:
         plan = st.session_state.active_global_plan_details
         if plan:
             # Affichage des détails du plan global et logique de clarification...
-           # --- Graphe TEAM 1 (Visualisation simple avec Graphviz) ---
+           # --- Graphe TEAM 1 (Interactif avec AGraph) ---
             team1_plan_id = plan.get("team1_plan_id")
             if team1_plan_id:
                 st.subheader(f"📊 Graphe de Planification (TEAM 1 : `{team1_plan_id}`)")
-                task_graph_details = asyncio.run(get_task_graph_details_from_api(team1_plan_id))
-                if task_graph_details:
-                    try:
-                        dot = graphviz.Digraph()
-                        dot.attr(rankdir='TB', splines='ortho')
-                        nodes_t1 = task_graph_details.get("nodes", {})
+
+                if st.session_state.current_task_graph_id_loaded != team1_plan_id:
+                    st.session_state.current_task_graph_details = asyncio.run(get_task_graph_details_from_api(team1_plan_id))
+                    st.session_state.current_task_graph_id_loaded = team1_plan_id
+
+                if st.session_state.current_task_graph_details:
+                    nodes_t1 = st.session_state.current_task_graph_details.get("nodes", {})
+                    if nodes_t1:
+                        a_nodes, a_edges = [], []
                         for node_id, node_info in nodes_t1.items():
-                            label = f"{node_info.get('objective', node_id)[:40]}...\nAgent: {node_info.get('assigned_agent')}\nÉtat: {node_info.get('state')}"
-                            dot.node(node_id, label, shape='box', style='rounded')
+                            node_state_val = node_info.get("state")
+                            color = {"background": "#D3D3D3", "border": "#808080"}  # Gris par défaut
+                            if node_state_val == TaskState.COMPLETED.value:
+                                color = {"background": "#D4EDDA", "border": "#155724"}
+                            elif node_state_val in [TaskState.FAILED.value, TaskState.UNABLE.value]:
+                                color = {"background": "#F8D7DA", "border": "#721C24"}
+                            elif node_state_val == TaskState.WORKING.value:
+                                color = {"background": "#FFF3CD", "border": "#856404"}
+
+                            label = node_info.get("objective", node_id)[:35]
+                            title = (
+                                f"ID: {node_id}\nAgent: {node_info.get('assigned_agent', 'N/A')}"
+                                f"\nÉtat: {node_state_val}\nObjectif: {node_info.get('objective', 'N/A')}"
+                            )
+                            a_nodes.append(
+                                Node(id=node_id, label=label, title=title, shape="box", color=color, font={"color": "black"})
+                            )
+
                         for node_id, node_info in nodes_t1.items():
-                            for child_id in node_info.get('children', []):
-                                if child_id in nodes_t1: dot.edge(node_id, child_id)
-                        st.graphviz_chart(dot)
-                    except Exception as e:
-                        st.error(f"Erreur de rendu du graphe TEAM 1: {e}")
+                            for child_id in node_info.get("children", []):
+                                if child_id in nodes_t1:
+                                    a_edges.append(Edge(source=node_id, target=child_id, color="gray"))
+
+                        config = Config(
+                            width=1200,
+                            height=900,
+                            directed=True,
+                            physics=False,
+                            layout={
+                                "hierarchical": {
+                                    "enabled": True,
+                                    "direction": "UD",
+                                    "sortMethod": "directed",
+                                    "levelSeparation": 250,
+                                    "nodeSpacing": 200,
+                                }
+                            },
+                        )
+
+                        clicked_node_id = agraph(nodes=a_nodes, edges=a_edges, config=config)
+
+                        if clicked_node_id and clicked_node_id != st.session_state.selected_artifact_task_id:
+                            handle_node_click(clicked_node_id, is_team1=True)
+                            st.rerun()
+                    else:
+                        st.info("Le graphe de planification est vide.")
+                else:
+                    st.info("Le graphe de planification est introuvable.")
 
 
             # --- Graphe TEAM 2 (Interactif) ---
