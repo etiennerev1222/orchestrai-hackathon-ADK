@@ -1,3 +1,4 @@
+
 # app_frontend.py
 import streamlit as st
 import httpx
@@ -6,19 +7,14 @@ import json
 from typing import Dict, Any, Optional, List
 import os
 import graphviz
-import pandas as pd # Pour manipuler les données pour le graphe
+from streamlit_agraph import agraph, Node, Edge, Config
 import sys
 import pathlib
-from streamlit_agraph import agraph, Node, Edge, Config # L'import peut varier légèrement
 
-# Ajout pour le chemin (si app_frontend.py est dans src et vous l'exécutez depuis la racine du projet)
-# Si vous exécutez streamlit run src/app_frontend.py depuis la racine,
-# et que src est reconnu comme un package, cet append n'est pas toujours nécessaire.
-# Mais s'il fonctionne pour vous, gardons-le.
+# --- Configuration du chemin et Imports ---
+# Permet au script de trouver les modules dans le dossier 'src'
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
-
 from src.shared.execution_task_graph_management import ExecutionTaskState
-
 
 # --- Constantes et Classes ---
 class GlobalPlanState:
@@ -72,68 +68,41 @@ async def submit_clarification_response_to_api(global_plan_id: str, user_respons
             return None
 
 async def get_global_plan_details_from_api(global_plan_id: str):
-    if not global_plan_id:
-        return None
+    if not global_plan_id: return None
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(f"{BACKEND_API_URL}/v1/global_plans/{global_plan_id}", timeout=10.0)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                st.warning(f"Plan global '{global_plan_id}' non trouvé.")
-                return None
-            st.error(f"Erreur HTTP récupération détails plan {global_plan_id}: {e}")
+            if e.response.status_code == 404: st.warning(f"Plan global '{global_plan_id}' non trouvé.")
+            else: st.error(f"Erreur HTTP récupération détails plan {global_plan_id}: {e}")
             return None
         except Exception as e:
             st.error(f"Erreur récupération détails plan {global_plan_id}: {e}")
             return None
 
 async def get_task_graph_details_from_api(task_graph_plan_id: str): # Pour TEAM 1
-    if not task_graph_plan_id:
-        return None
+    if not task_graph_plan_id: return None
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(f"{BACKEND_API_URL}/plans/{task_graph_plan_id}", timeout=10.0) 
             response.raise_for_status()
             return response.json() 
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                st.warning(f"Détails du TaskGraph (TEAM 1) pour '{task_graph_plan_id}' non trouvés.")
-                return None
-            st.error(f"Erreur HTTP lors de la récupération du TaskGraph (TEAM 1) {task_graph_plan_id}: {e}")
-            return None
         except Exception as e:
             st.error(f"Erreur lors de la récupération du TaskGraph (TEAM 1) {task_graph_plan_id}: {e}")
             return None
 
 async def get_execution_task_graph_details_from_api(execution_plan_id: str): # Pour TEAM 2
-    if not execution_plan_id:
-        return None
+    if not execution_plan_id: return None
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(f"{BACKEND_API_URL}/v1/execution_task_graphs/{execution_plan_id}", timeout=10.0)
             response.raise_for_status()
             return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                st.warning(f"Détails du graphe d'exécution (TEAM 2) pour '{execution_plan_id}' non trouvés.")
-                return None
-            st.error(f"Erreur HTTP lors de la récupération du graphe d'exécution (TEAM 2) {execution_plan_id}: {e}")
-            return None
         except Exception as e:
             st.error(f"Erreur lors de la récupération du graphe d'exécution (TEAM 2) {execution_plan_id}: {e}")
             return None
-
-async def check_agent_health(agent_url: str, client: httpx.AsyncClient) -> bool: # Fonction check_agent_health (gardée)
-    if not agent_url:
-        return False
-    try:
-        card_url = agent_url.strip('/') + "/.well-known/agent.json"
-        response = await client.get(card_url, timeout=5.0)
-        return response.status_code == 200
-    except Exception:
-        return False
 
 async def get_agents_status_with_health_from_api():
     async with httpx.AsyncClient() as client:
@@ -142,13 +111,22 @@ async def get_agents_status_with_health_from_api():
             response_agents.raise_for_status()
             agents_list = response_agents.json()
             
-            enriched_agents_status = []
-            for agent_info in agents_list:
-                is_healthy = await check_agent_health(agent_info.get("url"), client) # Utilisation de check_agent_health
-                agent_info["health_status"] = "✅ Online" if is_healthy else "⚠️ Offline"
-                agent_info["health_color"] = "green" if is_healthy else "orange"
-                enriched_agents_status.append(agent_info)
-            return enriched_agents_status
+            async def check_agent_health(agent_url: str):
+                if not agent_url: return False
+                try:
+                    card_url = agent_url.strip('/') + "/.well-known/agent.json"
+                    res = await client.get(card_url, timeout=5.0)
+                    return res.status_code == 200
+                except Exception:
+                    return False
+
+            tasks = [check_agent_health(agent.get("url")) for agent in agents_list]
+            health_results = await asyncio.gather(*tasks)
+            
+            for agent, is_healthy in zip(agents_list, health_results):
+                agent["health_status"] = "✅ Online" if is_healthy else "⚠️ Offline"
+                agent["health_color"] = "green" if is_healthy else "orange"
+            return agents_list
         except Exception as e:
             st.error(f"Erreur récupération statut enrichi agents: {e}")
             return []
@@ -156,10 +134,7 @@ async def get_agents_status_with_health_from_api():
 async def accept_and_start_planning_api(global_plan_id: str, user_final_objective: Optional[str] = None):
     async with httpx.AsyncClient() as client:
         try:
-            payload = {}
-            if user_final_objective: # S'assurer que la chaîne n'est pas vide non plus
-                payload["user_final_objective"] = user_final_objective
-            
+            payload = {"user_final_objective": user_final_objective} if user_final_objective else {}
             response = await client.post(f"{BACKEND_API_URL}/v1/global_plans/{global_plan_id}/accept_and_plan", json=payload, timeout=30.0)
             response.raise_for_status()
             return response.json()
@@ -168,436 +143,237 @@ async def accept_and_start_planning_api(global_plan_id: str, user_final_objectiv
             return None
 
 async def get_artifact_content_from_api(gra_artifact_id: str):
-    if not gra_artifact_id:
-        return None
+    if not gra_artifact_id: return None
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(f"{BACKEND_API_URL}/artifacts/{gra_artifact_id}", timeout=10.0)
             response.raise_for_status()
             artifact_data = response.json()
-            return artifact_data.get("content", f"Contenu de l'artefact '{gra_artifact_id}' non trouvé dans la réponse.")
+            return artifact_data.get("content")
         except Exception as e:
             st.error(f"Erreur récupération contenu artefact {gra_artifact_id}: {e}")
             return f"Erreur: Impossible de récupérer l'artefact {gra_artifact_id}. {e}"
 
-# --- Fonctions de gestion d'état ---
-# Garder UNE SEULE définition de refresh_active_global_plan_details
-def refresh_active_global_plan_details():
-    if st.session_state.active_global_plan_id:
-        details = asyncio.run(get_global_plan_details_from_api(st.session_state.active_global_plan_id))
-        st.session_state.active_global_plan_details = details
-        if details:
-            if details.get("current_supervisor_state") == GlobalPlanState.CLARIFICATION_PENDING_USER_INPUT:
-                st.session_state.last_question_to_user = details.get("last_question_to_user")
-                if details.get("last_agent_response_artifact"):
-                    st.session_state.editable_enriched_objective_text = details["last_agent_response_artifact"].get("tentatively_enriched_objective", details.get("raw_objective",""))
-                else:
-                    st.session_state.editable_enriched_objective_text = details.get("raw_objective","")
-            else: 
-                st.session_state.last_question_to_user = None
-                st.session_state.editable_enriched_objective_text = details.get("clarified_objective", details.get("raw_objective",""))
-            
-            # Réinitialiser l'artefact et les graphes spécifiques si le plan change ou est rechargé
-            st.session_state.selected_artifact_content = None
-            st.session_state.selected_artifact_task_id = None
-            # Forcer le rechargement des graphes la prochaine fois qu'ils sont nécessaires pour ce plan
-            if st.session_state.current_task_graph_id_loaded == details.get("team1_plan_id"):
-                pass # Ne pas réinitialiser si c'est déjà le bon
-            else:
-                 st.session_state.current_task_graph_id_loaded = None 
-                 st.session_state.current_task_graph_details = None
+# --- Fonctions de gestion d'état et Callbacks ---
 
-            if st.session_state.current_execution_graph_id_loaded == details.get("team2_execution_plan_id"):
-                pass
-            else:
-                st.session_state.current_execution_graph_id_loaded = None
-                st.session_state.current_execution_graph_details = None
-        else: 
-            st.session_state.active_global_plan_details = None
-            st.session_state.last_question_to_user = None
-            st.session_state.editable_enriched_objective_text = ""
-            st.session_state.selected_artifact_content = None
-            st.session_state.selected_artifact_task_id = None
-            st.session_state.current_task_graph_id_loaded = None 
-            st.session_state.current_task_graph_details = None
-            st.session_state.current_execution_graph_id_loaded = None
-            st.session_state.current_execution_graph_details = None
+def initialize_session_state():
+    """Initialise toutes les clés nécessaires au premier lancement."""
+    keys_to_init = {
+        'active_global_plan_id': None, 'active_global_plan_details': None, 
+        'global_plans_summary_list': [], 'agents_status': [],
+        'current_task_graph_details': None, 'current_task_graph_id_loaded': None,
+        'current_execution_graph_details': None, 'current_execution_graph_id_loaded': None,
+        'selected_artifact_content': None, 'selected_artifact_task_id': None,
+        'new_objective_sidebar_key': "", 'clarification_response_input_key': "",
+        'editable_enriched_objective_text': ""
+    }
+    for key, default_value in keys_to_init.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
 
-def load_initial_data():
-    if 'agents_status' not in st.session_state or not st.session_state.agents_status : 
-        st.session_state.agents_status = asyncio.run(get_agents_status_with_health_from_api())
-    if 'global_plans_summary_list' not in st.session_state or not st.session_state.global_plans_summary_list: 
-        st.session_state.global_plans_summary_list = asyncio.run(get_global_plans_summary_from_api())
-    
-    if st.session_state.active_global_plan_id and \
-       (not st.session_state.active_global_plan_details or \
-        st.session_state.active_global_plan_details.get("global_plan_id") != st.session_state.active_global_plan_id):
-        refresh_active_global_plan_details()
+def handle_node_click(node_id: str, is_team1: bool):
+    """Callback unique pour gérer le clic sur un noeud de graphe."""
+    if not node_id: return
 
-# Garder UNE SEULE définition de handle_select_task_for_artifact
-def handle_select_task_for_artifact(task_id: str, artifact_ref: Optional[str]):
-    st.session_state.selected_artifact_task_id = task_id
-    st.session_state.selected_artifact_content = "Chargement de l'artefact..." # Message temporaire
-    if artifact_ref:
-        # Pas de spinner ici car le callback ne le montrera pas avant le prochain rerun
-        content = asyncio.run(get_artifact_content_from_api(artifact_ref))
-        st.session_state.selected_artifact_content = content
-    else:
-        st.session_state.selected_artifact_content = "Aucun artefact (output_artifact_ref) n'est associé à cette tâche."
+    st.session_state.selected_artifact_task_id = node_id
+    st.session_state.selected_artifact_content = "Chargement de l'artefact..."
 
+    graph_data = st.session_state.current_task_graph_details if is_team1 else st.session_state.current_execution_graph_details
+    node_data = graph_data.get("nodes", {}).get(node_id) if graph_data else None
 
-# --- Callbacks --- (garder les versions uniques et correctes)
-def handle_submit_clarification_response():
-    user_typed_response = st.session_state.clarification_response_input_key 
-    if user_typed_response and st.session_state.active_global_plan_id:
-        api_response = asyncio.run(submit_clarification_response_to_api(
-            st.session_state.active_global_plan_id,
-            user_typed_response
-        ))
-        if api_response:
-            st.session_state.clarification_response_input_key = "" 
-            refresh_active_global_plan_details()
-            st.rerun() # Forcer le rafraîchissement de l'affichage
-        else:
-            st.error("Échec de l'envoi de la réponse.") 
-    elif not user_typed_response:
-        st.warning("Veuillez entrer une réponse.")
-    elif not st.session_state.active_global_plan_id:
-        st.warning("Aucun plan actif sélectionné pour envoyer une réponse.")
-
-
-def handle_accept_and_plan():
-    if not st.session_state.active_global_plan_id:
-        st.warning("Aucun plan actif sélectionné.")
+    if not node_data:
+        st.session_state.selected_artifact_content = f"Détails du noeud {node_id} non trouvés."
         return
-    final_objective_to_send = st.session_state.editable_enriched_objective_text
-    payload_objective = final_objective_to_send if final_objective_to_send and final_objective_to_send.strip() else None
 
-    api_response = asyncio.run(accept_and_start_planning_api(
-        st.session_state.active_global_plan_id,
-        user_final_objective=payload_objective
-    ))
-    if api_response:
-        st.toast(f"Objectif accepté. Lancement de TEAM 1 pour plan '{st.session_state.active_global_plan_id}'.", icon="✅")
-        refresh_active_global_plan_details()
-        st.rerun()
-    else:
-        st.error("Échec de l'acceptation de l'objectif ou du lancement de TEAM 1.")
+    artifact_ref_key = "artifact_ref" if is_team1 else "output_artifact_ref"
+    artifact_ref = node_data.get(artifact_ref_key)
 
-def handle_launch_global_plan():
-    objective_text = st.session_state.new_objective_sidebar_key
-    if objective_text:
-        api_response = asyncio.run(submit_new_global_plan_to_api(objective_text))
-        if api_response and api_response.get("global_plan_id"):
-            new_plan_id = api_response.get("global_plan_id")
-            st.session_state.active_global_plan_id = new_plan_id
-            st.toast(f"Plan global '{new_plan_id}' initié.", icon="🚀")
-            st.session_state.new_objective_sidebar_key = "" 
-            st.session_state.clarification_response_input_key = ""
-            st.session_state.editable_enriched_objective_text = ""
-            st.session_state.current_task_graph_details = None
-            st.session_state.current_task_graph_id_loaded = None
-            st.session_state.current_execution_graph_details = None
-            st.session_state.current_execution_graph_id_loaded = None
-            st.session_state.selected_artifact_content = None
-            st.session_state.selected_artifact_task_id = None
-            st.session_state.global_plans_summary_list = asyncio.run(get_global_plans_summary_from_api())
-            refresh_active_global_plan_details()
-            st.rerun()
-        else:
-            st.error("Échec de l'initiation du plan global.")
-    else:
-        st.warning("Veuillez entrer un objectif.")
+    if not artifact_ref:
+        st.session_state.selected_artifact_content = "Ce noeud n'a pas d'artefact de sortie associé."
+        return
 
+    if is_team1: # Artefact est le contenu direct (JSON ou texte)
+        st.session_state.selected_artifact_content = json.dumps(artifact_ref, indent=2, ensure_ascii=False) if isinstance(artifact_ref, dict) else str(artifact_ref)
+    else: # Artefact est un ID à récupérer via API
+        content = asyncio.run(get_artifact_content_from_api(artifact_ref))
+        st.session_state.selected_artifact_content = content or "Contenu de l'artefact non trouvé ou vide."
+    
+    # On ne fait pas de st.rerun() ici, on laisse le flux naturel de Streamlit mettre à jour l'UI.
+def display_agent_status_bar(agents_status: List[Dict[str, Any]]):
+    """Affiche une barre de statut propre et visuellement agréable pour les agents."""
+    st.subheader("📡 Statut des Agents")
+    if not agents_status:
+        st.info("Aucun agent n'a été découvert. Vérifiez que le GRA et les serveurs d'agents sont lancés.")
+        return
+
+    # Détermine le nombre de colonnes en fonction du nombre d'agents
+    cols = st.columns(len(agents_status))
+
+    for i, agent in enumerate(agents_status):
+        with cols[i]:
+            name = agent.get("name", "Inconnu").replace("AgentServer", "")
+            status_text = agent.get("health_status", "Offline")
+            skills = ", ".join(agent.get("skills", []))
+
+            # Utilisation de st.metric pour un look propre et intégré
+            st.metric(
+                label=status_text,
+                value=name,
+                help=f"Compétences : {skills}"
+            )
 # --- Interface Streamlit ---
-st.set_page_config(layout="wide", page_title="OrchestrAI Dashboard v2.4")
-st.title("🤖 OrchestrAI - Planification & Exécution Intelligente")
-
-# Initialisation de l'état de session (assurez-vous que toutes les clés sont là)
-# ... (votre bloc d'initialisation existant, vérifiez que toutes les clés utilisées sont initialisées)
-for key in ['clarification_response_input_key', 'active_global_plan_id', 
-            'active_global_plan_details', 'last_question_to_user', 'agents_status',
-            'global_plans_summary_list', 'editable_enriched_objective_text',
-            'current_task_graph_details', 'current_task_graph_id_loaded',
-            'current_execution_graph_details', 'current_execution_graph_id_loaded',
-            'selected_artifact_content', 'selected_artifact_task_id', 
-            'new_objective_sidebar_key', 'team1_agent_tasks_count_stats', # Ajouté pour les stats
-            'team1_agent_stats_last_updated']: # Ajouté pour les stats
-    if key not in st.session_state:
-        st.session_state[key] = None if not key.endswith("_list") and not key.endswith("_key") else ([] if key.endswith("_list") else ("" if key.endswith("_key") else None) )
 
 
-load_initial_data()
+# --- Application Principale ---
+
+st.set_page_config(layout="wide", page_title="OrchestrAI Dashboard")
+initialize_session_state()
+
+st.title("🤖 OrchestrAI - Tableau de Bord")
+
+# --- Barre de Statut des Agents (Pleine Largeur) ---
+agents_status_list = asyncio.run(get_agents_status_with_health_from_api())
+display_agent_status_bar(agents_status_list)
+st.markdown("---")
+
+# --- Colonnes pour le contenu principal ---
+main_col, artifact_col = st.columns([0.65, 0.35])
+
+initialize_session_state()
 
 # --- Sidebar ---
 with st.sidebar:
     st.header("🚀 Nouveau Plan Global")
     st.text_area("Objectif initial:", height=100, key="new_objective_sidebar_key")
-    st.button("Lancer Planification", key="launch_global_plan_button_sidebar_main", on_click=handle_launch_global_plan)
+    if st.button("Lancer Planification", key="launch_global_plan_button"):
+        if st.session_state.new_objective_sidebar_key:
+            asyncio.run(submit_new_global_plan_to_api(st.session_state.new_objective_sidebar_key))
+            st.session_state.new_objective_sidebar_key = ""
+            # On ne change pas de plan actif ici, on attend le rafraîchissement
+        else:
+            st.warning("Veuillez entrer un objectif.")
 
     st.markdown("---")
     st.header("📋 Plans Globaux Existants")
+    if st.button("Rafraîchir la liste des plans", key="refresh_plans_list"):
+        st.session_state.global_plans_summary_list = asyncio.run(get_global_plans_summary_from_api())
+
     if not st.session_state.global_plans_summary_list:
-        st.info("Aucun plan global. Lancez un nouveau plan.")
+        st.session_state.global_plans_summary_list = asyncio.run(get_global_plans_summary_from_api())
+    
+    if not st.session_state.global_plans_summary_list:
+        st.info("Aucun plan global trouvé.")
     else:
-        plan_options = {
-            plan['global_plan_id']: f"{plan['raw_objective'][:30]}{'...' if len(plan['raw_objective']) > 30 else ''} (État: {plan.get('current_supervisor_state', 'N/A')})"
-            for plan in st.session_state.global_plans_summary_list
-        }
-
-        current_active_id = st.session_state.active_global_plan_id
-        if current_active_id not in plan_options:
-            current_active_id = None
-
+        sorted_plans = sorted(st.session_state.global_plans_summary_list, key=lambda p: p.get('updated_at', ''), reverse=True)
+        plan_options = {plan['global_plan_id']: f"ID: {plan['global_plan_id']} | {plan['raw_objective'][:30]}..." for plan in sorted_plans}
+        
         selected_id = st.selectbox(
             "Sélectionnez un Plan :",
             options=list(plan_options.keys()),
-            format_func=lambda x: plan_options[x],
-            index=list(plan_options.keys()).index(current_active_id) if current_active_id else 0,
-            key="global_plan_selector_sidebar_selectbox",
+            format_func=lambda pid: plan_options.get(pid, pid),
+            key="global_plan_selector"
         )
-        
-        if selected_id != st.session_state.active_global_plan_id:
-            st.session_state.active_global_plan_id = selected_id
-            refresh_active_global_plan_details() # Cela va aussi réinitialiser les artefacts/graphes chargés
-            st.rerun()
+        st.session_state.active_global_plan_id = selected_id
 
-    st.markdown("---")
-    st.header("⚙️ Actions")
-    if st.button("Rafraîchir Tout", key="refresh_all_sidebar_button"): 
-        with st.spinner("Rafraîchissement..."):
-            st.session_state.agents_status = asyncio.run(get_agents_status_with_health_from_api())
-            st.session_state.global_plans_summary_list = asyncio.run(get_global_plans_summary_from_api())
-            # Réinitialiser les graphes chargés pour forcer le rechargement si un plan est actif
-            st.session_state.current_task_graph_id_loaded = None
-            st.session_state.current_execution_graph_id_loaded = None
-            if st.session_state.active_global_plan_id:
-                refresh_active_global_plan_details()
-        st.rerun()
-
-
-# --- Zone d'affichage principale ---
-# Statut des agents en haut (peut être redondant avec la sidebar, à vous de choisir)
-# st.subheader("📡 Aperçu des Agents Enregistrés") 
-# ... (votre logique d'affichage horizontal si vous la gardez) ...
-# st.markdown("---")
-
-main_col, artifact_col = st.columns([0.65, 0.35])  # Ajuster les proportions
+# --- Colonnes Principales ---
+main_col, artifact_col = st.columns([0.65, 0.35])
 
 with main_col:
     if st.session_state.agents_status:
-        status_parts = []
-        for agent in st.session_state.agents_status:
-            name = agent.get("name", "Agent")
-            color = agent.get("health_color", "grey")
-            text = agent.get("health_status", "")
-            status_parts.append(f"<span style='color:{color};'>●</span> {name} ({text.split(' ')[-1]})")
-        st.markdown("### 📡 Statut des Agents : " + " | ".join(status_parts), unsafe_allow_html=True)
+        # On récupère le statut des agents et on l'affiche avec la nouvelle fonction
+        agents_status_list = asyncio.run(get_agents_status_with_health_from_api())
+        display_agent_status_bar(agents_status_list)
+        st.markdown("---") # Ajoute une ligne de séparation visuelle
     st.header("🔍 Plan Actif & Graphes")
-    if not st.session_state.active_global_plan_id or not st.session_state.active_global_plan_details:
-        st.info("Sélectionnez un plan dans la barre latérale ou lancez un nouveau plan.")
-    else:
-        plan = st.session_state.active_global_plan_details
-        st.subheader(f"Plan Global : `{plan.get('global_plan_id')}`")
-        # ... (affichage des détails du plan global comme Objectif, Etat, etc.)
-        st.text_area("Objectif Initial:", value=plan.get('raw_objective', 'N/A'), height=75, disabled=True, key=f"raw_obj_display_{plan.get('global_plan_id')}")
-        st.info(f"État Actuel: **{plan.get('current_supervisor_state', 'N/A')}**")
-        if plan.get("task_type_estimation"): st.caption(f"Type estimé: {plan.get('task_type_estimation')}")
-        if plan.get("clarification_attempts"): st.caption(f"Tentatives de clarification: {plan.get('clarification_attempts')}")
-
-
-        # --- Section Dialogue pour la Clarification ---
-        if plan.get("current_supervisor_state") == GlobalPlanState.CLARIFICATION_PENDING_USER_INPUT:
-            st.markdown("---")
-            st.subheader("❓ Clarification et Enrichissement")
-            agent_artifact = plan.get("last_agent_response_artifact", {})
-            tentative_obj = agent_artifact.get("tentatively_enriched_objective", st.session_state.editable_enriched_objective_text)
-            if not tentative_obj : tentative_obj = plan.get("raw_objective","") # Fallback
-            st.session_state.editable_enriched_objective_text = st.text_area(
-                "Objectif Enrichi/Modifiable (proposé par l'agent ou votre dernière version) :", 
-                value=tentative_obj, height=150, key="editable_obj_clarification"
-            )
-            if agent_artifact.get("proposed_elements"):
-                st.markdown("**Éléments Proposés/Assumés par l'Agent :**")
-                st.json(agent_artifact.get("proposed_elements"))
-            if st.session_state.last_question_to_user:
-                st.info(f"**Agent demande :** {st.session_state.last_question_to_user}")
-            
-            st.text_area("Votre réponse/commentaires :", height=75, key="clarification_response_input_key" )
-            
-            btn_cols = st.columns(2)
-            with btn_cols[0]:
-                st.button("Soumettre Réponse", key="submit_clarification_main_btn", on_click=handle_submit_clarification_response )
-            with btn_cols[1]:
-                st.button("✅ Valider Objectif & Lancer TEAM 1", key="accept_and_plan_main_btn", on_click=handle_accept_and_plan )
+    if st.session_state.active_global_plan_id:
+        if not st.session_state.active_global_plan_details or st.session_state.active_global_plan_details.get("global_plan_id") != st.session_state.active_global_plan_id:
+             with st.spinner("Chargement des détails du plan..."):
+                st.session_state.active_global_plan_details = asyncio.run(get_global_plan_details_from_api(st.session_state.active_global_plan_id))
         
-        elif plan.get("current_supervisor_state") == GlobalPlanState.OBJECTIVE_CLARIFIED:
-             st.success(f"Objectif clarifié. Prêt pour TEAM 1. Objectif final:\n_{plan.get('clarified_objective')}_")
-             if st.button("Lancer TEAM 1 manuellement (si pas auto)", key="manual_launch_team1"): # Au cas où
-                handle_accept_and_plan() # Cette fonction devrait utiliser l'objectif déjà clarifié
-
-        # ... (Autres messages d'état pour TEAM1 et TEAM2 comme avant) ...
-        if plan.get("current_supervisor_state", "").startswith("TEAM1_"):
-             st.info(f"Statut TEAM 1 ({plan.get('team1_plan_id', 'N/A')}): {plan.get('team1_status', 'En cours...')}")
-        if plan.get("current_supervisor_state", "").startswith("TEAM2_"):
-             st.info(f"Statut TEAM 2 ({plan.get('team2_execution_plan_id', 'N/A')}): {plan.get('team2_status', 'En cours...')}")
-
-
-        # --- Affichage du Graphe TEAM 1 ---
-        team1_plan_id = plan.get("team1_plan_id")
-        if team1_plan_id:
-            st.markdown("---")
-            st.subheader(f"📊 Graphe de Planification (TEAM 1 : `{team1_plan_id}`)")
-            if st.session_state.current_task_graph_id_loaded != team1_plan_id:
-                with st.spinner(f"Chargement du graphe TEAM 1 {team1_plan_id}..."):
-                    st.session_state.current_task_graph_details = asyncio.run(get_task_graph_details_from_api(team1_plan_id))
-                    st.session_state.current_task_graph_id_loaded = team1_plan_id
-                    st.rerun()
-            
-            if st.session_state.current_task_graph_details:
-                # ... (votre code graphviz pour TEAM 1, avec boutons pour handle_select_task_for_artifact)
-                # Exemple simplifié pour un bouton d'artefact (à adapter pour tous les noeuds avec artefacts)
-                nodes_t1 = st.session_state.current_task_graph_details.get("nodes", {})
-                for node_id, node_info in nodes_t1.items():
-                    if node_info.get("artifact_ref"): # Si la tâche a un artefact
-                        if st.button(f"Artefact T1: {node_id[:8]} ({node_info.get('objective', '')[:20]}...)", key=f"art_btn_t1_{node_id}"):
-                            handle_select_task_for_artifact(node_id, node_info.get("artifact_ref"))
-                            # Pas besoin de rerun ici, l'affichage de l'artefact se mettra à jour
-                # ... (le reste de votre code graphviz pour TEAM 1) ...
-                # Affichage du graphe... (votre code graphviz existant pour TEAM 1)
-                with st.expander("Données brutes graphe TEAM 1", expanded=False):
-                    st.json(st.session_state.current_task_graph_details)
+        plan = st.session_state.active_global_plan_details
+        if plan:
+            # Affichage des détails du plan global et logique de clarification...
+           # --- Graphe TEAM 1 (Visualisation simple avec Graphviz) ---
+            team1_plan_id = plan.get("team1_plan_id")
+            if team1_plan_id:
+                st.subheader(f"📊 Graphe de Planification (TEAM 1 : `{team1_plan_id}`)")
+                task_graph_details = asyncio.run(get_task_graph_details_from_api(team1_plan_id))
+                if task_graph_details:
+                    try:
+                        dot = graphviz.Digraph()
+                        dot.attr(rankdir='TB', splines='ortho')
+                        nodes_t1 = task_graph_details.get("nodes", {})
+                        for node_id, node_info in nodes_t1.items():
+                            label = f"{node_info.get('objective', node_id)[:40]}...\nAgent: {node_info.get('assigned_agent')}\nÉtat: {node_info.get('state')}"
+                            dot.node(node_id, label, shape='box', style='rounded')
+                        for node_id, node_info in nodes_t1.items():
+                            for child_id in node_info.get('children', []):
+                                if child_id in nodes_t1: dot.edge(node_id, child_id)
+                        st.graphviz_chart(dot)
+                    except Exception as e:
+                        st.error(f"Erreur de rendu du graphe TEAM 1: {e}")
 
 
-        # --- Affichage du Graphe TEAM 2 ---
-        team2_exec_id = plan.get("team2_execution_plan_id")
-        if team2_exec_id and plan.get("current_supervisor_state", "").startswith("TEAM2_"):
-            st.markdown("---")
-            st.subheader(f"📈 Graphe d'Exécution (TEAM 2 : `{team2_exec_id}`)")
-
-
-            
-            if st.session_state.current_execution_graph_id_loaded != team2_exec_id:
-                with st.spinner(f"Chargement du graphe d'exécution {team2_exec_id}..."):
+            # --- Graphe TEAM 2 (Interactif) ---
+            team2_exec_id = plan.get("team2_execution_plan_id")
+            if team2_exec_id:
+                st.subheader(f"📈 Graphe d'Exécution (TEAM 2 : `{team2_exec_id}`)")
+                if st.session_state.current_execution_graph_id_loaded != team2_exec_id:
                     st.session_state.current_execution_graph_details = asyncio.run(get_execution_task_graph_details_from_api(team2_exec_id))
                     st.session_state.current_execution_graph_id_loaded = team2_exec_id
-                    st.rerun()
 
-            if st.session_state.current_execution_graph_details:
-                exec_graph_data = st.session_state.current_execution_graph_details
-                nodes_data_t2 = exec_graph_data.get("nodes", {})
-                if not nodes_data_t2 and exec_graph_data.get("overall_status") == "PENDING_DECOMPOSITION":
-                    st.info("Plan d'exécution en attente de décomposition...")
-                elif not nodes_data_t2:
-                    st.info("Aucun nœud à afficher pour le graphe d'exécution.")
-                else:
-                    # Affichage des boutons d'artefacts pour TEAM 2 AVANT le graphe
-                    st.markdown("##### Artefacts produits par TEAM 2 :")
-                    for node_id, node_info in nodes_data_t2.items():
-                        if node_info.get("state") == ExecutionTaskState.COMPLETED.value and node_info.get("output_artifact_ref"):
-                            btn_label = f"Artefact: {node_id[:12]}... ({node_info.get('objective', 'N/A')[:25]}...)"
-                            if st.button(btn_label, key=f"art_btn_t2_{node_id}"):
-                                handle_select_task_for_artifact(node_id, node_info.get("output_artifact_ref"))
-                                # st.rerun() # Le rerun est géré par handle_select_task si besoin d'update immédiat de la colonne artifact
-                    
-                    # Affichage du graphe interactif via streamlit-agraph pour TEAM 2
-                    try:
-                        a_nodes: List[Node] = []
-                        a_edges: List[Edge] = []
-                        start_node_id = f"decompose_{team2_exec_id}"
-                        start_added = False
+                if st.session_state.current_execution_graph_details:
+                    nodes_data_t2 = st.session_state.current_execution_graph_details.get("nodes", {})
+                    if nodes_data_t2:
+                        a_nodes, a_edges = [], []
                         for node_id, node_info in nodes_data_t2.items():
                             node_state_val = node_info.get("state")
-                            color = "grey"
-                            if node_state_val == ExecutionTaskState.COMPLETED.value:
-                                color = "lightgreen"
-                            elif node_state_val == ExecutionTaskState.FAILED.value:
-                                color = "lightcoral"
-
-                            label = node_info.get("objective", node_id)[:30]
-                            a_nodes.append(
-                                Node(
-                                    id=node_id,
-                                    title=node_id,
-                                    label=label,
-                                    color=color,
-                                    shape="box",
-                                )
-                            )
+                            color = {"background": "#D3D3D3", "border": "#808080"} # Gris par défaut
+                            if node_state_val == ExecutionTaskState.COMPLETED.value: color = {"background": "#D4EDDA", "border": "#155724"}
+                            elif node_state_val == ExecutionTaskState.FAILED.value: color = {"background": "#F8D7DA", "border": "#721C24"}
+                            elif node_state_val == ExecutionTaskState.WORKING.value: color = {"background": "#FFF3CD", "border": "#856404"}
+                            
+                            label = node_info.get("objective", node_id)[:35]
+                            title = f"ID: {node_id}\nÉtat: {node_state_val}\nObjectif: {node_info.get('objective', 'N/A')}"
+                            a_nodes.append(Node(id=node_id, label=label, title=title, shape="box", color=color, font={"color": "black"}))
 
                             for dep_id in node_info.get("dependencies", []):
                                 if dep_id in nodes_data_t2:
-                                    a_edges.append(Edge(source=dep_id, target=node_id))
-                                elif dep_id == start_node_id:
-                                    if not start_added:
-                                        a_nodes.append(
-                                            Node(
-                                                id=start_node_id,
-                                                label="Start: Decomp.",
-                                                color="purple",
-                                                shape="ellipse",
-                                            )
-                                        )
-                                        start_added = True
-                                    a_edges.append(Edge(source=start_node_id, target=node_id))
-
-                        config = Config(
-                            height=600,
-                            width=800,
-                            directed=True,
-                            hierarchical=True,
-                        )
-                        agraph(nodes=a_nodes, edges=a_edges, config=config)
-                    except Exception as e:
-                        st.error(f"Erreur génération graphe TEAM 2 avec agraph: {e}")
-                
-                with st.expander("Données brutes graphe TEAM 2", expanded=False):
-                    st.json(st.session_state.current_execution_graph_details)
-            elif st.session_state.current_execution_graph_id_loaded == team2_exec_id:
-                st.info(f"Aucun détail de graphe pour TEAM 2 '{team2_exec_id}'.")
+                                    a_edges.append(Edge(source=dep_id, target=node_id, color="gray"))
+                        
+                        config = Config(width=1200, height=900, directed=True, physics=False, layout={"hierarchical": {"enabled": True, "direction": "UD", "sortMethod": "directed", "levelSeparation": 250, "nodeSpacing": 200}})
+                        
+                        clicked_node_id = agraph(nodes=a_nodes, edges=a_edges, config=config)
+                        
+                        if clicked_node_id and clicked_node_id != st.session_state.selected_artifact_task_id:
+                            handle_node_click(clicked_node_id, is_team1=False)
+                            st.rerun()
+                    else:
+                        st.info("Le graphe d'exécution est en attente de décomposition.")
+    else:
+        st.info("Sélectionnez un plan dans la barre latérale pour commencer.")
 
 
 with artifact_col:
-    st.header("📄 Artefacts Produits (TEAM 2)")
-    if st.session_state.current_execution_graph_details:
-        exec_nodes = st.session_state.current_execution_graph_details.get("nodes", {})
-        artifact_options = {
-            node_id: node_info.get("meta", {}).get("local_nom_from_agent", node_info.get("objective", node_id))
-            for node_id, node_info in exec_nodes.items()
-            if node_info.get("state") == ExecutionTaskState.COMPLETED.value and node_info.get("output_artifact_ref")
-        }
-        if artifact_options:
-            selected_art = st.selectbox(
-                "Choisir un artefact :",
-                options=list(artifact_options.keys()),
-                format_func=lambda x: artifact_options[x][:40],
-                key="artifact_selector",
-            )
-            if selected_art and selected_art != st.session_state.selected_artifact_task_id:
-                handle_select_task_for_artifact(selected_art, exec_nodes[selected_art].get("output_artifact_ref"))
-        else:
-            st.caption("Aucun artefact produit pour TEAM 2 pour l'instant.")
     st.header("📄 Artefact Sélectionné")
-    if st.session_state.selected_artifact_task_id:
-        st.markdown(f"**Artefact de la tâche :**")
-        st.code(st.session_state.selected_artifact_task_id, language=None) # Utiliser st.code pour les ID longs
-        
-        if st.session_state.selected_artifact_content == "Chargement de l'artefact...":
-            st.info("Chargement de l'artefact...")
-        elif st.session_state.selected_artifact_content:
-            content_to_display = st.session_state.selected_artifact_content
+    if st.session_state.get('selected_artifact_task_id'):
+        st.markdown(f"**Tâche :** `{st.session_state.selected_artifact_task_id}`")
+
+        content = st.session_state.get('selected_artifact_content')
+        display_key = f"art_display_{st.session_state.selected_artifact_task_id}"
+
+        if content == "Chargement...":
+            st.info(content)
+        elif content:
             try:
-                # Essayer de pretty-print si c'est un JSON string
-                parsed_json = json.loads(content_to_display)
-                st.json(parsed_json)
+                parsed_json = json.loads(content)
+                st.json(parsed_json, key=f"{display_key}_json")
             except (json.JSONDecodeError, TypeError):
-                # Sinon, afficher comme texte (pourrait être du code, etc.)
-                # Utiliser st.code pour le code, ou st.text_area pour du texte plus long
-                if "```python" in content_to_display or "import " in content_to_display or "def " in content_to_display :
-                    st.code(content_to_display, language="python", line_numbers=True)
+                if "```python" in content or "import " in content:
+                    st.code(content, language="python", line_numbers=True, key=f"{display_key}_code")
                 else:
-                    st.text_area("Contenu :", value=str(content_to_display), height=600, disabled=True, key="artifact_display_text_area")
+                    st.text_area("Contenu :", value=str(content), height=600, disabled=True, key=f"{display_key}_textarea")
         else:
-            st.info("Aucun contenu d'artefact à afficher (ou l'artefact est vide).")
+            st.info("Aucun contenu d'artefact à afficher.")
     else:
-        st.info("Cliquez sur un bouton 'Artefact...' pour afficher son contenu ici.")
+        st.info("Cliquez sur un nœud dans un graphe pour voir son artefact.")

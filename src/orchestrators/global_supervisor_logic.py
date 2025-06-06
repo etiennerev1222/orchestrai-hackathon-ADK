@@ -559,7 +559,7 @@ async def main_test_global_supervisor():
 
     # --- SCÉNARIO DE TEST : Objectif -> Clarification -> TEAM 1 (Succès Rapide) -> TEAM 2 (Décomposition) ---
     
-    objective = "Planifier et exécuter le développement d'une petite application CLI de gestion de TODO list en Python."
+    objective = "Planifier et exécuter le développement d'une petite application CLI de visualisation de Fractale standard en Python, une application éducative pour les ado."
     user_id_for_test = f"test_user_{uuid.uuid4().hex[:6]}"
 
     logger.info(f"\n--- TEST COMPLET GlobalSupervisor: Objectif initial = '{objective}' ---")
