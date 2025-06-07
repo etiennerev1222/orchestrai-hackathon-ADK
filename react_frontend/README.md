@@ -28,6 +28,13 @@ The interface fetches data from `http://localhost:8000` by default (backend API)
 
 The dashboard now exposes a **Reprendre l'exécution** button when a plan TEAM 2 is incomplete. Clicking it calls the `/v1/global_plans/<id>/resume_execution` API to continue pending tasks.
 
+## Node Colours
+
+In the Team&nbsp;2 execution graph, nodes now show additional visual cues:
+
+- the node border colour reflects the task type (`executable`, `exploratory`, `container`, `decomposition`),
+- nodes that have spawned sub-tasks have a thicker border.
+
 ## Secure Serving
 
 For demo deployments you may want to protect the dashboard with a simple password.
