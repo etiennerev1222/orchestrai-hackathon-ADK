@@ -24,12 +24,14 @@ function Graph({ nodes, edges, onNodeClick, onEdgeClick }) {
     };
     const network = new vis.Network(containerRef.current, data, options);
     network.on('click', params => {
+      const ev = params.event?.srcEvent || {};
+      const coords = { x: ev.pageX || 0, y: ev.pageY || 0 };
       if (params.nodes.length && onNodeClick) {
-        onNodeClick(params.nodes[0]);
+        onNodeClick({ id: params.nodes[0], x: coords.x, y: coords.y });
       } else if (params.edges.length && onEdgeClick) {
         const edgeId = params.edges[0];
         const edgeData = edgeDS.get(edgeId);
-        if (edgeData) onEdgeClick(edgeData);
+        if (edgeData) onEdgeClick({ edge: edgeData, x: coords.x, y: coords.y });
       }
     });
     return () => network.destroy();
@@ -46,7 +48,7 @@ function App() {
   const [team1NodesMap, setTeam1NodesMap] = React.useState({});
   const [team2Graph, setTeam2Graph] = React.useState(null);
   const [team2NodesMap, setTeam2NodesMap] = React.useState({});
-  const [artifactContent, setArtifactContent] = React.useState('');
+  const [popup, setPopup] = React.useState(null);
   const [newObjective, setNewObjective] = React.useState('');
 
   React.useEffect(() => {
@@ -136,31 +138,31 @@ function App() {
     return String(data);
   }
 
-  function showArtifactForNode(nodeId, isTeam1) {
+  function showArtifactForNode(nodeId, isTeam1, coords) {
     const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
     if (!nodeInfo) return;
 
+    const display = content => setPopup({ x: coords.x, y: coords.y, content });
+
     if (isTeam1) {
-      setArtifactContent(formatArtifact(nodeInfo.artifact_ref));
+      display(formatArtifact(nodeInfo.artifact_ref));
     } else {
       const artifact = nodeInfo.output_artifact_ref;
       if (artifact) {
         fetch(`${BACKEND_API_URL}/artifacts/${artifact}`)
           .then(r => r.json())
-          .then(d => setArtifactContent(formatArtifact(d.content)));
-      } else {
-        setArtifactContent('');
+          .then(d => display(formatArtifact(d.content)));
       }
     }
   }
 
-  function onNodeClick(nodeId, isTeam1) {
-    showArtifactForNode(nodeId, isTeam1);
+  function onNodeClick(info, isTeam1) {
+    showArtifactForNode(info.id, isTeam1, { x: info.x, y: info.y });
   }
 
-  function onEdgeClick(edgeData, isTeam1) {
-    if (edgeData?.from) {
-      showArtifactForNode(edgeData.from, isTeam1);
+  function onEdgeClick(info, isTeam1) {
+    if (info.edge?.from) {
+      showArtifactForNode(info.edge.from, isTeam1, { x: info.x, y: info.y });
     }
   }
 
@@ -188,8 +190,8 @@ function App() {
             <Graph
               nodes={team1Graph.nodes}
               edges={team1Graph.edges}
-              onNodeClick={id => onNodeClick(id, true)}
-              onEdgeClick={edge => onEdgeClick(edge, true)}
+              onNodeClick={info => onNodeClick(info, true)}
+              onEdgeClick={info => onEdgeClick(info, true)}
             />
           </div>
         )}
@@ -199,15 +201,19 @@ function App() {
             <Graph
               nodes={team2Graph.nodes}
               edges={team2Graph.edges}
-              onNodeClick={id => onNodeClick(id, false)}
-              onEdgeClick={edge => onEdgeClick(edge, false)}
+              onNodeClick={info => onNodeClick(info, false)}
+              onEdgeClick={info => onEdgeClick(info, false)}
             />
           </div>
         )}
-        {artifactContent && (
-          <div>
-            <h4>Artefact</h4>
-            <pre style={{ whiteSpace: 'pre-wrap', background: '#f9f9f9', padding: '10px' }}>{artifactContent}</pre>
+        {popup && (
+          <div
+            className="artifact-popup"
+            style={{ left: popup.x, top: popup.y }}
+            onClick={() => setPopup(null)}
+          >
+            <span className="artifact-popup-close">&times;</span>
+            <pre>{popup.content}</pre>
           </div>
         )}
       </div>

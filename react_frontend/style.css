@@ -36,3 +36,27 @@ textarea {
   width: 100%;
   box-sizing: border-box;
 }
+.content {
+  position: relative;
+}
+
+.artifact-popup {
+  position: fixed;
+  background: white;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  padding: 10px;
+  max-width: 400px;
+  max-height: 300px;
+  overflow: auto;
+  z-index: 1000;
+}
+.artifact-popup pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.artifact-popup-close {
+  float: right;
+  cursor: pointer;
+  font-weight: bold;
+}
