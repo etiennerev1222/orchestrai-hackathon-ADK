@@ -1,4 +1,4 @@
-const BACKEND_API_URL = window.BACKEND_API_URL || 'http://localhost:8000';
+const BACKEND_API_URL = window.BACKEND_API_URL || 'http://localhost:8010';
 
 function Graph({ nodes, edges, onNodeClick }) {
   const containerRef = React.useRef(null);
