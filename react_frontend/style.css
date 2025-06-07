@@ -97,3 +97,45 @@ textarea {
 .chat-item {
   margin-bottom: 0.25rem;
 }
+
+.plan-info {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  background: #fafafa;
+}
+.plan-info div {
+  margin-bottom: 0.25rem;
+}
+.plan-info .failed {
+  color: #c62828;
+  font-weight: bold;
+}
+.plan-info .completed {
+  color: #2e7d32;
+}
+
+.plan-stats pre {
+  margin: 0;
+}
+
+.plan-stats ul {
+  list-style: none;
+  padding-left: 0;
+}
+.plan-stats .stat-group {
+  margin-bottom: 0.5rem;
+}
+.plan-stats li {
+  margin-bottom: 0.25rem;
+}
+.plan-stats li.fail-count {
+  color: #c62828;
+  font-weight: bold;
+}
+
+.fail-summary {
+  color: #c62828;
+  font-weight: bold;
+  margin-top: 0.25rem;
+}
