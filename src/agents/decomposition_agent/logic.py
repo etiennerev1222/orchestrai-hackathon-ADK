@@ -27,14 +27,15 @@ class DecompositionAgentLogic(BaseAgentLogic):
 
         try:
             input_payload = json.loads(input_data_str)
-            team1_plan_text = input_payload.get("team1_plan_text")
+            team1_plan_text = input_payload.get("team1_plan_text") or input_payload.get("plan_text")
             available_skills_list = input_payload.get("available_execution_skills", [])
-        except json.JSONDecodeError as e:
-            self.logger.error(f"DecompositionAgent: Input JSON invalide: {input_data_str}. Erreur: {e}")
-            return {"error": "Input JSON invalide pour DecompositionAgent", "details": input_data_str}
-        except AttributeError: 
-            self.logger.error(f"DecompositionAgent: input_data_str n'est pas une chaîne JSON. Reçu type: {type(input_data_str)}")
-            return {"error": "Format d'input incorrect, attendu une chaîne JSON."}
+        except (json.JSONDecodeError, TypeError) as e:
+            # Autoriser un mode plus simple où input_data_str est directement le plan texte
+            self.logger.warning(
+                "DecompositionAgent: input_data_str n'est pas un JSON valide, traitement comme texte brut"
+            )
+            team1_plan_text = input_data_str if isinstance(input_data_str, str) else str(input_data_str)
+            available_skills_list = []
 
 
         if not team1_plan_text:
