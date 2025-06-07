@@ -300,12 +300,16 @@ async def get_all_global_plans_summary():
         logger.error("[GRA API] Client Firestore non disponible pour get_all_global_plans_summary.")
         raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
     try:
-        # Utiliser asyncio.to_thread pour l'opération Firestore bloquante
-        docs_stream = await asyncio.to_thread(
-            db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION).order_by("updated_at", direction=firestore.Query.DESCENDING).stream
+        # Récupérer la liste des documents dans un thread pour éviter de bloquer l'event loop
+        docs = await asyncio.to_thread(
+            lambda: list(
+                db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION)
+                .order_by("updated_at", direction=firestore.Query.DESCENDING)
+                .stream()
+            )
         )
-        
-        for doc in docs_stream: # doc est déjà un objet DocumentSnapshot après le stream complet
+
+        for doc in docs:  # doc est un DocumentSnapshot
             plan_data = doc.to_dict()
             if plan_data: # S'assurer que les données existent
                 summaries.append(GlobalPlanSummaryItem(
