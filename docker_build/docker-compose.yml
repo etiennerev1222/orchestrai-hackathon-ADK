@@ -1,0 +1,74 @@
+version: '3.8'
+services:
+  decomposition_agent:
+    build:
+      context: ./decomposition_agent
+    ports:
+      - "8194:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
+  development_agent:
+    build:
+      context: ./development_agent
+    ports:
+      - "8140:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
+  evaluator:
+    build:
+      context: ./evaluator
+    ports:
+      - "8137:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
+  reformulator:
+    build:
+      context: ./reformulator
+    ports:
+      - "8141:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
+  research_agent:
+    build:
+      context: ./research_agent
+    ports:
+      - "8187:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
+  testing_agent:
+    build:
+      context: ./testing_agent
+    ports:
+      - "8199:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
+  user_interaction_agent:
+    build:
+      context: ./user_interaction_agent
+    ports:
+      - "8137:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
+  validator:
+    build:
+      context: ./validator
+    ports:
+      - "8179:8080"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      GEMINI_API_KEY: your-gemini-api-key
+      GRA_PUBLIC_URL: https://gra.example.com
