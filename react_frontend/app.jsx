@@ -99,7 +99,11 @@ function App() {
 
   React.useEffect(() => {
     if (!selectedPlanId) return;
-    fetch(`${BACKEND_API_URL}/v1/global_plans/${selectedPlanId}`)
+    refreshPlanDetails(selectedPlanId);
+  }, [selectedPlanId]);
+
+  function refreshPlanDetails(planId) {
+    fetch(`${BACKEND_API_URL}/v1/global_plans/${planId}`)
       .then(res => res.json())
       .then(plan => {
         setPlanDetails(plan);
@@ -118,10 +122,13 @@ function App() {
               setTeam2NodesMap(d.nodes || {});
               setTeam2Graph(parseTaskGraph(d.nodes, false));
             });
+        } else {
+          setTeam2Graph(null);
+          setTeam2NodesMap({});
         }
       })
       .catch(err => console.error('Erreur chargement details plan', err));
-  }, [selectedPlanId]);
+  }
 
   function parseTaskGraph(nodesObj, isTeam1) {
     const nodes = [];
@@ -195,6 +202,77 @@ function App() {
     }
   }
 
+  function ClarificationSection({ plan }) {
+    const [answer, setAnswer] = React.useState('');
+    if (!plan) return null;
+    const history = plan.conversation_history || [];
+    const artifact = plan.last_agent_response_artifact || {};
+    const lastQuestion = plan.last_question_to_user || artifact.question_for_user;
+    const enrichedObjective = plan.tentatively_enriched_objective_from_agent || artifact.tentatively_enriched_objective;
+
+    const submitAnswer = () => {
+      if (!answer) return;
+      fetch(`${BACKEND_API_URL}/v1/global_plans/${plan.global_plan_id}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_response: answer })
+      })
+        .then(r => r.json())
+        .then(() => {
+          setAnswer('');
+          refreshPlanDetails(plan.global_plan_id);
+        })
+        .catch(err => console.error('Erreur envoi clarification', err));
+    };
+
+    const forceTeam1 = () => {
+      fetch(`${BACKEND_API_URL}/v1/global_plans/${plan.global_plan_id}/accept_and_plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_final_objective: enrichedObjective || plan.raw_objective })
+      })
+        .then(r => r.json())
+        .then(() => refreshPlanDetails(plan.global_plan_id))
+        .catch(err => console.error('Erreur acceptation objectif', err));
+    };
+
+    return (
+      <div className="clarification-block">
+        <h4>Clarification en cours</h4>
+        <div className="chat-history">
+          {history.map((h, idx) => (
+            <div key={idx} className="chat-item">
+              <div><strong>Agent:</strong> {h.agent_question}</div>
+              <div><strong>Vous:</strong> {h.user_answer}</div>
+            </div>
+          ))}
+          {lastQuestion && (
+            <div className="chat-item">
+              <div><strong>Agent:</strong> {lastQuestion}</div>
+            </div>
+          )}
+        </div>
+        {enrichedObjective && (
+          <div style={{ marginBottom: '0.5rem' }}>
+            <div>Objectif proposé&nbsp;:</div>
+            <textarea value={enrichedObjective} readOnly rows="3" style={{ width: '100%' }} />
+          </div>
+        )}
+        <textarea
+          value={answer}
+          onChange={e => setAnswer(e.target.value)}
+          rows="3"
+          placeholder="Votre réponse..."
+          style={{ width: '100%' }}
+        />
+        <div style={{ marginTop: '0.5rem' }}>
+          <button onClick={submitAnswer}>Envoyer</button>
+          <button onClick={forceTeam1} style={{ marginLeft: '0.5rem' }}>Forcer TEAM 1</button>
+        </div>
+      </div>
+    );
+  }
+
   function onNodeClick(info, isTeam1) {
     showArtifactForNode(info.id, isTeam1, { x: info.x, y: info.y });
   }
@@ -224,6 +302,9 @@ function App() {
       </div>
       <div className="content">
         <AgentStatusBar agents={agentsStatus} />
+        {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
+          <ClarificationSection plan={planDetails} />
+        )}
         {team1Graph && (
           <div>
             <h4>Graphe Team 1</h4>

@@ -82,3 +82,18 @@ textarea {
   border-radius: 4px;
   padding: 0.25rem 0.5rem;
 }
+
+.clarification-block {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  background: #fafafa;
+}
+.chat-history {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+.chat-item {
+  margin-bottom: 0.25rem;
+}
