@@ -36,3 +36,5 @@ Thumbs.db
 
 # 7. Fichiers de logs (si vous en générez)
 *.log
+node_modules/
+
