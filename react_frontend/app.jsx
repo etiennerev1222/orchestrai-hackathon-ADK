@@ -82,6 +82,7 @@ function App() {
   const [popup, setPopup] = React.useState(null);
   const [agentsStatus, setAgentsStatus] = React.useState([]);
   const [newObjective, setNewObjective] = React.useState('');
+  const [autoRefresh, setAutoRefresh] = React.useState(false);
 
   React.useEffect(() => {
     fetch(`${BACKEND_API_URL}/v1/global_plans_summary`)
@@ -101,6 +102,12 @@ function App() {
     if (!selectedPlanId) return;
     refreshPlanDetails(selectedPlanId);
   }, [selectedPlanId]);
+
+  React.useEffect(() => {
+    if (!autoRefresh || !selectedPlanId) return;
+    const id = setInterval(() => refreshPlanDetails(selectedPlanId), 5000);
+    return () => clearInterval(id);
+  }, [autoRefresh, selectedPlanId]);
 
   function refreshPlanDetails(planId) {
     fetch(`${BACKEND_API_URL}/v1/global_plans/${planId}`)
@@ -302,6 +309,19 @@ function App() {
       </div>
       <div className="content">
         <AgentStatusBar agents={agentsStatus} />
+        <div style={{ marginBottom: '0.5rem' }}>
+          <button onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)} disabled={!selectedPlanId}>
+            Rafraîchir le plan
+          </button>
+          <label style={{ marginLeft: '1rem' }}>
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={e => setAutoRefresh(e.target.checked)}
+            />
+            Auto-refresh
+          </label>
+        </div>
         {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
           <ClarificationSection plan={planDetails} />
         )}
