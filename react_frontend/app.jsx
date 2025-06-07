@@ -43,7 +43,9 @@ function App() {
   const [selectedPlanId, setSelectedPlanId] = React.useState('');
   const [planDetails, setPlanDetails] = React.useState(null);
   const [team1Graph, setTeam1Graph] = React.useState(null);
+  const [team1NodesMap, setTeam1NodesMap] = React.useState({});
   const [team2Graph, setTeam2Graph] = React.useState(null);
+  const [team2NodesMap, setTeam2NodesMap] = React.useState({});
   const [artifactContent, setArtifactContent] = React.useState('');
   const [newObjective, setNewObjective] = React.useState('');
 
@@ -63,12 +65,18 @@ function App() {
         if (plan.team1_plan_id) {
           fetch(`${BACKEND_API_URL}/plans/${plan.team1_plan_id}`)
             .then(r => r.json())
-            .then(d => setTeam1Graph(parseTaskGraph(d.nodes, true)));
+            .then(d => {
+              setTeam1NodesMap(d.nodes || {});
+              setTeam1Graph(parseTaskGraph(d.nodes, true));
+            });
         }
         if (plan.team2_execution_plan_id) {
           fetch(`${BACKEND_API_URL}/v1/execution_task_graphs/${plan.team2_execution_plan_id}`)
             .then(r => r.json())
-            .then(d => setTeam2Graph(parseTaskGraph(d.nodes, false)));
+            .then(d => {
+              setTeam2NodesMap(d.nodes || {});
+              setTeam2Graph(parseTaskGraph(d.nodes, false));
+            });
         }
       })
       .catch(err => console.error('Erreur chargement details plan', err));
@@ -129,8 +137,7 @@ function App() {
   }
 
   function showArtifactForNode(nodeId, isTeam1) {
-    if (!planDetails) return;
-    const nodeInfo = (isTeam1 ? planDetails.team1_details?.nodes : planDetails.team2_details?.nodes)?.[nodeId];
+    const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
     if (!nodeInfo) return;
 
     if (isTeam1) {
