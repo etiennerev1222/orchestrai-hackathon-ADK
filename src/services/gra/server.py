@@ -3,6 +3,7 @@ import uvicorn
 import logging
 from fastapi import FastAPI, HTTPException, Body, Path
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
 from typing import Dict, Any, List, Optional
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -300,12 +301,16 @@ async def get_all_global_plans_summary():
         logger.error("[GRA API] Client Firestore non disponible pour get_all_global_plans_summary.")
         raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
     try:
-        # Utiliser asyncio.to_thread pour l'opération Firestore bloquante
-        docs_stream = await asyncio.to_thread(
-            db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION).order_by("updated_at", direction=firestore.Query.DESCENDING).stream
+        # Récupérer la liste des documents dans un thread pour éviter de bloquer l'event loop
+        docs = await asyncio.to_thread(
+            lambda: list(
+                db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION)
+                .order_by("updated_at", direction=firestore.Query.DESCENDING)
+                .stream()
+            )
         )
-        
-        for doc in docs_stream: # doc est déjà un objet DocumentSnapshot après le stream complet
+
+        for doc in docs:  # doc est un DocumentSnapshot
             plan_data = doc.to_dict()
             if plan_data: # S'assurer que les données existent
                 summaries.append(GlobalPlanSummaryItem(
@@ -456,17 +461,32 @@ async def get_plan_details_endpoint(plan_id: str):
 # --- Endpoint pour le statut des agents (simplifié) ---
 @app.get("/agents_status")
 async def get_agents_status_endpoint():
-    """Récupère la liste des agents enregistrés."""
-    agents_list = []
+    """Récupère la liste des agents enregistrés et leur statut de santé."""
+    agents_list: List[Dict[str, Any]] = []
     try:
-        agents_ref = db.collection("agents").stream() # Nom de collection des agents enregistrés
-        for doc in agents_ref:
-            agents_list.append(doc.to_dict())
-        logger.info(f"[GRA] Statut de {len(agents_list)} agents récupéré.")
-        return agents_list
+        docs = await asyncio.to_thread(lambda: list(db.collection("agents").stream()))
+        agents_list = [doc.to_dict() for doc in docs]
     except Exception as e:
         logger.error(f"[GRA] Erreur lors de la récupération du statut des agents: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+    async with httpx.AsyncClient() as client:
+        async def check(url: str) -> bool:
+            if not url:
+                return False
+            try:
+                res = await client.get(url.rstrip("/") + "/.well-known/agent.json", timeout=5.0)
+                return res.status_code == 200
+            except Exception:
+                return False
+
+        results = await asyncio.gather(*(check(a.get("url")) for a in agents_list))
+
+    for agent, ok in zip(agents_list, results):
+        agent["health_status"] = "✅ Online" if ok else "⚠️ Offline"
+
+    logger.info(f"[GRA] Statut de {len(agents_list)} agents récupéré avec santé.")
+    return agents_list
 
 
 # --- NOUVEL Endpoint pour accepter l'objectif et lancer TEAM 1 ---
