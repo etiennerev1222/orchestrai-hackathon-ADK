@@ -27,3 +27,17 @@ The interface fetches data from `http://localhost:8000` by default (backend API)
 - `style.css` – simple styling for the dashboard.
 
 The dashboard now exposes a **Reprendre l'exécution** button when a plan TEAM 2 is incomplete. Clicking it calls the `/v1/global_plans/<id>/resume_execution` API to continue pending tasks.
+
+## Secure Serving
+
+For demo deployments you may want to protect the dashboard with a simple password.
+Run the provided `secure_server.py` script instead of `python -m http.server`:
+
+```bash
+cd react_frontend
+BASIC_AUTH_USERNAME=myuser BASIC_AUTH_PASSWORD=mypass python secure_server.py
+```
+
+The server exposes the files on port `8080` (modifiable via `PORT` environment
+variable) and requires HTTP Basic authentication with the credentials specified
+via `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD`.
