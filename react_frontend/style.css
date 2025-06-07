@@ -105,6 +105,26 @@ textarea {
   background: #fafafa;
 }
 
+.plan-info-failure {
+  color: #721c24;
+  font-weight: bold;
+}
+
+.plan-stats-table {
+  border-collapse: collapse;
+  margin-bottom: 0.5rem;
+}
+
+.plan-stats-table td {
+  border: 1px solid #ccc;
+  padding: 0.25rem 0.5rem;
+}
+
+.plan-stats-table .failed-state td {
+  background: #f8d7da;
+  font-weight: bold;
+}
+
 .plan-stats pre {
   margin: 0;
 }

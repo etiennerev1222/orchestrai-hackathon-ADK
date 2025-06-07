@@ -78,7 +78,7 @@ function AgentStatusBar({ agents }) {
   );
 }
 
-function PlanInfo({ plan, flowRunning }) {
+function PlanInfo({ plan, flowRunning, hasFailures }) {
   if (!plan) return null;
   return (
     <div className="plan-info">
@@ -89,25 +89,45 @@ function PlanInfo({ plan, flowRunning }) {
       )}
       <div><strong>État actuel:</strong> {plan.current_supervisor_state}</div>
       <div><strong>Flux en cours:</strong> {flowRunning ? '🟢 Oui' : '🏁 Terminé'}</div>
+      {hasFailures && (
+        <div className="plan-info-failure">❌ Certaines tâches sont en échec</div>
+      )}
     </div>
   );
 }
 
 function PlanStats({ team1Counts, team2Counts }) {
   if (!team1Counts && !team2Counts) return null;
+
+  const renderTable = counts => (
+    <table className="plan-stats-table">
+      <tbody>
+        {Object.entries(counts).map(([state, count]) => {
+          const isFailed = state === 'failed' || state === 'unable_to_complete';
+          return (
+            <tr key={state} className={isFailed ? 'failed-state' : ''}>
+              <td>{state}</td>
+              <td>{count}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
   return (
     <details className="plan-stats">
       <summary>📊 Statistiques du plan</summary>
       {team1Counts && (
         <div>
           <strong>TEAM 1</strong>
-          <pre>{JSON.stringify(team1Counts, null, 2)}</pre>
+          {renderTable(team1Counts)}
         </div>
       )}
       {team2Counts && (
         <div>
           <strong>TEAM 2</strong>
-          <pre>{JSON.stringify(team2Counts, null, 2)}</pre>
+          {renderTable(team2Counts)}
         </div>
       )}
     </details>
@@ -128,6 +148,11 @@ function App() {
   const [autoRefresh, setAutoRefresh] = React.useState(false);
   const [team1Counts, setTeam1Counts] = React.useState(null);
   const [team2Counts, setTeam2Counts] = React.useState(null);
+
+  const hasFailures = React.useMemo(() => {
+    const countFail = counts => (counts?.failed || 0) + (counts?.unable_to_complete || 0);
+    return countFail(team1Counts) + countFail(team2Counts) > 0;
+  }, [team1Counts, team2Counts]);
 
   React.useEffect(() => {
     fetch(`${BACKEND_API_URL}/v1/global_plans_summary`)
@@ -382,7 +407,11 @@ function App() {
             Auto-refresh
           </label>
         </div>
-        <PlanInfo plan={planDetails} flowRunning={planDetails && !FINISHED_STATES.includes(planDetails.current_supervisor_state)} />
+        <PlanInfo
+          plan={planDetails}
+          flowRunning={planDetails && !FINISHED_STATES.includes(planDetails.current_supervisor_state)}
+          hasFailures={hasFailures}
+        />
         <PlanStats team1Counts={team1Counts} team2Counts={team2Counts} />
         {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
           <ClarificationSection plan={planDetails} />
