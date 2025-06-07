@@ -342,9 +342,10 @@ Pour lancer le système complet, le GRA et tous les agents doivent être démarr
 
     Vous pouvez également tester une interface React très simple disponible dans le dossier `react_frontend` :
     ```bash
-    cd react_frontend && python -m http.server 8000
+    cd react_frontend && python -m http.server 8080
     ```
-    Puis ouvrez [http://localhost:8000/index.html](http://localhost:8000/index.html).
+    Puis ouvrez [http://localhost:8080/index.html](http://localhost:8080/index.html).
+    L'API backend reste disponible sur `http://localhost:8000`. Si besoin, vous pouvez spécifier une autre URL en définissant `BACKEND_API_URL` avant de charger les scripts.
 
 4.  **Utilisez l'Interface** :
     * Soumettez un nouvel objectif.

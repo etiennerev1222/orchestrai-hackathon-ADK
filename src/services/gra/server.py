@@ -2,6 +2,7 @@
 import uvicorn
 import logging
 from fastapi import FastAPI, HTTPException, Body, Path
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, List, Optional
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -140,6 +141,15 @@ app = FastAPI(
     description="Service central pour l'enregistrement des agents et le stockage des artefacts.",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Allow CORS for the React interface served on http://localhost:8080
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Endpoints Agents et Artefacts existants (inchangés pour l'instant) ---

@@ -8,11 +8,11 @@ This folder contains a minimal React interface to visualize and interact with th
 2. Start a simple HTTP server in this directory:
    ```bash
    cd react_frontend
-   python -m http.server 8000
+   python -m http.server 8080
    ```
-3. Open [http://localhost:8000/index.html](http://localhost:8000/index.html) in your browser.
+3. Open [http://localhost:8080/index.html](http://localhost:8080/index.html) in your browser.
 
-The interface fetches data from `http://localhost:8000` by default. You can override the backend URL by setting `BACKEND_API_URL` as a global variable before loading the scripts:
+The interface fetches data from `http://localhost:8000` by default (backend API). You can override this URL by setting `BACKEND_API_URL` as a global variable before loading the scripts:
 
 ```html
 <script>
