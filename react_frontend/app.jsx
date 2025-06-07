@@ -34,6 +34,7 @@ function Graph({ nodes, edges, onNodeClick, onEdgeClick }) {
         if (edgeData) onEdgeClick({ edge: edgeData, x: coords.x, y: coords.y });
       }
     });
+    network.fit();
     return () => network.destroy();
   }, [nodes, edges]);
 
