@@ -216,14 +216,31 @@ function App() {
     const nodes = [];
     const edges = [];
     if (!nodesObj) return { nodes, edges };
-    Object.entries(nodesObj).forEach(([id, info]) => {
-      let color = '#d3d3d3';
-      const state = info.state;
-      if (state === 'completed') color = '#d4edda';
-      else if (state === 'failed' || state === 'unable_to_complete') color = '#f8d7da';
-      else if (state === 'working') color = '#fff3cd';
 
-      nodes.push({ id, label: (info.objective || id).slice(0,35), color });
+    const typeBorderColors = {
+      executable: '#007bff',
+      exploratory: '#ff9800',
+      container: '#888888',
+      decomposition: '#9c27b0'
+    };
+
+    Object.entries(nodesObj).forEach(([id, info]) => {
+      let bgColor = '#d3d3d3';
+      const state = info.state;
+      if (state === 'completed') bgColor = '#d4edda';
+      else if (state === 'failed' || state === 'unable_to_complete') bgColor = '#f8d7da';
+      else if (state === 'working') bgColor = '#fff3cd';
+
+      const nodeData = { id, label: (info.objective || id).slice(0, 35) };
+      if (isTeam1) {
+        nodeData.color = bgColor;
+      } else {
+        const borderColor = typeBorderColors[info.task_type] || '#000000';
+        nodeData.color = { background: bgColor, border: borderColor };
+        nodeData.borderWidth = info.sub_task_ids && info.sub_task_ids.length > 0 ? 3 : 1;
+      }
+      nodes.push(nodeData);
+
       const links = isTeam1 ? info.children : info.dependencies;
       (links || []).forEach(childId => {
         if (nodesObj[childId]) {
