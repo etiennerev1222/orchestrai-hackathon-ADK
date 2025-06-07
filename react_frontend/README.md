@@ -25,3 +25,5 @@ The interface fetches data from `http://localhost:8000` by default (backend API)
 - `index.html` – entry point including CDN imports for React and Vis Network.
 - `app.jsx` – main React application (loaded via Babel in the browser).
 - `style.css` – simple styling for the dashboard.
+
+The dashboard now exposes a **Reprendre l'exécution** button when a plan TEAM 2 is incomplete. Clicking it calls the `/v1/global_plans/<id>/resume_execution` API to continue pending tasks.

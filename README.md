@@ -111,6 +111,7 @@ Après la validation du plan détaillé par TEAM 1, cette nouvelle phase prend e
         * L'agent sélectionné exécute la tâche et produit des artefacts (ex: code source, rapport de recherche, rapport de test).
     * **Gestion des Tâches Exploratoires** : Les tâches de type `exploratory` (souvent gérées par `ResearchAgent`) peuvent retourner des résultats qui incluent la définition de nouvelles sous-tâches, enrichissant dynamiquement l'`ExecutionTaskGraph`.
 * **Suivi et Finalisation** : `ExecutionSupervisorLogic` suit l'état de toutes les tâches d'exécution. Une fois toutes les tâches terminées, l'état global du plan d'exécution (`EXECUTION_COMPLETED_SUCCESSFULLY` ou `EXECUTION_COMPLETED_WITH_FAILURES`) est déterminé. Le `GlobalSupervisorLogic` met à jour l'état du `global_plan` en conséquence.
+* **Reprise d'un Plan en Cours** : la nouvelle méthode `continue_execution` permet de relancer un plan existant lorsque des tâches demeurent en `pending` ou `ready`. Un bouton "Reprendre l'exécution" est disponible dans l'interface React pour déclencher cette action.
 
 ### Capacités Transverses :
 
