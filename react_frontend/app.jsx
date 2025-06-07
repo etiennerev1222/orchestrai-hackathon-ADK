@@ -1,7 +1,8 @@
-const BACKEND_API_URL = window.BACKEND_API_URL || 'http://localhost:8010';
+const BACKEND_API_URL = window.BACKEND_API_URL || 'http://localhost:8000';
 
-function Graph({ nodes, edges, onNodeClick }) {
+function Graph({ nodes, edges, onNodeClick, onEdgeClick }) {
   const containerRef = React.useRef(null);
+  const networkRef = React.useRef(null);
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -9,6 +10,7 @@ function Graph({ nodes, edges, onNodeClick }) {
       nodes: new vis.DataSet(nodes || []),
       edges: new vis.DataSet(edges || [])
     };
+    const edgeDS = data.edges;
     const options = {
       layout: {
         hierarchical: {
@@ -22,15 +24,51 @@ function Graph({ nodes, edges, onNodeClick }) {
       physics: false
     };
     const network = new vis.Network(containerRef.current, data, options);
+    networkRef.current = network;
     network.on('click', params => {
+      const ev = params.event?.srcEvent || {};
+      const coords = { x: ev.pageX || 0, y: ev.pageY || 0 };
       if (params.nodes.length && onNodeClick) {
-        onNodeClick(params.nodes[0]);
+        onNodeClick({ id: params.nodes[0], x: coords.x, y: coords.y });
+      } else if (params.edges.length && onEdgeClick) {
+        const edgeId = params.edges[0];
+        const edgeData = edgeDS.get(edgeId);
+        if (edgeData) onEdgeClick({ edge: edgeData, x: coords.x, y: coords.y });
       }
     });
+    network.fit();
     return () => network.destroy();
   }, [nodes, edges]);
 
-  return <div ref={containerRef} style={{height: '600px', border: '1px solid #ccc', marginBottom:'1rem'}} />;
+  return (
+    <div className="graph-wrapper">
+      <div
+        ref={containerRef}
+        style={{ height: '600px', border: '1px solid #ccc', marginBottom: '1rem' }}
+      />
+      <button className="fit-button" onClick={() => networkRef.current?.fit()}>
+        Recentrer
+      </button>
+    </div>
+  );
+}
+
+function AgentStatusBar({ agents }) {
+  if (!agents?.length) return null;
+  return (
+    <div className="agent-status-bar">
+      {agents.map(a => (
+        <div
+          key={a.name}
+          className="agent-status"
+          title={(a.skills || []).join(', ')}
+        >
+          <span>{a.health_status || ''}</span>
+          {a.name.replace('AgentServer', '')}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function App() {
@@ -38,8 +76,11 @@ function App() {
   const [selectedPlanId, setSelectedPlanId] = React.useState('');
   const [planDetails, setPlanDetails] = React.useState(null);
   const [team1Graph, setTeam1Graph] = React.useState(null);
+  const [team1NodesMap, setTeam1NodesMap] = React.useState({});
   const [team2Graph, setTeam2Graph] = React.useState(null);
-  const [artifactContent, setArtifactContent] = React.useState('');
+  const [team2NodesMap, setTeam2NodesMap] = React.useState({});
+  const [popup, setPopup] = React.useState(null);
+  const [agentsStatus, setAgentsStatus] = React.useState([]);
   const [newObjective, setNewObjective] = React.useState('');
 
   React.useEffect(() => {
@@ -47,6 +88,13 @@ function App() {
       .then(res => res.json())
       .then(data => setPlans(data))
       .catch(err => console.error('Erreur chargement plans', err));
+  }, []);
+
+  React.useEffect(() => {
+    fetch(`${BACKEND_API_URL}/agents_status`)
+      .then(res => res.json())
+      .then(list => setAgentsStatus(list))
+      .catch(err => console.error('Erreur chargement statut agents', err));
   }, []);
 
   React.useEffect(() => {
@@ -58,12 +106,18 @@ function App() {
         if (plan.team1_plan_id) {
           fetch(`${BACKEND_API_URL}/plans/${plan.team1_plan_id}`)
             .then(r => r.json())
-            .then(d => setTeam1Graph(parseTaskGraph(d.nodes, true)));
+            .then(d => {
+              setTeam1NodesMap(d.nodes || {});
+              setTeam1Graph(parseTaskGraph(d.nodes, true));
+            });
         }
         if (plan.team2_execution_plan_id) {
           fetch(`${BACKEND_API_URL}/v1/execution_task_graphs/${plan.team2_execution_plan_id}`)
             .then(r => r.json())
-            .then(d => setTeam2Graph(parseTaskGraph(d.nodes, false)));
+            .then(d => {
+              setTeam2NodesMap(d.nodes || {});
+              setTeam2Graph(parseTaskGraph(d.nodes, false));
+            });
         }
       })
       .catch(err => console.error('Erreur chargement details plan', err));
@@ -84,8 +138,8 @@ function App() {
       const links = isTeam1 ? info.children : info.dependencies;
       (links || []).forEach(childId => {
         if (nodesObj[childId]) {
-          if (isTeam1) edges.push({ from: id, to: childId });
-          else edges.push({ from: childId, to: id });
+          if (isTeam1) edges.push({ id: `${id}->${childId}`, from: id, to: childId });
+          else edges.push({ id: `${childId}->${id}`, from: childId, to: id });
         }
       });
     });
@@ -109,27 +163,45 @@ function App() {
       .catch(err => console.error('Erreur soumission plan', err));
   }
 
-  function onNodeClick(nodeId, isTeam1) {
-    if (!planDetails) return;
-    const nodesData = isTeam1 ? team1Graph : team2Graph;
-    if (!nodesData) return;
+  function formatArtifact(data) {
+    if (!data) return '';
+    if (typeof data === 'string') {
+      try {
+        const obj = JSON.parse(data);
+        return JSON.stringify(obj, null, 2);
+      } catch {
+        return data;
+      }
+    }
+    if (typeof data === 'object') return JSON.stringify(data, null, 2);
+    return String(data);
+  }
 
-    const info = (isTeam1 ? planDetails.team1_details?.nodes : planDetails.team2_details?.nodes) || {};
-    const nodeInfo = info[nodeId];
+  function showArtifactForNode(nodeId, isTeam1, coords) {
+    const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
     if (!nodeInfo) return;
 
+    const display = content => setPopup({ x: coords.x, y: coords.y, content });
+
     if (isTeam1) {
-      const artifact = nodeInfo.artifact_ref;
-      setArtifactContent(artifact ? JSON.stringify(artifact, null, 2) : '');
+      display(formatArtifact(nodeInfo.artifact_ref));
     } else {
       const artifact = nodeInfo.output_artifact_ref;
       if (artifact) {
         fetch(`${BACKEND_API_URL}/artifacts/${artifact}`)
           .then(r => r.json())
-          .then(d => setArtifactContent(d.content || ''));
-      } else {
-        setArtifactContent('');
+          .then(d => display(formatArtifact(d.content)));
       }
+    }
+  }
+
+  function onNodeClick(info, isTeam1) {
+    showArtifactForNode(info.id, isTeam1, { x: info.x, y: info.y });
+  }
+
+  function onEdgeClick(info, isTeam1) {
+    if (info.edge?.from) {
+      showArtifactForNode(info.edge.from, isTeam1, { x: info.x, y: info.y });
     }
   }
 
@@ -151,22 +223,37 @@ function App() {
         </select>
       </div>
       <div className="content">
+        <AgentStatusBar agents={agentsStatus} />
         {team1Graph && (
           <div>
             <h4>Graphe Team 1</h4>
-            <Graph nodes={team1Graph.nodes} edges={team1Graph.edges} onNodeClick={id => onNodeClick(id, true)} />
+            <Graph
+              nodes={team1Graph.nodes}
+              edges={team1Graph.edges}
+              onNodeClick={info => onNodeClick(info, true)}
+              onEdgeClick={info => onEdgeClick(info, true)}
+            />
           </div>
         )}
         {team2Graph && (
           <div>
             <h4>Graphe Exécution Team 2</h4>
-            <Graph nodes={team2Graph.nodes} edges={team2Graph.edges} onNodeClick={id => onNodeClick(id, false)} />
+            <Graph
+              nodes={team2Graph.nodes}
+              edges={team2Graph.edges}
+              onNodeClick={info => onNodeClick(info, false)}
+              onEdgeClick={info => onEdgeClick(info, false)}
+            />
           </div>
         )}
-        {artifactContent && (
-          <div>
-            <h4>Artefact</h4>
-            <pre style={{ whiteSpace: 'pre-wrap', background: '#f9f9f9', padding: '10px' }}>{artifactContent}</pre>
+        {popup && (
+          <div
+            className="artifact-popup"
+            style={{ left: popup.x, top: popup.y }}
+            onClick={() => setPopup(null)}
+          >
+            <span className="artifact-popup-close">&times;</span>
+            <pre>{popup.content}</pre>
           </div>
         )}
       </div>
