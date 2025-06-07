@@ -97,3 +97,14 @@ textarea {
 .chat-item {
   margin-bottom: 0.25rem;
 }
+
+.plan-info {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  background: #fafafa;
+}
+
+.plan-stats pre {
+  margin: 0;
+}
