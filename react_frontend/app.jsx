@@ -1,6 +1,6 @@
 const BACKEND_API_URL = window.BACKEND_API_URL || 'http://localhost:8000';
 
-function Graph({ nodes, edges, onNodeClick }) {
+function Graph({ nodes, edges, onNodeClick, onEdgeClick }) {
   const containerRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -9,6 +9,7 @@ function Graph({ nodes, edges, onNodeClick }) {
       nodes: new vis.DataSet(nodes || []),
       edges: new vis.DataSet(edges || [])
     };
+    const edgeDS = data.edges;
     const options = {
       layout: {
         hierarchical: {
@@ -25,6 +26,10 @@ function Graph({ nodes, edges, onNodeClick }) {
     network.on('click', params => {
       if (params.nodes.length && onNodeClick) {
         onNodeClick(params.nodes[0]);
+      } else if (params.edges.length && onEdgeClick) {
+        const edgeId = params.edges[0];
+        const edgeData = edgeDS.get(edgeId);
+        if (edgeData) onEdgeClick(edgeData);
       }
     });
     return () => network.destroy();
@@ -84,8 +89,8 @@ function App() {
       const links = isTeam1 ? info.children : info.dependencies;
       (links || []).forEach(childId => {
         if (nodesObj[childId]) {
-          if (isTeam1) edges.push({ from: id, to: childId });
-          else edges.push({ from: childId, to: id });
+          if (isTeam1) edges.push({ id: `${id}->${childId}`, from: id, to: childId });
+          else edges.push({ id: `${childId}->${id}`, from: childId, to: id });
         }
       });
     });
@@ -109,27 +114,46 @@ function App() {
       .catch(err => console.error('Erreur soumission plan', err));
   }
 
-  function onNodeClick(nodeId, isTeam1) {
-    if (!planDetails) return;
-    const nodesData = isTeam1 ? team1Graph : team2Graph;
-    if (!nodesData) return;
+  function formatArtifact(data) {
+    if (!data) return '';
+    if (typeof data === 'string') {
+      try {
+        const obj = JSON.parse(data);
+        return JSON.stringify(obj, null, 2);
+      } catch {
+        return data;
+      }
+    }
+    if (typeof data === 'object') return JSON.stringify(data, null, 2);
+    return String(data);
+  }
 
-    const info = (isTeam1 ? planDetails.team1_details?.nodes : planDetails.team2_details?.nodes) || {};
-    const nodeInfo = info[nodeId];
+  function showArtifactForNode(nodeId, isTeam1) {
+    if (!planDetails) return;
+    const nodeInfo = (isTeam1 ? planDetails.team1_details?.nodes : planDetails.team2_details?.nodes)?.[nodeId];
     if (!nodeInfo) return;
 
     if (isTeam1) {
-      const artifact = nodeInfo.artifact_ref;
-      setArtifactContent(artifact ? JSON.stringify(artifact, null, 2) : '');
+      setArtifactContent(formatArtifact(nodeInfo.artifact_ref));
     } else {
       const artifact = nodeInfo.output_artifact_ref;
       if (artifact) {
         fetch(`${BACKEND_API_URL}/artifacts/${artifact}`)
           .then(r => r.json())
-          .then(d => setArtifactContent(d.content || ''));
+          .then(d => setArtifactContent(formatArtifact(d.content)));
       } else {
         setArtifactContent('');
       }
+    }
+  }
+
+  function onNodeClick(nodeId, isTeam1) {
+    showArtifactForNode(nodeId, isTeam1);
+  }
+
+  function onEdgeClick(edgeData, isTeam1) {
+    if (edgeData?.from) {
+      showArtifactForNode(edgeData.from, isTeam1);
     }
   }
 
@@ -154,13 +178,23 @@ function App() {
         {team1Graph && (
           <div>
             <h4>Graphe Team 1</h4>
-            <Graph nodes={team1Graph.nodes} edges={team1Graph.edges} onNodeClick={id => onNodeClick(id, true)} />
+            <Graph
+              nodes={team1Graph.nodes}
+              edges={team1Graph.edges}
+              onNodeClick={id => onNodeClick(id, true)}
+              onEdgeClick={edge => onEdgeClick(edge, true)}
+            />
           </div>
         )}
         {team2Graph && (
           <div>
             <h4>Graphe Exécution Team 2</h4>
-            <Graph nodes={team2Graph.nodes} edges={team2Graph.edges} onNodeClick={id => onNodeClick(id, false)} />
+            <Graph
+              nodes={team2Graph.nodes}
+              edges={team2Graph.edges}
+              onNodeClick={id => onNodeClick(id, false)}
+              onEdgeClick={edge => onEdgeClick(edge, false)}
+            />
           </div>
         )}
         {artifactContent && (
