@@ -521,6 +521,21 @@ async def accept_objective_and_trigger_team1_planning(
         logger.error(f"[GRA API] Erreur lors de l'acceptation de l'objectif pour plan '{global_plan_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
+
+@app.post("/v1/global_plans/{global_plan_id}/resume_execution", response_model=GlobalPlanResponse)
+async def resume_team2_execution_endpoint(global_plan_id: str = Path(..., description="ID du plan global")):
+    """Reprend l'exécution TEAM 2 pour un plan global existant."""
+    logger.info(f"[GRA API] Requête de reprise TEAM 2 pour plan '{global_plan_id}'.")
+    try:
+        supervisor = GlobalSupervisorLogic()
+        result = await supervisor.continue_team2_execution(global_plan_id)
+        return GlobalPlanResponse(**result)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur reprise TEAM 2 pour plan '{global_plan_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
+
 @app.get("/v1/stats/team1_agent_tasks_count", response_model=Team1AgentTasksCountResponse)
 async def get_team1_agent_tasks_count_stats():
     """

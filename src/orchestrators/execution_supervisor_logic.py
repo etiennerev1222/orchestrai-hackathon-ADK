@@ -23,12 +23,23 @@ from src.agents.decomposition_agent.logic import AGENT_SKILL_DECOMPOSE_EXECUTION
 logger = logging.getLogger(__name__) # Logger au niveau du module
 
 class ExecutionSupervisorLogic:
-    def __init__(self, global_plan_id: str, team1_plan_final_text: str):
+    def __init__(self, global_plan_id: str, team1_plan_final_text: str, execution_plan_id: Optional[str] = None):
+        """Initialise le superviseur d'exécution.
+
+        Parameters
+        ----------
+        global_plan_id : str
+            Identifiant du plan global.
+        team1_plan_final_text : str
+            Texte final du plan validé par TEAM 1.
+        execution_plan_id : Optional[str]
+            ID à réutiliser pour reprendre un plan existant.
+        """
         self.global_plan_id = global_plan_id
         self.team1_plan_final_text = team1_plan_final_text
         self._local_to_global_id_map_for_plan: Dict[str, str] = {}
-        
-        self.execution_plan_id = f"exec_{self.global_plan_id}_{uuid.uuid4().hex[:8]}"
+
+        self.execution_plan_id = execution_plan_id or f"exec_{self.global_plan_id}_{uuid.uuid4().hex[:8]}"
         self.task_graph = ExecutionTaskGraph(execution_plan_id=self.execution_plan_id)
         
         self._gra_base_url: Optional[str] = None
@@ -448,6 +459,45 @@ class ExecutionSupervisorLogic:
         
         final_status = self.task_graph.as_dict().get("overall_status", "UNKNOWN")
         self.logger.info(f"[{self.execution_plan_id}] Exécution terminée avec le statut: {final_status}")
+
+    async def continue_execution(self, max_cycles: int = 5):
+        """Reprendre un plan existant pour traiter les tâches restantes."""
+        for i in range(max_cycles):
+            self.logger.info(f"\n--- CYCLE DE REPRISE N°{i+1}/{max_cycles} pour le plan {self.execution_plan_id} ---")
+            await self.process_plan_execution()
+
+            snapshot = self.task_graph.as_dict()
+            overall_status = snapshot.get("overall_status", "UNKNOWN")
+            nodes = snapshot.get("nodes", {})
+
+            if overall_status.startswith("EXECUTION_COMPLETED") or overall_status.startswith("FAILED") or overall_status == "TIMEOUT_EXECUTION":
+                self.logger.info(f"[{self.execution_plan_id}] Plan déjà terminé ({overall_status}). Arrêt de la reprise.")
+                break
+
+            non_terminal = [
+                nid
+                for nid, ndata in nodes.items()
+                if ExecutionTaskState(ndata.get("state", ExecutionTaskState.PENDING)) not in [
+                    ExecutionTaskState.COMPLETED,
+                    ExecutionTaskState.FAILED,
+                    ExecutionTaskState.CANCELLED,
+                ]
+            ]
+
+            if not non_terminal:
+                has_failed = any(
+                    ExecutionTaskState(ndata.get("state")) == ExecutionTaskState.FAILED for ndata in nodes.values()
+                )
+                final_state = "EXECUTION_COMPLETED_WITH_FAILURES" if has_failed else "EXECUTION_COMPLETED_SUCCESSFULLY"
+                self.logger.info(f"[{self.execution_plan_id}] Toutes les tâches sont terminées. Statut: {final_state}")
+                self.task_graph.set_overall_status(final_state)
+                break
+
+            if i == max_cycles - 1:
+                self.logger.warning(f"[{self.execution_plan_id}] Nombre maximum de cycles de reprise atteint.")
+                break
+
+            await asyncio.sleep(5)
 
     async def _get_all_available_execution_skills_from_gra(self) -> List[str]:
         self.logger.info(f"[{self.execution_plan_id}] Récupération des compétences d'exécution disponibles depuis le GRA.")

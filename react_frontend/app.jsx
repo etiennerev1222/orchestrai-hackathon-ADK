@@ -262,6 +262,16 @@ function App() {
       .catch(err => console.error('Erreur soumission plan', err));
   }
 
+  function resumeExecution(planId) {
+    if (!planId) return;
+    fetch(`${BACKEND_API_URL}/v1/global_plans/${planId}/resume_execution`, {
+      method: 'POST'
+    })
+      .then(r => r.json())
+      .then(() => refreshPlanDetails(planId))
+      .catch(err => console.error('Erreur reprise execution', err));
+  }
+
   function formatArtifact(data) {
     if (!data) return '';
     if (typeof data === 'string') {
@@ -412,6 +422,14 @@ function App() {
           flowRunning={planDetails && !FINISHED_STATES.includes(planDetails.current_supervisor_state)}
           hasFailures={hasFailures}
         />
+        {planDetails?.team2_execution_plan_id &&
+          planDetails.current_supervisor_state !== 'TEAM2_EXECUTION_COMPLETED' && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <button onClick={() => resumeExecution(planDetails.global_plan_id)}>
+                Reprendre l'exécution TEAM 2
+              </button>
+            </div>
+          )}
         <PlanStats team1Counts={team1Counts} team2Counts={team2Counts} />
         {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
           <ClarificationSection plan={planDetails} />
