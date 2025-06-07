@@ -93,20 +93,7 @@ function App() {
   React.useEffect(() => {
     fetch(`${BACKEND_API_URL}/agents_status`)
       .then(res => res.json())
-      .then(async list => {
-        const checks = await Promise.all(
-          list.map(a =>
-            fetch(`${(a.url || '').replace(/\/$/, '')}/.well-known/agent.json`)
-              .then(r => r.ok)
-              .catch(() => false)
-          )
-        );
-        const withHealth = list.map((a, idx) => ({
-          ...a,
-          health_status: checks[idx] ? '✅ Online' : '⚠️ Offline'
-        }));
-        setAgentsStatus(withHealth);
-      })
+      .then(list => setAgentsStatus(list))
       .catch(err => console.error('Erreur chargement statut agents', err));
   }, []);
 
