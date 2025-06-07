@@ -1,4 +1,11 @@
 const BACKEND_API_URL = window.BACKEND_API_URL || 'http://localhost:8000';
+const FINISHED_STATES = [
+  'TEAM2_EXECUTION_COMPLETED',
+  'TEAM2_EXECUTION_FAILED',
+  'TEAM1_PLANNING_FAILED',
+  'FAILED_MAX_CLARIFICATION_ATTEMPTS',
+  'FAILED_AGENT_ERROR'
+];
 
 function Graph({ nodes, edges, onNodeClick, onEdgeClick }) {
   const containerRef = React.useRef(null);
@@ -71,6 +78,42 @@ function AgentStatusBar({ agents }) {
   );
 }
 
+function PlanInfo({ plan, flowRunning }) {
+  if (!plan) return null;
+  return (
+    <div className="plan-info">
+      <div><strong>Plan ID:</strong> {plan.global_plan_id}</div>
+      <div><strong>Objectif brut:</strong> {plan.raw_objective}</div>
+      {plan.clarified_objective && (
+        <div><strong>Objectif clarifié:</strong> {plan.clarified_objective}</div>
+      )}
+      <div><strong>État actuel:</strong> {plan.current_supervisor_state}</div>
+      <div><strong>Flux en cours:</strong> {flowRunning ? '🟢 Oui' : '🏁 Terminé'}</div>
+    </div>
+  );
+}
+
+function PlanStats({ team1Counts, team2Counts }) {
+  if (!team1Counts && !team2Counts) return null;
+  return (
+    <details className="plan-stats">
+      <summary>📊 Statistiques du plan</summary>
+      {team1Counts && (
+        <div>
+          <strong>TEAM 1</strong>
+          <pre>{JSON.stringify(team1Counts, null, 2)}</pre>
+        </div>
+      )}
+      {team2Counts && (
+        <div>
+          <strong>TEAM 2</strong>
+          <pre>{JSON.stringify(team2Counts, null, 2)}</pre>
+        </div>
+      )}
+    </details>
+  );
+}
+
 function App() {
   const [plans, setPlans] = React.useState([]);
   const [selectedPlanId, setSelectedPlanId] = React.useState('');
@@ -83,6 +126,8 @@ function App() {
   const [agentsStatus, setAgentsStatus] = React.useState([]);
   const [newObjective, setNewObjective] = React.useState('');
   const [autoRefresh, setAutoRefresh] = React.useState(false);
+  const [team1Counts, setTeam1Counts] = React.useState(null);
+  const [team2Counts, setTeam2Counts] = React.useState(null);
 
   React.useEffect(() => {
     fetch(`${BACKEND_API_URL}/v1/global_plans_summary`)
@@ -120,7 +165,10 @@ function App() {
             .then(d => {
               setTeam1NodesMap(d.nodes || {});
               setTeam1Graph(parseTaskGraph(d.nodes, true));
+              setTeam1Counts(computeStateCounts(d.nodes));
             });
+        } else {
+          setTeam1Counts(null);
         }
         if (plan.team2_execution_plan_id) {
           fetch(`${BACKEND_API_URL}/v1/execution_task_graphs/${plan.team2_execution_plan_id}`)
@@ -128,10 +176,12 @@ function App() {
             .then(d => {
               setTeam2NodesMap(d.nodes || {});
               setTeam2Graph(parseTaskGraph(d.nodes, false));
+              setTeam2Counts(computeStateCounts(d.nodes));
             });
         } else {
           setTeam2Graph(null);
           setTeam2NodesMap({});
+          setTeam2Counts(null);
         }
       })
       .catch(err => console.error('Erreur chargement details plan', err));
@@ -158,6 +208,16 @@ function App() {
       });
     });
     return { nodes, edges };
+  }
+
+  function computeStateCounts(nodesObj) {
+    if (!nodesObj) return null;
+    const counts = {};
+    Object.values(nodesObj).forEach(n => {
+      const state = n.state || 'unknown';
+      counts[state] = (counts[state] || 0) + 1;
+    });
+    return counts;
   }
 
   function submitNewPlan() {
@@ -322,6 +382,8 @@ function App() {
             Auto-refresh
           </label>
         </div>
+        <PlanInfo plan={planDetails} flowRunning={planDetails && !FINISHED_STATES.includes(planDetails.current_supervisor_state)} />
+        <PlanStats team1Counts={team1Counts} team2Counts={team2Counts} />
         {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
           <ClarificationSection plan={planDetails} />
         )}
