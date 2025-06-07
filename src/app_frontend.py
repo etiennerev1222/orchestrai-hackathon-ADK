@@ -131,6 +131,17 @@ async def get_agents_status_with_health_from_api():
             st.error(f"Erreur récupération statut enrichi agents: {e}")
             return []
 
+async def get_all_agent_task_stats_from_api():
+    """Récupère les statistiques globales de tâches traitées par les agents."""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f"{BACKEND_API_URL}/v1/stats/agent_tasks", timeout=10.0)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            st.error(f"Erreur récupération statistiques agents: {e}")
+            return None
+
 async def accept_and_start_planning_api(global_plan_id: str, user_final_objective: Optional[str] = None):
     async with httpx.AsyncClient() as client:
         try:
@@ -240,6 +251,14 @@ def display_agent_status_bar(agents_status: List[Dict[str, Any]]):
                 value=name,
                 help=f"Compétences : {skills}"
             )
+
+def compute_state_counts(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
+    """Calcule le nombre de tâches par état."""
+    counts: Dict[str, int] = {}
+    for n in nodes.values():
+        state = n.get("state", "unknown")
+        counts[state] = counts.get(state, 0) + 1
+    return counts
 # --- Interface Streamlit ---
 
 
@@ -311,6 +330,28 @@ with main_col:
         
         plan = st.session_state.active_global_plan_details
         if plan:
+            st.markdown(
+                f"**Plan ID** : `{plan.get('global_plan_id')}`\n\n"
+                f"**Objectif brut** : {plan.get('raw_objective')}\n\n"
+                + (f"**Objectif clarifié** : {plan.get('clarified_objective')}\n\n" if plan.get('clarified_objective') else "")
+                + f"**État actuel** : `{plan.get('current_supervisor_state')}`"
+            )
+
+            finished_states = [
+                GlobalPlanState.TEAM2_EXECUTION_COMPLETED,
+                GlobalPlanState.TEAM2_EXECUTION_FAILED,
+                GlobalPlanState.TEAM1_PLANNING_FAILED,
+                GlobalPlanState.FAILED_MAX_CLARIFICATION_ATTEMPTS,
+                GlobalPlanState.FAILED_AGENT_ERROR,
+            ]
+            flow_running = plan.get("current_supervisor_state") not in finished_states
+            st.markdown(f"**Flux en cours** : {'🟢 Oui' if flow_running else '🏁 Terminé'}")
+
+            team1_counts = None
+            team2_counts = None
+
+
+
             # Affichage des détails du plan global et logique de clarification...
            # --- Graphe TEAM 1 (Interactif avec AGraph) ---
             team1_plan_id = plan.get("team1_plan_id")
@@ -324,6 +365,7 @@ with main_col:
                 if st.session_state.current_task_graph_details:
                     nodes_t1 = st.session_state.current_task_graph_details.get("nodes", {})
                     if nodes_t1:
+                        team1_counts = compute_state_counts(nodes_t1)
                         a_nodes, a_edges = [], []
                         for node_id, node_info in nodes_t1.items():
                             node_state_val = node_info.get("state")
@@ -387,6 +429,7 @@ with main_col:
                 if st.session_state.current_execution_graph_details:
                     nodes_data_t2 = st.session_state.current_execution_graph_details.get("nodes", {})
                     if nodes_data_t2:
+                        team2_counts = compute_state_counts(nodes_data_t2)
                         a_nodes, a_edges = [], []
                         for node_id, node_info in nodes_data_t2.items():
                             node_state_val = node_info.get("state")
@@ -412,6 +455,15 @@ with main_col:
                             st.rerun()
                     else:
                         st.info("Le graphe d'exécution est en attente de décomposition.")
+
+            if team1_counts or team2_counts:
+                with st.expander("📊 Statistiques du plan"):
+                    if team1_counts:
+                        st.markdown("**TEAM 1**")
+                        st.json(team1_counts)
+                    if team2_counts:
+                        st.markdown("**TEAM 2**")
+                        st.json(team2_counts)
     else:
         st.info("Sélectionnez un plan dans la barre latérale pour commencer.")
 
