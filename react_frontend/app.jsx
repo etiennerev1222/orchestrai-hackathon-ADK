@@ -7,9 +7,35 @@ const FINISHED_STATES = [
   'FAILED_AGENT_ERROR'
 ];
 
-function Graph({ nodes, edges, onNodeClick, onEdgeClick }) {
+function Graph({ nodes, edges, onNodeClick, onEdgeClick, allowFullscreen }) {
   const containerRef = React.useRef(null);
   const networkRef = React.useRef(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+
+  const toggleFullscreen = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!isFullscreen) {
+      if (container.requestFullscreen) {
+        container.requestFullscreen();
+        setIsFullscreen(true);
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    const handler = () => {
+      const elem = document.fullscreenElement;
+      setIsFullscreen(elem === containerRef.current);
+    };
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -53,6 +79,11 @@ function Graph({ nodes, edges, onNodeClick, onEdgeClick }) {
         ref={containerRef}
         style={{ height: '600px', border: '1px solid #ccc', marginBottom: '1rem' }}
       />
+      {allowFullscreen && (
+        <button className="fullscreen-button" onClick={toggleFullscreen}>
+          {isFullscreen ? 'Quitter plein écran' : 'Plein écran'}
+        </button>
+      )}
       <button className="fit-button" onClick={() => networkRef.current?.fit()}>
         Recentrer
       </button>
@@ -470,6 +501,7 @@ function App() {
               edges={team2Graph.edges}
               onNodeClick={info => onNodeClick(info, false)}
               onEdgeClick={info => onEdgeClick(info, false)}
+              allowFullscreen
             />
           </div>
         )}
