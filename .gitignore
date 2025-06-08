@@ -37,4 +37,57 @@ Thumbs.db
 # 7. Fichiers de logs (si vous en générez)
 *.log
 node_modules/
+# Fichiers de configuration des IDE et éditeurs
+.idea/
+.vscode/
+*.swp
+*.swo
 
+# Fichiers système d'OS
+.DS_Store
+Thumbs.db
+
+# === Python ===
+# Fichiers de bytecode et optimisés
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dossiers d'environnement virtuel
+venv/
+env/
+.venv/
+.env/
+*env/
+
+# Artefacts de tests
+.pytest_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+
+# Artefacts de packaging et de build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# === Fichiers spécifiques au projet ===
+
+# !!! SECRETS ET CONFIGURATION CRITIQUES !!!
+# Ne jamais versionner les clés d'API et les crédentials
+credentials.json
+*.env
+.env.*
+!/.env.example # Permet de versionner un exemple de fichier .env
+
+# !!! DOSSIERS GÉNÉRÉS PAR NOS SCRIPTS !!!
+# Le contenu de ce dossier est généré à la volée, il ne doit pas être versionné.
+# En ignorant ce dossier, on ignore aussi les credentials.json et .env qui s'y trouvent.
+docker_build/
+
+# Fichiers de log
+*.log
+log.txt

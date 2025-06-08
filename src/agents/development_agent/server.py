@@ -70,41 +70,46 @@ async def register_self_with_gra(agent_public_url: str):
             if attempt < max_retries -1: await asyncio.sleep(retry_delay)
             else: logger.error(f"[{AGENT_NAME}] Échec final enregistrement GRA.")
 
+AGENT_NAME = "DevelopmentAgentServer"
 
-async def run_server(host: str = "localhost", port: int = 8007, log_level: str = "info"): # Port 8007
-    logger.info(f"Démarrage de {AGENT_NAME} à http://{host}:{port}")
 
-    @contextlib.asynccontextmanager
-    async def lifespan(app_starlette: Starlette):
-        actual_host = "localhost" if host == "0.0.0.0" else host
-        agent_public_url = os.environ.get(f"{AGENT_NAME.upper()}_PUBLIC_URL", f"http://{actual_host}:{port}")
-        logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique: {agent_public_url}")
-        await register_self_with_gra(agent_public_url)
-        yield
-        logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
+agent_executor = DevelopmentAgentExecutor()
+task_store = InMemoryTaskStore()
+request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 
-    agent_executor = DevelopmentAgentExecutor()
-    task_store = InMemoryTaskStore()
-    request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
+def create_app_instance(host: str, port: int) -> Starlette:
     agent_card = get_development_agent_card(host, port)
-    
-    a2a_app_instance = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
-    asgi_app = a2a_app_instance.build()
-    asgi_app.router.lifespan_context = lifespan
+    a2a_server_app_instance = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
+    return a2a_server_app_instance.build()
 
-    config = uvicorn.Config(app=asgi_app, host=host, port=port, log_level=log_level.lower(), lifespan="on")
-    server = uvicorn.Server(config)
+app = create_app_instance(host="localhost", port=8080)
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app_param: Starlette):
+    # L'URL publique est directement fournie par l'environnement Docker.
+    # Fini les devinettes.
+    agent_public_url = os.environ.get("PUBLIC_URL")
     
-    try:
-        await server.serve()
-    finally:
-        logger.info(f"Serveur {AGENT_NAME} arrêté.")
+    if not agent_public_url:
+        logger.error(f"[{AGENT_NAME}] La variable d'environnement PUBLIC_URL est manquante ! Impossible de s'enregistrer.")
+        yield # Permet au serveur de démarrer même si l'enregistrement échoue
+        return
+
+    logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique pour enregistrement : {agent_public_url}")
+    await register_self_with_gra( agent_public_url)
+    yield
+    logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
+
+# N'oubliez pas de l'attacher à l'application globale
+app.router.lifespan_context = lifespan
 
 if __name__ == "__main__":
-    SERVER_PORT_DEV_AGENT = 8007 # Port unique
-    SERVER_HOST_DEV_AGENT = "localhost"
-    logger.info(f"Lancement du serveur {AGENT_NAME} sur http://{SERVER_HOST_DEV_AGENT}:{SERVER_PORT_DEV_AGENT}")
+    SERVER_HOST = "localhost"
+    SERVER_PORT = 8007
+    os.environ[f"{AGENT_NAME.upper()}_PUBLIC_URL"] = f"http://{SERVER_HOST}:{SERVER_PORT}"
+    logger.info(f"Lancement du serveur {AGENT_NAME} sur http://{SERVER_HOST}:{SERVER_PORT}")
     try:
-        asyncio.run(run_server(host=SERVER_HOST_DEV_AGENT, port=SERVER_PORT_DEV_AGENT))
+        uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT, lifespan="on")
     except Exception as e:
-        logger.error(f"Erreur lancement serveur {AGENT_NAME}: {e}", exc_info=True)
+        logger.error(f"Erreur lors du lancement du serveur {AGENT_NAME}: {e}", exc_info=True)

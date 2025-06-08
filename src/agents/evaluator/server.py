@@ -135,78 +135,35 @@ async def app_lifespan_for_evaluator(app_passed_by_starlette): # Le nom du param
     yield
     logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt (lifespan).")
 
+agent_executor = EvaluatorAgentExecutor()
+task_store = InMemoryTaskStore()
+request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 
-async def run_server(host: str = "localhost", port: int = 8002, log_level: str = "info"): # Port 8002
-    logger.info(f"Démarrage de l'{AGENT_NAME}' à l'adresse http://{host}:{port}")
-
-    evaluator_executor = EvaluatorAgentExecutor()
-    task_store = InMemoryTaskStore()
-    request_handler = DefaultRequestHandler(
-        agent_executor=evaluator_executor,
-        task_store=task_store
-    )
+def create_app_instance(host: str, port: int) -> Starlette:
     agent_card = get_evaluator_agent_card(host, port)
+    a2a_server_app_instance = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
+    return a2a_server_app_instance.build()
 
-    # 1. Définir le lifespan DANS la portée de run_server pour capturer host et port
-    @contextlib.asynccontextmanager
-    async def lifespan_for_this_instance(app): # 'app' est l'instance Starlette
-        # host et port sont maintenant ceux de l'appel à run_server
-        current_host = host
-        current_port = port
-        if current_host == "0.0.0.0":
-            logger.warning(f"[{AGENT_NAME}] L'agent écoute sur 0.0.0.0. L'URL d'enregistrement utilisera 'localhost'.")
-            current_host_for_url = "localhost"
-        else:
-            current_host_for_url = current_host
-        
-        # Permet de surcharger via variable d'environnement si besoin (pour Docker, etc.)
-        agent_public_url = os.environ.get(f"{AGENT_NAME}_PUBLIC_URL", f"http://{current_host_for_url}:{current_port}")
+app = create_app_instance(host="localhost", port=8080)
 
-        logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique pour enregistrement : {agent_public_url}")
-        await register_self_with_gra(agent_public_url)
-        yield
-        logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt (lifespan).")
+@contextlib.asynccontextmanager
+async def lifespan(app_param: Starlette):
+    host = os.environ.get("HOST", "localhost")
+    port = int(os.environ.get("PORT", 8080))
+    agent_public_url = os.environ.get(f"{AGENT_NAME.upper()}_PUBLIC_URL", f"http://{host}:{port}")
+    logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique pour enregistrement : {agent_public_url}")
+    await register_self_with_gra(agent_public_url)
+    yield
+    logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
 
-    # 2. Créer l'application A2A SANS l'argument lifespan
-    a2a_server_app_instance = A2AStarletteApplication(
-        agent_card=agent_card,
-        http_handler=request_handler
-    )
-    
-    # 3. Construire l'application ASGI (qui est une instance de Starlette)
-    asgi_app: Starlette = a2a_server_app_instance.build() # Préciser le type
-
-    # 4. Attacher notre lifespan à l'application Starlette construite
-    asgi_app.router.lifespan_context = lifespan_for_this_instance
-    logger.info(f"[{AGENT_NAME}] Lifespan attaché à l'application ASGI.")
-    
-    # 5. Configurer Uvicorn pour qu'il utilise le lifespan de l'application
-    config = uvicorn.Config(
-        app=asgi_app,
-        host=host,
-        port=port,
-        log_level=log_level.lower(),
-        lifespan="on" # <--- Dire à Uvicorn de respecter le lifespan de l'application
-    )
-    
-    server = uvicorn.Server(config)
-    
-    try:
-        await server.serve()
-    except KeyboardInterrupt:
-        logger.info(f"[{AGENT_NAME}] Arrêt du serveur demandé (KeyboardInterrupt).")
-    finally:
-        logger.info(f"Serveur {AGENT_NAME} arrêté.")
-
+app.router.lifespan_context = lifespan
 
 if __name__ == "__main__":
-    # ... (le reste est inchangé)
-    print(f"Lancement du serveur {AGENT_NAME}...")
     SERVER_HOST = "localhost"
     SERVER_PORT = 8002
-    logger.info(f"Pour lancer le serveur {AGENT_NAME}...")
+    os.environ[f"{AGENT_NAME.upper()}_PUBLIC_URL"] = f"http://{SERVER_HOST}:{SERVER_PORT}"
+    logger.info(f"Lancement du serveur {AGENT_NAME} sur http://{SERVER_HOST}:{SERVER_PORT}")
     try:
-        asyncio.run(run_server(host=SERVER_HOST, port=SERVER_PORT))
+        uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT, lifespan="on")
     except Exception as e:
         logger.error(f"Erreur lors du lancement du serveur {AGENT_NAME}: {e}", exc_info=True)
-
