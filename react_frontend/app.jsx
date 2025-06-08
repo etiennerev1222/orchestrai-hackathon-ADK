@@ -7,7 +7,16 @@ const FINISHED_STATES = [
   'FAILED_AGENT_ERROR'
 ];
 
-function Graph({ nodes, edges, onNodeClick, onEdgeClick, allowFullscreen }) {
+function Graph({
+  nodes,
+  edges,
+  onNodeClick,
+  onEdgeClick,
+  allowFullscreen,
+  popup,
+  closePopup,
+  id
+}) {
   const containerRef = React.useRef(null);
   const networkRef = React.useRef(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -60,7 +69,11 @@ function Graph({ nodes, edges, onNodeClick, onEdgeClick, allowFullscreen }) {
     networkRef.current = network;
     network.on('click', params => {
       const ev = params.event?.srcEvent || {};
-      const coords = { x: ev.pageX || 0, y: ev.pageY || 0 };
+      const rect = containerRef.current.getBoundingClientRect();
+      const coords = {
+        x: (ev.pageX || 0) - rect.left,
+        y: (ev.pageY || 0) - rect.top
+      };
       if (params.nodes.length && onNodeClick) {
         onNodeClick({ id: params.nodes[0], x: coords.x, y: coords.y });
       } else if (params.edges.length && onEdgeClick) {
@@ -87,6 +100,16 @@ function Graph({ nodes, edges, onNodeClick, onEdgeClick, allowFullscreen }) {
       <button className="fit-button" onClick={() => networkRef.current?.fit()}>
         Recentrer
       </button>
+      {popup && popup.target === id && (
+        <div
+          className="artifact-popup"
+          style={{ left: popup.x, top: popup.y, position: 'absolute' }}
+          onClick={closePopup}
+        >
+          <span className="artifact-popup-close">&times;</span>
+          <pre>{popup.content}</pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -338,7 +361,8 @@ function App() {
     const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
     if (!nodeInfo) return;
 
-    const display = content => setPopup({ x: coords.x, y: coords.y, content });
+    const display = content =>
+      setPopup({ x: coords.x, y: coords.y, content, target: isTeam1 ? 'team1' : 'team2' });
 
     if (isTeam1) {
       display(formatArtifact(nodeInfo.artifact_ref));
@@ -486,10 +510,13 @@ function App() {
           <div>
             <h4>Graphe Team 1</h4>
             <Graph
+              id="team1"
               nodes={team1Graph.nodes}
               edges={team1Graph.edges}
               onNodeClick={info => onNodeClick(info, true)}
               onEdgeClick={info => onEdgeClick(info, true)}
+              popup={popup}
+              closePopup={() => setPopup(null)}
             />
           </div>
         )}
@@ -497,22 +524,15 @@ function App() {
           <div>
             <h4>Graphe Exécution Team 2</h4>
             <Graph
+              id="team2"
               nodes={team2Graph.nodes}
               edges={team2Graph.edges}
               onNodeClick={info => onNodeClick(info, false)}
               onEdgeClick={info => onEdgeClick(info, false)}
               allowFullscreen
+              popup={popup}
+              closePopup={() => setPopup(null)}
             />
-          </div>
-        )}
-        {popup && (
-          <div
-            className="artifact-popup"
-            style={{ left: popup.x, top: popup.y }}
-            onClick={() => setPopup(null)}
-          >
-            <span className="artifact-popup-close">&times;</span>
-            <pre>{popup.content}</pre>
           </div>
         )}
       </div>
