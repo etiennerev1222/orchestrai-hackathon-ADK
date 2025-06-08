@@ -3,7 +3,8 @@ import httpx
 from src.shared.firebase_init import get_firestore_client
 import logging
 import os
-
+import asyncio
+from typing import List, Optional
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO)
@@ -46,26 +47,36 @@ async def get_gra_base_url() -> str:
     except Exception as e:
         logger.error(f"Erreur lors de la découverte du GRA via Firestore : {e}", exc_info=True)
         return ""
-
-
-async def register_self_with_gra(agent_name: str, agent_url: str):
-    """
-    Enregistre l'URL d'un agent dans Firestore pour que le GRA puisse le découvrir.
-    """
+async def register_self_with_gra(agent_name: str, agent_public_url: str, agent_internal_url: str, skills: List[str]):
     gra_base_url = await get_gra_base_url()
     if not gra_base_url:
         logger.error(f"[{agent_name}] URL du GRA non disponible, impossible de s'enregistrer.")
         return
 
     register_url = f"{gra_base_url}/register"
-    logger.info(f"[{agent_name}] Tentative d'enregistrement ({agent_url}) auprès du GRA à {register_url}")
+    # Le payload correspond maintenant au modèle Pydantic du GRA
+    payload = {
+        "agent_name": agent_name,
+        "public_url": agent_public_url,
+        "internal_url": agent_internal_url,
+        "skills": skills
+    }
     
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(register_url, json={"agent_name": agent_name, "agent_url": agent_url}, timeout=5.0)
-            response.raise_for_status()
-            logger.info(f"[{agent_name}] Enregistré avec succès auprès du GRA. Réponse: {response.json()}")
-    except httpx.RequestError as e:
-        logger.error(f"[{agent_name}] Échec de l'enregistrement auprès du GRA : Erreur réseau {e}")
-    except Exception as e:
-        logger.error(f"[{agent_name}] Erreur inattendue lors de l'enregistrement : {e}", exc_info=True)
+    max_retries = 4
+    delay_between_retries = 2  # seconds
+
+    logger.info(f"[{agent_name}] Tentative d'enregistrement auprès du GRA à {register_url}")
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(register_url, json=payload, timeout=5.0)
+                response.raise_for_status()
+                logger.info(f"[{agent_name}] Enregistré avec succès auprès du GRA.")
+                return
+        except Exception as e:
+            logger.error(f"[{agent_name}] Échec de l'enregistrement (tentative {attempt}/{max_retries}) : {e}")
+            if attempt < max_retries:
+                logger.info(f"[{agent_name}] Nouvelle tentative dans {delay_between_retries} secondes...")
+                await asyncio.sleep(delay_between_retries)
+            else:
+                logger.error(f"[{agent_name}] Toutes les tentatives d'enregistrement ont échoué.")

@@ -91,3 +91,4 @@ docker_build/
 # Fichiers de log
 *.log
 log.txt
+docker_build/

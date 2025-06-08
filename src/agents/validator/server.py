@@ -18,7 +18,7 @@ from a2a.types import (
 from starlette.applications import Starlette # Pour le type hint de asgi_app
 
 # Importation pour la découverte du GRA
-from src.shared.service_discovery import get_gra_base_url
+from src.shared.service_discovery import get_gra_base_url, register_self_with_gra
 
 # Importer l'AgentExecutor spécifique
 from .executor import ValidatorAgentExecutor
@@ -54,39 +54,6 @@ def get_validator_agent_card(host: str, port: int) -> AgentCard:
     logger.info(f"Agent Card créée: {agent_card.name} accessible à {agent_card.url}")
     return agent_card
 
-# --- Fonction pour s'enregistrer auprès du GRA ---
-async def register_self_with_gra(agent_public_url: str):
-    gra_base_url = await get_gra_base_url()
-    if not gra_base_url:
-        logger.error(f"[{AGENT_NAME}] Impossible de découvrir l'URL du GRA. Enregistrement annulé.")
-        return
-
-    registration_payload = {
-        "name": AGENT_NAME,
-        "url": agent_public_url,
-        "skills": AGENT_SKILLS
-    }
-    register_endpoint = f"{gra_base_url}/register"
-    
-    max_retries = 3
-    retry_delay = 5 # secondes
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient() as client:
-                logger.info(f"[{AGENT_NAME}] Tentative d'enregistrement ({agent_public_url}) auprès du GRA à {register_endpoint} (essai {attempt + 1}/{max_retries})")
-                response = await client.post(register_endpoint, json=registration_payload, timeout=10.0)
-                response.raise_for_status()
-                logger.info(f"[{AGENT_NAME}] Enregistré avec succès auprès du GRA. Réponse: {response.json()}")
-                return
-        except httpx.RequestError as e:
-            logger.warning(f"[{AGENT_NAME}] Échec de l'enregistrement auprès du GRA (essai {attempt + 1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(retry_delay)
-            else:
-                logger.error(f"[{AGENT_NAME}] Échec final de l'enregistrement après {max_retries} essais. L'agent ne sera pas découvrable via le GRA.")
-        except Exception as e:
-            logger.error(f"[{AGENT_NAME}] Erreur inattendue lors de l'enregistrement: {e}")
-            break 
 
 agent_executor = ValidatorAgentExecutor()
 task_store = InMemoryTaskStore()
@@ -98,22 +65,32 @@ def create_app_instance(host: str, port: int) -> Starlette:
     return a2a_server_app_instance.build()
 
 app = create_app_instance(host="localhost", port=8080)
-
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
-    # L'URL publique est directement fournie par l'environnement Docker.
-    # Fini les devinettes.
     agent_public_url = os.environ.get("PUBLIC_URL")
+    agent_internal_url = os.environ.get("INTERNAL_URL")
     
-    if not agent_public_url:
-        logger.error(f"[{AGENT_NAME}] La variable d'environnement PUBLIC_URL est manquante ! Impossible de s'enregistrer.")
-        yield # Permet au serveur de démarrer même si l'enregistrement échoue
+    if not agent_public_url or not agent_internal_url:
+        logger.error(f"[{AGENT_NAME}] PUBLIC_URL ou INTERNAL_URL manquant ! Impossible de s'enregistrer.")
+        yield
         return
 
-    logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique pour enregistrement : {agent_public_url}")
-    await register_self_with_gra( agent_public_url)
+    # === AJOUT : Récupérer les compétences ===
+    # La fonction get_..._card est déjà définie dans chaque fichier server.py
+    # On l'appelle pour obtenir la carte et extraire les compétences.
+    agent_card = get_validator_agent_card("placeholder", 0) # l'host/port n'importe pas ici
+ # === LA CORRECTION EST ICI ===
+    # On accède directement à l'attribut .skills de la carte, pas via .capabilities
+    skill_ids = [skill.id for skill in agent_card.skills] if agent_card.skills else []
+
+    logger.info(f"[{AGENT_NAME}] Enregistrement avec URLs et compétences : {skill_ids}")
+    
+    # On passe maintenant les compétences à la fonction d'enregistrement
+    await register_self_with_gra(AGENT_NAME, agent_public_url, agent_internal_url, skill_ids)
     yield
     logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
+
+app.router.lifespan_context = lifespan
 
 # N'oubliez pas de l'attacher à l'application globale
 app.router.lifespan_context = lifespan

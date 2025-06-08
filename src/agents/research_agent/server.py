@@ -12,7 +12,7 @@ from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 from starlette.applications import Starlette
 
-from src.shared.service_discovery import get_gra_base_url
+from src.shared.service_discovery import get_gra_base_url, register_self_with_gra
 from .executor import ResearchAgentExecutor
 from .logic import AGENT_SKILL_GENERAL_ANALYSIS, AGENT_SKILL_WEB_RESEARCH, AGENT_SKILL_DOCUMENT_SYNTHESIS
 
@@ -61,28 +61,6 @@ def get_research_agent_card(host: str, port: int) -> AgentCard:
         skills=skills_objects
     )
 
-async def register_self_with_gra(agent_public_url: str):
-    gra_base_url = await get_gra_base_url()
-    if not gra_base_url:
-        logger.error(f"[{AGENT_NAME}] Impossible de découvrir l'URL du GRA. Enregistrement annulé.")
-        return
-    registration_payload = {"name": AGENT_NAME, "url": agent_public_url, "skills": AGENT_SKILLS_LIST}
-    register_endpoint = f"{gra_base_url}/register"
-    # ... (logique d'enregistrement avec retries, identique aux autres agents) ...
-    max_retries = 3; retry_delay = 5
-    for attempt in range(max_retries):
-        try:
-            async with httpx.AsyncClient() as client:
-                logger.info(f"[{AGENT_NAME}] Tentative enregistrement ({agent_public_url}) GRA {register_endpoint} (essai {attempt+1})")
-                response = await client.post(register_endpoint, json=registration_payload, timeout=10.0)
-                response.raise_for_status()
-                logger.info(f"[{AGENT_NAME}] Enregistré GRA. Réponse: {response.json()}")
-                return
-        except Exception as e:
-            logger.warning(f"[{AGENT_NAME}] Échec enregistrement GRA (essai {attempt+1}): {e}")
-            if attempt < max_retries -1: await asyncio.sleep(retry_delay)
-            else: logger.error(f"[{AGENT_NAME}] Échec final enregistrement GRA.")
-
 agent_executor = ResearchAgentExecutor()
 task_store = InMemoryTaskStore()
 request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
@@ -93,23 +71,32 @@ def create_app_instance(host: str, port: int) -> Starlette:
     return a2a_server_app_instance.build()
 
 app = create_app_instance(host="localhost", port=8080)
+
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
-    # L'URL publique est directement fournie par l'environnement Docker.
-    # Fini les devinettes.
     agent_public_url = os.environ.get("PUBLIC_URL")
+    agent_internal_url = os.environ.get("INTERNAL_URL")
     
-    if not agent_public_url:
-        logger.error(f"[{AGENT_NAME}] La variable d'environnement PUBLIC_URL est manquante ! Impossible de s'enregistrer.")
-        yield # Permet au serveur de démarrer même si l'enregistrement échoue
+    if not agent_public_url or not agent_internal_url:
+        logger.error(f"[{AGENT_NAME}] PUBLIC_URL ou INTERNAL_URL manquant ! Impossible de s'enregistrer.")
+        yield
         return
 
-    logger.info(f"[{AGENT_NAME}] Lifespan: Démarrage. URL publique pour enregistrement : {agent_public_url}")
-    await register_self_with_gra( agent_public_url)
+    # === AJOUT : Récupérer les compétences ===
+    # La fonction get_..._card est déjà définie dans chaque fichier server.py
+    # On l'appelle pour obtenir la carte et extraire les compétences.
+    agent_card = get_research_agent_card("placeholder", 0) # l'host/port n'importe pas ici
+     # === LA CORRECTION EST ICI ===
+    # On accède directement à l'attribut .skills de la carte, pas via .capabilities
+    skill_ids = [skill.id for skill in agent_card.skills] if agent_card.skills else []
+
+    logger.info(f"[{AGENT_NAME}] Enregistrement avec URLs et compétences : {skill_ids}")
+    
+    # On passe maintenant les compétences à la fonction d'enregistrement
+    await register_self_with_gra(AGENT_NAME, agent_public_url, agent_internal_url, skill_ids)
     yield
     logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
 
-# N'oubliez pas de l'attacher à l'application globale
 app.router.lifespan_context = lifespan
 
 if __name__ == "__main__":

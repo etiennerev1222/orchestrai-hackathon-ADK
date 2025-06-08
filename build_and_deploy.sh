@@ -72,6 +72,7 @@ EOF
       - GEMINI_API_KEY=\${GEMINI_API_KEY}
       - GRA_PUBLIC_URL=http://gra_server:8000
       - PUBLIC_URL=http://localhost:${PUBLIC_PORT}
+      - INTERNAL_URL=http://${COMPONENT}:8080      
     volumes:
       - ./credentials.json:/app/credentials.json:ro
 EOF

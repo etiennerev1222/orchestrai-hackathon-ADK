@@ -41,10 +41,13 @@ GRA_CONFIG_DOCUMENT_ID = "gra_instance_config"
 GLOBAL_PLANS_FIRESTORE_COLLECTION = "global_plans" # Nom de la collection pour les plans globaux
 
 # --- Modèles de données Pydantic pour la validation ---
+# Ce modèle accepte exactement ce que les agents envoient maintenant,
+# y compris les compétences (skills) que nous allons rajouter à l'envoi.
 class AgentRegistration(BaseModel):
-    name: str = Field(..., description="Nom unique de l'agent, ex: 'ReformulatorAgent'")
-    url: str = Field(..., description="URL de base de l'agent, ex: 'http://localhost:8001'")
-    skills: List[str] = Field(..., description="Liste des compétences, ex: ['reformulation']")
+    name: str = Field(..., alias="agent_name")
+    public_url: str
+    internal_url: str
+    skills: List[str] = [] # La liste des compétences, optionnelle pour l'instant
 
 class Artifact(BaseModel):
     task_id: str
@@ -152,19 +155,95 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# --- Endpoints Agents et Artefacts existants (inchangés pour l'instant) ---
+# --- ROUTE /register MISE À JOUR ---
 @app.post("/register", status_code=201)
-async def register_agent(agent: AgentRegistration):
-    # ... (identique)
+async def register_agent(payload: AgentRegistration):
+    """Point de terminaison pour que les agents puissent s'enregistrer."""
     try:
-        agent_ref = db.collection("agents").document(agent.name) # Peut-être "agents_registry" comme dans README ?
-        # Utiliser asyncio.to_thread pour les opérations Firestore bloquantes
-        await asyncio.to_thread(agent_ref.set, agent.model_dump())
-        logger.info(f"Agent '{agent.name}' enregistré/mis à jour.")
-        return {"status": "success", "agent_name": agent.name}
+        agent_ref = db.collection("service_registry").document(payload.name)
+        
+        agent_data = {
+            "name": payload.name,
+            "public_url": payload.public_url,
+            "internal_url": payload.internal_url,
+            "skills": payload.skills,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        }
+        
+        await asyncio.to_thread(agent_ref.set, agent_data)
+        logger.info(f"Agent '{payload.name}' enregistré/mis à jour.")
+        return {"status": "success", "name": payload.name}
     except Exception as e:
-        logger.error(f"Erreur enregistrement agent '{agent.name}': {e}", exc_info=True)
+        logger.error(f"Erreur enregistrement agent '{payload.name}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- ROUTE /agents MISE À JOUR AVEC HEALTH CHECK ---
+@app.get("/agents")
+async def get_agents_with_status():
+    """Récupère tous les agents enregistrés et vérifie leur statut."""
+    try:
+        agents_ref = db.collection("service_registry")
+        docs_stream = agents_ref.stream()
+        agents = []
+        
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            tasks = []
+            agent_docs = []
+
+            async for doc in docs_stream:
+                if doc.id != 'gra_instance_config':
+                    agent_data = doc.to_dict()
+                    agent_data['id'] = doc.id
+                    agent_docs.append(agent_data)
+                    # On vérifie la santé en utilisant l'URL INTERNE
+                    health_check_url = agent_data.get("internal_url")
+                    if health_check_url:
+                        # Ajoute une coroutine à la liste des tâches à exécuter
+                        tasks.append(client.get(f"{health_check_url}/health"))
+
+            # Exécute toutes les vérifications de santé en parallèle
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for i, agent_data in enumerate(agent_docs):
+                result = results[i]
+                if isinstance(result, httpx.Response) and result.status_code == 200:
+                    agent_data['status'] = 'running' # Vert !
+                else:
+                    agent_data['status'] = 'unhealthy' # Jaune/Rouge
+                    # Log l'erreur si ce n'est pas une simple réponse négative
+                    if not isinstance(result, httpx.Response):
+                         logger.warning(f"Health check a échoué pour {agent_data['name']}: {result}")
+
+                agents.append(agent_data)
+
+        return agents
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des agents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve agents")
+
+# === CORRECTION DANS LA FONCTION CI-DESSOUS ===
+@app.post("/register", status_code=201)
+async def register_agent(payload: AgentRegistration):
+    """Point de terminaison pour que les agents puissent s'enregistrer ou mettre à jour leur statut."""
+    try:
+        # On utilise payload.name ici, car c'est le nom de l'attribut dans le modèle Pydantic
+        agent_ref = db.collection("service_registry").document(payload.name)
+        
+        agent_data = {
+            "name": payload.name, # Utiliser payload.name
+            "public_url": payload.public_url,
+            "internal_url": payload.internal_url,
+            "skills": payload.skills,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        }
+        
+        await asyncio.to_thread(agent_ref.set, agent_data)
+        
+        logger.info(f"Agent '{payload.name}' enregistré/mis à jour.") # Utiliser payload.name
+        return {"status": "success", "name": payload.name} # Utiliser payload.name
+        
+    except Exception as e:
+        logger.error(f"Erreur enregistrement agent '{payload.name}': {e}", exc_info=True) # Utiliser payload.name
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -229,6 +308,7 @@ async def respond_to_clarification_question(
             global_plan_id=global_plan_id,
             user_response=user_input.user_response
         )
+
         return GlobalPlanResponse(**result)
     except Exception as e:
         logger.error(f"[GRA API] Erreur traitement réponse utilisateur pour plan '{global_plan_id}': {e}", exc_info=True)
