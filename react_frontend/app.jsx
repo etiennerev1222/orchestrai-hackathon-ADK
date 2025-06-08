@@ -7,6 +7,20 @@ const FINISHED_STATES = [
   'FAILED_AGENT_ERROR'
 ];
 
+function formatArtifact(data) {
+  if (!data) return '';
+  if (typeof data === 'string') {
+    try {
+      const obj = JSON.parse(data);
+      return JSON.stringify(obj, null, 2);
+    } catch {
+      return data;
+    }
+  }
+  if (typeof data === 'object') return JSON.stringify(data, null, 2);
+  return String(data);
+}
+
 function Graph({
   nodes,
   edges,
@@ -194,6 +208,54 @@ function PlanStats({ team1Counts, team2Counts }) {
   );
 }
 
+function FinalArtifactsHistory({ nodes }) {
+  const [items, setItems] = React.useState([]);
+
+  React.useEffect(() => {
+    if (!nodes || Object.keys(nodes).length === 0) {
+      setItems([]);
+      return;
+    }
+    const finals = Object.values(nodes).filter(n =>
+      (n.state === 'completed' || n.state === 'failed' || n.state === 'unable_to_complete') &&
+      (!n.sub_task_ids || n.sub_task_ids.length === 0) &&
+      n.output_artifact_ref
+    );
+    Promise.all(
+      finals.map(n =>
+        fetch(`${BACKEND_API_URL}/artifacts/${n.output_artifact_ref}`)
+          .then(r => r.json())
+          .then(d => ({
+            task: n.objective || n.id,
+            content: formatArtifact(d.content),
+            updated: n.updated_at || ''
+          }))
+          .catch(() => null)
+      )
+    ).then(list => {
+      const arr = list.filter(Boolean).sort((a, b) => new Date(a.updated) - new Date(b.updated));
+      setItems(arr);
+    });
+  }, [nodes]);
+
+  if (!items.length) return null;
+
+  return (
+    <div className="messages-history">
+      <h4>Historique des livrables finaux</h4>
+      {items.map((it, idx) => (
+        <div key={idx} className="message-item">
+          <div><strong>Tâche:</strong> {it.task}</div>
+          {it.updated && (
+            <div className="msg-date">{new Date(it.updated).toLocaleString()}</div>
+          )}
+          <pre>{it.content}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function App() {
   const [plans, setPlans] = React.useState([]);
   const [selectedPlanId, setSelectedPlanId] = React.useState('');
@@ -349,19 +411,6 @@ function App() {
       .catch(err => console.error('Erreur reprise execution', err));
   }
 
-  function formatArtifact(data) {
-    if (!data) return '';
-    if (typeof data === 'string') {
-      try {
-        const obj = JSON.parse(data);
-        return JSON.stringify(obj, null, 2);
-      } catch {
-        return data;
-      }
-    }
-    if (typeof data === 'object') return JSON.stringify(data, null, 2);
-    return String(data);
-  }
 
   function showArtifactForNode(nodeId, isTeam1, coords) {
     const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
@@ -541,6 +590,7 @@ function App() {
             />
           </div>
         )}
+        {team2NodesMap && <FinalArtifactsHistory nodes={team2NodesMap} />}
       </div>
     </div>
   );
