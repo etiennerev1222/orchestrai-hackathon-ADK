@@ -17,16 +17,17 @@ function Graph({
   closePopup,
   id
 }) {
+  const wrapperRef = React.useRef(null);
   const containerRef = React.useRef(null);
   const networkRef = React.useRef(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
 
   const toggleFullscreen = () => {
-    const container = containerRef.current;
-    if (!container) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
     if (!isFullscreen) {
-      if (container.requestFullscreen) {
-        container.requestFullscreen();
+      if (wrapper.requestFullscreen) {
+        wrapper.requestFullscreen();
         setIsFullscreen(true);
       }
     } else {
@@ -40,7 +41,7 @@ function Graph({
   React.useEffect(() => {
     const handler = () => {
       const elem = document.fullscreenElement;
-      setIsFullscreen(elem === containerRef.current);
+      setIsFullscreen(elem === wrapperRef.current);
     };
     document.addEventListener('fullscreenchange', handler);
     return () => document.removeEventListener('fullscreenchange', handler);
@@ -69,7 +70,7 @@ function Graph({
     networkRef.current = network;
     network.on('click', params => {
       const ev = params.event?.srcEvent || {};
-      const rect = containerRef.current.getBoundingClientRect();
+      const rect = wrapperRef.current.getBoundingClientRect();
       const coords = {
         x: (ev.pageX || 0) - rect.left,
         y: (ev.pageY || 0) - rect.top
@@ -87,10 +88,15 @@ function Graph({
   }, [nodes, edges]);
 
   return (
-    <div className="graph-wrapper">
+    <div className="graph-wrapper" ref={wrapperRef}>
       <div
         ref={containerRef}
-        style={{ height: '600px', border: '1px solid #ccc', marginBottom: '1rem' }}
+        style={{
+          height: isFullscreen ? '100vh' : '600px',
+          width: '100%',
+          border: '1px solid #ccc',
+          marginBottom: isFullscreen ? 0 : '1rem'
+        }}
       />
       {allowFullscreen && (
         <button className="fullscreen-button" onClick={toggleFullscreen}>
