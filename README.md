@@ -461,12 +461,9 @@ afin d'interroger la bonne URL.
 ## Pistes d'Évolution Futures
 
 * Logique de replanification plus sophistiquée dans `ExecutionSupervisorLogic` pour TEAM 2 (actuellement, la décomposition est initiale, mais des échecs d'exécution pourraient nécessiter une redécomposition partielle ou des tâches alternatives).
-* Interface utilisateur plus riche avec des mises à jour en temps réel (WebSockets).
-* Validation par l'utilisateur des livrables produits par TEAM 2.
 * Gestion plus fine des erreurs et mécanismes de reessai à tous les niveaux.
 * Sécurisation des API.
-* Amélioration de la robustesse de la découverte de services.
-* Déploiement sur une plateforme Cloud.
-* Tests unitaires et d'intégration plus exhaustifs.
 * Permettre à `ExecutionSupervisorLogic` de choisir dynamiquement des agents pour des compétences non pré-définies dans le plan décomposé, en se basant sur les capacités réelles des agents enregistrés.
-* Outillage pour visualiser l'`ExecutionTaskGraph` dans Streamlit, désormais réalisé avec `streamlit-agraph` pour une exploration interactive du graphe TEAM 2.
+* Introduire un mécanisme de ré-évaluation du plan toutes les X opérations.
+* Créer et compléter des outils pour les agents.
+* Collecter et afficher des statistiques par agent (nombre de tâches exécutées, réussies, ...).
