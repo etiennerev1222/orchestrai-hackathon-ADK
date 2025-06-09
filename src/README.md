@@ -2,7 +2,7 @@
 
 **Français :**
 - Racine du code applicatif.
-- `app_frontend.py` : tableau de bord Streamlit interactif.
+- `app_frontend.py` : tableau de bord Streamlit interactif et un tableau de bord React.
 - Sous-dossiers :
   - `agents/` pour toutes les implémentations d'agents.
   - `orchestrators/` pour les logiques de supervision.
@@ -12,7 +12,7 @@
 
 **English:**
 - Root of the application code.
-- `app_frontend.py`: interactive Streamlit dashboard.
+- `app_frontend.py`: interactive Streamlit dashboard and a React dashboard.
 - Subfolders:
   - `agents/` for all agent implementations.
   - `orchestrators/` for supervision logics.

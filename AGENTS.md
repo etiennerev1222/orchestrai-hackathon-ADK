@@ -9,7 +9,7 @@ Ce dépôt contient un système multi-agents complet basé sur l'**Agent Develop
 3. **Exécution (TEAM 2)** : `DecompositionAgent` découpe le plan validé. `Development`, `Research` et `Testing` réalisent concrètement les tâches orchestrées par `ExecutionSupervisorLogic`.
 4. **Supervision Globale** : `GlobalSupervisorLogic` pilote les phases précédentes et gère les états dans Firestore.
 5. **Gestionnaire de Ressources (GRA)** : service FastAPI centralisant l'enregistrement et la découverte des agents.
-6. **Interface** : `src/app_frontend.py` expose un tableau de bord Streamlit pour soumettre et suivre les plans.
+6. **Interface** : `src/app_frontend.py` expose un tableau de bord Streamlit pour soumettre et suivre les plans. Une interface React optionnelle permet des visualisations avancées.
 
 Les agents sont implémentés sous `src/agents/` (un répertoire par agent). Chaque agent fournit :
 - `server.py` : serveur A2A (ASGI) exposant son API.

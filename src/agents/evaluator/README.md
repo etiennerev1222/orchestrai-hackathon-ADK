@@ -9,3 +9,6 @@
 - Analyses plans produced by the `ReformulatorAgent`.
 - Assigns a quality score and highlights weak spots.
 - Returns a JSON report to guide revisions.
+
+Dernière mise à jour : 2025
+Last update: 2025

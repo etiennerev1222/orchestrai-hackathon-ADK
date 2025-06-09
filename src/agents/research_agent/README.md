@@ -9,3 +9,6 @@
 - Specialized in document and web research.
 - Provides summaries and references.
 - Feeds the execution plan with gathered information.
+
+Dernière mise à jour : 2025
+Last update: 2025

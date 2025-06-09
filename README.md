@@ -1,9 +1,9 @@
 # OrchestrAI Hackathon ADK - Système de Planification et d'Exécution Multi-Agents Interactif
 
 ## English Summary
-This repository hosts an interactive multi-agent system built for the OrchestrAI hackathon. Users submit an initial objective through the Streamlit dashboard. The system clarifies the goal with the `UserInteractionAgent`, generates and validates a plan with TEAM&nbsp;1 (`Reformulator`, `Evaluator`, `Validator`) and then executes it with TEAM&nbsp;2 (`Decomposition`, `Development`, `Research`, `Testing`). Supervisors orchestrate each phase and all agents register to the Resource and Agent Manager (GRA). Data is stored in Firestore and the interface displays interactive task graphs thanks to *streamlit-agraph*.
+This repository hosts an interactive multi-agent system built for the OrchestrAI hackathon. Users submit an initial objective through the Streamlit dashboard. The system clarifies the goal with the `UserInteractionAgent`, generates and validates a plan with TEAM&nbsp;1 (`Reformulator`, `Evaluator`, `Validator`) and then executes it with TEAM&nbsp;2 (`Decomposition`, `Development`, `Research`, `Testing`). Supervisors orchestrate each phase and all agents register to the Resource and Agent Manager (GRA). Data is stored in Firestore and the interface displays interactive task graphs thanks to *streamlit-agraph*. A React-based dashboard offers additional visualisations.
 
-Ce projet est une implémentation d'un système multi-agents pour la clarification interactive d'objectifs, suivie par la génération, l'évaluation, la validation, la révision itérative de plans (TEAM 1), et enfin l'exécution décomposée de ces plans (TEAM 2). Il utilise un Agent Development Kit (ADK) basé sur le protocole A2A, avec une persistance des données via Firestore et une découverte de services gérée par un Gestionnaire de Ressources et d'Agents (GRA). Les agents intègrent des modèles de langage (LLM via Gemini) pour leur logique métier.
+Ce projet est une implémentation d'un système multi-agents pour la clarification interactive d'objectifs, suivie par la génération, l'évaluation, la validation, la révision itérative de plans (TEAM 1), et enfin l'exécution décomposée de ces plans (TEAM 2). Il utilise un Agent Development Kit (ADK) basé sur le protocole A2A, avec une persistance des données via Firestore et une découverte de services gérée par un Gestionnaire de Ressources et d'Agents (GRA). Les agents intègrent des modèles de langage (LLM via Gemini) pour leur logique métier. Une interface React permet également d'observer les graphes et l'état des agents.
 
 La principale évolution est l'introduction d'un `GlobalSupervisorLogic` et d'un `UserInteractionAgent` pour affiner l'objectif initial avec l'utilisateur (Phase de Clarification), le passage à une équipe de planification détaillée (TEAM 1 : PLAN GENERATION orchestrée par `PlanningSupervisorLogic`), et enfin, une nouvelle phase d'exécution du plan validé (TEAM 2 : PLAN EXECUTION orchestrée par `ExecutionSupervisorLogic`).
 
@@ -112,6 +112,7 @@ Après la validation du plan détaillé par TEAM 1, cette nouvelle phase prend e
     * **Gestion des Tâches Exploratoires** : Les tâches de type `exploratory` (souvent gérées par `ResearchAgent`) peuvent retourner des résultats qui incluent la définition de nouvelles sous-tâches, enrichissant dynamiquement l'`ExecutionTaskGraph`.
 * **Suivi et Finalisation** : `ExecutionSupervisorLogic` suit l'état de toutes les tâches d'exécution. Une fois toutes les tâches terminées, l'état global du plan d'exécution (`EXECUTION_COMPLETED_SUCCESSFULLY` ou `EXECUTION_COMPLETED_WITH_FAILURES`) est déterminé. Le `GlobalSupervisorLogic` met à jour l'état du `global_plan` en conséquence.
 * **Reprise d'un Plan en Cours** : la nouvelle méthode `continue_execution` permet de relancer un plan existant lorsque des tâches demeurent en `pending` ou `ready`. Un bouton "Reprendre l'exécution" est disponible dans l'interface React pour déclencher cette action.
+* **Interface React enrichie** : affichage du statut des agents, détails et statistiques du plan sélectionné, mode plein écran pour le graphe TEAM 2, rafraîchissement automatique, historique des livrables finaux et surlignage des tâches échouées.
 
 ### Capacités Transverses :
 
@@ -349,12 +350,13 @@ Pour lancer le système complet, le GRA et tous les agents doivent être démarr
     ```
     Ouvrez l'URL fournie par Streamlit (généralement `http://localhost:8501`) dans votre navigateur.
 
-    Vous pouvez également tester une interface React très simple disponible dans le dossier `react_frontend` :
+    Une interface React complète est disponible dans le dossier `react_frontend` :
     ```bash
     cd react_frontend && python -m http.server 8080
     ```
     Puis ouvrez [http://localhost:8080/index.html](http://localhost:8080/index.html).
     L'API backend reste disponible sur `http://localhost:8000`. Si besoin, vous pouvez spécifier une autre URL en définissant `BACKEND_API_URL` avant de charger les scripts.
+    Cette interface affiche les détails du plan sélectionné, un chat de clarification, des statistiques d'avancement et met en évidence les échecs.
 
 4.  **Utilisez l'Interface** :
     * Soumettez un nouvel objectif.
@@ -370,6 +372,9 @@ Pour lancer le système complet, le GRA et tous les agents doivent être démarr
     python -m src.orchestrators.global_supervisor_logic
     ```
     (Note : Ce script exécute la fonction `main_test_global_supervisor` qui simule le flux complet.)
+
+
+6.  **Déploiement Docker (optionnel)** : le script `build_and_deploy.sh` génère un dossier `docker_build` avec un `docker-compose.yml` pour lancer tous les services en conteneurs.
 
 ## Structure du Projet (Principaux Dossiers et Fichiers)
 ```Markdown
