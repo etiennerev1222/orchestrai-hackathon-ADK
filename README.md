@@ -389,36 +389,43 @@ orchestrai-hackathon-ADK/
 ├── src/
 │   ├── agents/
 │   │   ├── user_interaction_agent/   # Clarification
-│   │   ├── reformulator/             # TEAM 1
-│   │   ├── evaluator/                # TEAM 1
-│   │   ├── validator/                # TEAM 1
-│   │   ├── decomposition_agent/      # TEAM 2 (Nouveau)
-│   │   ├── development_agent/        # TEAM 2 (Nouveau)
-│   │   ├── research_agent/           # TEAM 2 (Nouveau)
-│   │   └── testing_agent/            # TEAM 2 (Nouveau)
+│   │   ├── reformulator/             # TEAM 1
+│   │   ├── evaluator/                # TEAM 1
+│   │   ├── validator/                # TEAM 1
+│   │   ├── decomposition_agent/      # TEAM 2
+│   │   ├── development_agent/        # TEAM 2
+│   │   ├── research_agent/           # TEAM 2
+│   │   └── testing_agent/            # TEAM 2
 │   │       └── ... (logic.py, executor.py, server.py pour chaque)
 │   ├── clients/
 │   │   └── a2a_api_client.py
 │   ├── orchestrators/
-│   │   ├── global_supervisor_logic.py    # Orchestre Clarification, TEAM 1, TEAM 2
-│   │   ├── planning_supervisor_logic.py  # Orchestre TEAM 1 (planification)
-│   │   └── execution_supervisor_logic.py # Orchestre TEAM 2 (exécution) (Nouveau)
+│   │   ├── global_supervisor_logic.py
+│   │   ├── planning_supervisor_logic.py
+│   │   └── execution_supervisor_logic.py
 │   ├── services/
 │   │   └── gra/
-│   │       └── server.py                 # Gestionnaire de Ressources et d'Agents
+│   │       └── server.py
 │   └── shared/
 │       ├── base_agent_executor.py
 │       ├── base_agent_logic.py
+│       ├── base_executor.py
+│       ├── base_logic.py
 │       ├── firebase_init.py
 │       ├── llm_client.py
 │       ├── service_discovery.py
-│       ├── task_graph_management.py          # Pour TEAM 1
-│       └── execution_task_graph_management.py # Pour TEAM 2 (Nouveau)
-├── src/app_frontend.py                   # Interface Streamlit
-├── src/run_orchestrator.py               # Script pour lancer un plan TEAM 1 (planification) isolément
-├── .gitignore
-├── requirements.txt
-└── README.md                             (Ce fichier)
+│       ├── task_graph_management.py
+│       └── execution_task_graph_management.py
+├── src/app_frontend.py               # Interface Streamlit
+├── src/run_orchestrator.py           # Exemple de lancement TEAM 1 seul
+├── docs/                             # Images et documentation
+├── react_frontend/                   # Interface React légère
+├── tests/                            # Suite de tests
+├── scripts/                          # Scripts utilitaires
+├── deployment.sh                     # Déploiement Cloud Run
+├── build_and_deploy.sh               # Build et déploiement rapides
+├── test-compose.yml                  # Compose de test local
+└── requirements.txt
 ```
 
 ## Déploiement sur Google Cloud Run et Firebase
@@ -443,7 +450,7 @@ Les étapes d'automatisation sont ensuite :
 ./deployment.sh build       # construit toutes les images
 ./deployment.sh push        # envoie les images dans Artifact Registry
 ./deployment.sh deploy      # crée/maj les services Cloud Run
-./deployment.sh deploy_frontemd      # déploiement firebase du front
+./deployment.sh deploy_frontend      # déploiement Firebase du front
 ```
 
 Le script requiert `GEMINI_API_KEY` ainsi qu'un fichier de clés Firebase
