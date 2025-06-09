@@ -127,45 +127,53 @@ Après la validation du plan détaillé par TEAM 1, cette nouvelle phase prend e
 
 ```mermaid
 graph LR
-    subgraph "User & Frontend"
-        User[(Utilisateur)] --> StreamlitUI[Streamlit UI]
+    %% --- FRONTENDS ---
+    subgraph "Frontends"
+        User[(Utilisateur)]
+        StreamlitUI[Streamlit UI]
+        ReactUI[React (Firebase Hosting)]
+        User --> StreamlitUI
+        User --> ReactUI
     end
 
-    subgraph "Backend Services & Orchestration"
+    %% --- BACKEND sur Cloud Run ---
+    subgraph "Cloud Run Services"
         GRA[fa:fa-server GRA / API Gateway]
         GlobalSupervisor[fa:fa-brain Global Supervisor]
         PlanningSupervisor[fa:fa-clipboard-list Planning Supervisor]
         ExecutionSupervisor[fa:fa-cogs Execution Supervisor]
+
+        subgraph "Agents"
+            UserInteractionAgent[fa:fa-comments User Interaction]
+            DecompositionAgent[fa:fa-sitemap Decomposition]
+
+            subgraph "TEAM 1 Agents"
+                direction TB
+                Reformulator
+                Evaluator
+                Validator
+            end
+
+            subgraph "TEAM 2 Execution Agents"
+                direction TB
+                DevelopmentAgent[fa:fa-code Development]
+                ResearchAgent[fa:fa-search Research]
+                TestingAgent[fa:fa-check-square Testing]
+            end
+        end
     end
 
+    %% --- SERVICES PARTAGES ---
     subgraph "Shared Services"
         Firestore[(fa:fa-database Firestore)]
         GeminiLLM[(fa:fa-robot Gemini LLM)]
-    end
-
-    subgraph "Agents"
-        UserInteractionAgent[fa:fa-comments User Interaction Agent]
-        DecompositionAgent[fa:fa-sitemap Decomposition Agent]
-
-        subgraph "TEAM 1 Agents"
-            direction TB
-            Reformulator
-            Evaluator
-            Validator
-        end
-
-        subgraph "TEAM 2 Execution Agents"
-            direction TB
-            DevelopmentAgent[fa:fa-code Development]
-            ResearchAgent[fa:fa-search Research]
-            TestingAgent[fa:fa-check-square Testing]
-        end
     end
 
     %% --- FLOW & INTERACTIONS ---
 
     %% User Flow
     StreamlitUI -- "REST API" --> GRA
+    ReactUI -- "REST API" --> GRA
 
     %% Orchestration Flow
     GRA -- "Déclenche" --> GlobalSupervisor
@@ -400,6 +408,56 @@ orchestrai-hackathon-ADK/
 ├── requirements.txt
 └── README.md                             (Ce fichier)
 ```
+
+## Déploiement sur Google Cloud Run et Firebase
+
+Tous les services peuvent être containerisés puis déployés sur Cloud Run grâce
+au script `deployment.sh` situé à la racine. Ce script génère les Dockerfile,
+construit les images, les pousse dans **Artifact Registry** puis crée un service
+Cloud Run pour le GRA et pour chacun des agents.
+
+Pré‑requis : installer le SDK gcloud et vous connecter :
+
+```bash
+gcloud auth login
+gcloud config set project orchestrai-hackathon
+gcloud auth configure-docker
+```
+
+Les étapes d'automatisation sont ensuite :
+
+```bash
+./deployment.sh configure   # génère Dockerfile et docker-compose
+./deployment.sh build       # construit toutes les images
+./deployment.sh push        # envoie les images dans Artifact Registry
+./deployment.sh deploy      # crée/maj les services Cloud Run
+```
+
+Le script requiert `GEMINI_API_KEY` ainsi qu'un fichier de clés Firebase
+donné via `GOOGLE_APPLICATION_CREDENTIALS`. Une fois le déploiement terminé,
+l'URL publique du GRA est affichée. Elle doit être reportée dans la variable
+`BACKEND_API_URL` du front‑end.
+
+Le front‑end React se déploie séparément via **Firebase Hosting** :
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase deploy --only hosting
+```
+
+La configuration Firebase se trouve dans `firebase.json` et `.firebaserc`. Par
+défaut l'interface utilise `http://localhost:8000` comme API. Lorsque le GRA est
+hébergé sur Cloud Run, définissez :
+
+```html
+<script>
+  window.BACKEND_API_URL = 'https://gra-server-xxxx.run.app';
+</script>
+```
+
+afin d'interroger la bonne URL.
+
 ## Pistes d'Évolution Futures
 
 * Logique de replanification plus sophistiquée dans `ExecutionSupervisorLogic` pour TEAM 2 (actuellement, la décomposition est initiale, mais des échecs d'exécution pourraient nécessiter une redécomposition partielle ou des tâches alternatives).
