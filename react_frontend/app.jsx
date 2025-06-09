@@ -287,6 +287,21 @@ function App() {
   const [autoRefresh, setAutoRefresh] = React.useState(false);
   const [team1Counts, setTeam1Counts] = React.useState(null);
   const [team2Counts, setTeam2Counts] = React.useState(null);
+  const [statusFilter, setStatusFilter] = React.useState('all');
+
+  const filteredPlans = React.useMemo(() => {
+    if (statusFilter === 'inprogress') {
+      return plans.filter(
+        p => !FINISHED_STATES.includes(p.current_supervisor_state)
+      );
+    }
+    if (statusFilter === 'finished') {
+      return plans.filter(p =>
+        FINISHED_STATES.includes(p.current_supervisor_state)
+      );
+    }
+    return plans;
+  }, [plans, statusFilter]);
 
   const hasFailures = React.useMemo(() => {
     const countFail = counts => (counts?.failed || 0) + (counts?.unable_to_complete || 0);
@@ -537,9 +552,22 @@ function App() {
         <button onClick={submitNewPlan} style={{ width: '100%', marginTop: '0.5rem' }}>Lancer Planification</button>
         <hr />
         <h3>Plans Existants</h3>
+        <div style={{ marginBottom: '0.5rem' }}>
+          <label>
+            Filtrer&nbsp;
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+            >
+              <option value="all">Tous</option>
+              <option value="inprogress">En cours</option>
+              <option value="finished">Terminés</option>
+            </select>
+          </label>
+        </div>
         <select size="10" style={{ width: '100%' }} value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)}>
           <option value="">-- Sélectionnez --</option>
-          {plans.map(p => (
+          {filteredPlans.map(p => (
             <option key={p.global_plan_id} value={p.global_plan_id}>
               {p.global_plan_id} | {p.raw_objective.slice(0, 30)}...
             </option>
