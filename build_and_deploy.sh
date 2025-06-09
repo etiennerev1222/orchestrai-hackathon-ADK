@@ -93,24 +93,10 @@ chmod +x "$BUILD_DIR/build_all.sh"
 
 cat <<EOF > "$BUILD_DIR/run_all.sh"
 #!/bin/bash
+echo "window.CONFIG = { BACKEND_API_URL: 'http://localhost:8000' };" > ../react_frontend/config.js
 cd \$(dirname "\$0"); echo "--- Lancement de tous les services avec Docker Compose ---"; docker compose up
 EOF
 chmod +x "$BUILD_DIR/run_all.sh"
 
-cat <<EOF > "$BUILD_DIR/push_all.sh"
-#!/bin/bash
-set -e; cd \$(dirname "\$0"); echo "--- Tagging et Push des images vers ${GCR_HOSTNAME}/${GCP_PROJECT_ID} ---"
-COMPONENTS=($(printf "'%s' " "${ALL_COMPONENTS[@]}"))
-for COMPONENT in "\${COMPONENTS[@]}"; do
-    IMAGE_NAME="orchestrai/\${COMPONENT}:latest"
-    GCR_TAG="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/\${IMAGE_NAME}"
-    echo "Tagging \${IMAGE_NAME} -> \${GCR_TAG}"
-    docker tag "\${IMAGE_NAME}" "\${GCR_TAG}"
-    echo "Pushing \${GCR_TAG}"
-    docker push "\${GCR_TAG}"
-done
-echo "--- ✅ Toutes les images ont été poussées vers GCR avec succès ---"
-EOF
-chmod +x "$BUILD_DIR/push_all.sh"
 
 echo "✅ Environnement Docker généré avec succès dans $BUILD_DIR"

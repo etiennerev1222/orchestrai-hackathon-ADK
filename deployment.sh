@@ -219,11 +219,25 @@ function deploy_gcp() {
     echo "----------------------------------------------------------------"
     echo "N'oubliez pas de mettre à jour votre front-end avec cette URL."
 }
+function deploy_frontend() {
+    echo "--- ÉTAPE 5: DÉPLOIEMENT DU FRONT-END ---"
+    echo "    -> Récupération de l'URL du GRA sur Cloud Run..."
+    GRA_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
+
+    echo "    -> Génération du fichier de configuration pour le front-end..."
+    echo "window.CONFIG = { BACKEND_API_URL: '${GRA_URL}' };" > react_frontend/config.js
+
+    echo "    -> Déploiement sur Firebase Hosting..."
+    firebase deploy --only hosting --project=${GCP_PROJECT_ID}
+
+    echo "✅ ÉTAPE 5 TERMINÉE : Front-end déployé."
+}
 case "$1" in
     configure) configure ;;
     build) build_images ;;
     push) push_images ;;
     deploy) deploy_gcp ;;
+    deploy_frontend) deploy_frontend ;;
     all)
         configure
         build_images

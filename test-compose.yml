@@ -1,0 +1,7 @@
+services:
+  validator:
+    build:
+      context: .
+      dockerfile: docker_build/validator/Dockerfile
+    command: echo "Hello from validator"
+

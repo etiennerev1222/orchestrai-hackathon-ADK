@@ -83,13 +83,19 @@ credentials.json
 .env.*
 !/.env.example # Permet de versionner un exemple de fichier .env
 
-# !!! DOSSIERS GÉNÉRÉS PAR NOS SCRIPTS !!!
-# Le contenu de ce dossier est généré à la volée, il ne doit pas être versionné.
-# En ignorant ce dossier, on ignore aussi les credentials.json et .env qui s'y trouvent.
 docker_build/
 
 # Fichiers de log
 *.log
 log.txt
 docker_build/
-docker_build/
+# Fichiers générés par Firebase et le frontend
+.firebase/
+react_frontend/config.js
+
+# Fichiers Python
+__pycache__/
+*.pyc
+
+# Fichiers d'environnement
+.env
