@@ -288,20 +288,29 @@ function App() {
   const [team1Counts, setTeam1Counts] = React.useState(null);
   const [team2Counts, setTeam2Counts] = React.useState(null);
   const [statusFilter, setStatusFilter] = React.useState('all');
+  const [stateFilter, setStateFilter] = React.useState('');
+
+  const uniqueStates = React.useMemo(
+    () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
+    [plans]
+  );
 
   const filteredPlans = React.useMemo(() => {
+    let list = plans;
     if (statusFilter === 'inprogress') {
-      return plans.filter(
+      list = list.filter(
         p => !FINISHED_STATES.includes(p.current_supervisor_state)
       );
-    }
-    if (statusFilter === 'finished') {
-      return plans.filter(p =>
+    } else if (statusFilter === 'finished') {
+      list = list.filter(p =>
         FINISHED_STATES.includes(p.current_supervisor_state)
       );
     }
-    return plans;
-  }, [plans, statusFilter]);
+    if (stateFilter) {
+      list = list.filter(p => p.current_supervisor_state === stateFilter);
+    }
+    return list;
+  }, [plans, statusFilter, stateFilter]);
 
   const hasFailures = React.useMemo(() => {
     const countFail = counts => (counts?.failed || 0) + (counts?.unable_to_complete || 0);
@@ -564,6 +573,18 @@ function App() {
               <option value="finished">Terminés</option>
             </select>
           </label>
+          <select
+            style={{ marginLeft: '0.5rem' }}
+            value={stateFilter}
+            onChange={e => setStateFilter(e.target.value)}
+          >
+            <option value="">État: Tous</option>
+            {uniqueStates.map(s => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
         </div>
         <select size="10" style={{ width: '100%' }} value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)}>
           <option value="">-- Sélectionnez --</option>
