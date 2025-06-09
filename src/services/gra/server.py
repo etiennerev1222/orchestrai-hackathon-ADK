@@ -538,35 +538,52 @@ async def get_plan_details_endpoint(plan_id: str):
         logger.error(f"[GRA] Erreur lors de la récupération des détails du plan '{plan_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- Endpoint pour le statut des agents (simplifié) ---
+# Dans src/services/gra/server.py
+
+# ... (imports et autres routes) ...
+
 @app.get("/agents_status")
 async def get_agents_status_endpoint():
     """Récupère la liste des agents enregistrés et leur statut de santé."""
     agents_list: List[Dict[str, Any]] = []
     try:
-        docs = await asyncio.to_thread(lambda: list(db.collection("agents").stream()))
-        agents_list = [doc.to_dict() for doc in docs]
+        # On utilise "service_registry" comme collection, comme le montre votre screenshot
+        docs = await asyncio.to_thread(lambda: list(db.collection("service_registry").stream()))
+        
+        # On exclut le document de configuration du GRA lui-même
+        agents_list = [doc.to_dict() for doc in docs if doc.id != 'gra_instance_config']
+        
     except Exception as e:
         logger.error(f"[GRA] Erreur lors de la récupération du statut des agents: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
     async with httpx.AsyncClient() as client:
-        async def check(url: str) -> bool:
-            if not url:
+        async def check(agent_data: Dict[str, Any]) -> bool:
+            # === CORRECTION PRINCIPALE ICI ===
+            # On utilise 'internal_url' pour le health check entre conteneurs.
+            url_to_check = agent_data.get("internal_url")
+            
+            if not url_to_check:
+                logger.warning(f"Agent {agent_data.get('name')} n'a pas d'internal_url pour le health check.")
                 return False
             try:
-                res = await client.get(url.rstrip("/") + "/.well-known/agent.json", timeout=5.0)
+                # On peut appeler la route /health que nous avons ajoutée
+                health_url = url_to_check.rstrip("/") + "/health"
+                res = await client.get(health_url, timeout=2.0) # Timeout plus court
                 return res.status_code == 200
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Health check a échoué pour {agent_data.get('name')} à {health_url}: {e}")
                 return False
 
-        results = await asyncio.gather(*(check(a.get("url")) for a in agents_list))
+        # On passe le dictionnaire complet de l'agent à la fonction check
+        results = await asyncio.gather(*(check(agent) for agent in agents_list))
 
     for agent, ok in zip(agents_list, results):
         agent["health_status"] = "✅ Online" if ok else "⚠️ Offline"
 
     logger.info(f"[GRA] Statut de {len(agents_list)} agents récupéré avec santé.")
     return agents_list
+
 
 
 # --- NOUVEL Endpoint pour accepter l'objectif et lancer TEAM 1 ---

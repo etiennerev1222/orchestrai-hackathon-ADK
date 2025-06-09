@@ -71,7 +71,20 @@ def create_app_instance(host: str, port: int) -> Starlette:
     return a2a_server_app_instance.build()
 
 app = create_app_instance(host="localhost", port=8080)
+# --- IMPORTS À AJOUTER ---
+from starlette.routing import Route
+from starlette.responses import JSONResponse
+# === DÉBUT DE LA CORRECTION : AJOUT DE LA ROUTE /health ===
 
+# 2. Définir la fonction de la route de santé
+async def health_check_endpoint(request):
+    """Endpoint simple pour la vérification de santé."""
+    return JSONResponse({"status": "ok"})
+
+# 3. Ajouter la nouvelle route à la liste des routes existantes de l'application
+app.router.routes.append(
+    Route("/health", endpoint=health_check_endpoint, methods=["GET"])
+)
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
     agent_public_url = os.environ.get("PUBLIC_URL")
