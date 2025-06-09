@@ -204,7 +204,8 @@ graph LR
     DecompositionAgent -- "API Call" --> GeminiLLM
     DevelopmentAgent -- "API Call" --> GeminiLLM
     ResearchAgent -- "API Call" --> GeminiLLM
-    TestingAgent -- "API Call" --> GeminiLLM```
+    TestingAgent -- "API Call" --> GeminiLLM
+```
 https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/49311d22-3e45-4a3a-bc95-dc778de81caf/version/v0.1/edit
 
 * **Langage et Frameworks Backend** :
