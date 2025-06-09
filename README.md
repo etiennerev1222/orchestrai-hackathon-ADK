@@ -431,6 +431,7 @@ Les étapes d'automatisation sont ensuite :
 ./deployment.sh build       # construit toutes les images
 ./deployment.sh push        # envoie les images dans Artifact Registry
 ./deployment.sh deploy      # crée/maj les services Cloud Run
+./deployment.sh deploy_frontemd      # déploiement firebase du front
 ```
 
 Le script requiert `GEMINI_API_KEY` ainsi qu'un fichier de clés Firebase
@@ -438,7 +439,7 @@ donné via `GOOGLE_APPLICATION_CREDENTIALS`. Une fois le déploiement terminé,
 l'URL publique du GRA est affichée. Elle doit être reportée dans la variable
 `BACKEND_API_URL` du front‑end.
 
-Le front‑end React se déploie séparément via **Firebase Hosting** :
+Le front‑end React peut se déploier séparément via **Firebase Hosting** :
 
 ```bash
 npm install -g firebase-tools
