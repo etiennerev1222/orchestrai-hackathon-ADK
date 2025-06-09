@@ -9,3 +9,6 @@
 - Conversational interface used to clarify the user objective.
 - Suggests questions and assumptions using an LLM.
 - Returns a structured enriched objective.
+
+Dernière mise à jour : 2025
+Last update: 2025

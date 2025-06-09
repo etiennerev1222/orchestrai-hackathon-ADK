@@ -28,6 +28,15 @@ The interface fetches data from `http://localhost:8000` by default (backend API)
 
 The dashboard now exposes a **Reprendre l'exécution** button when a plan TEAM 2 is incomplete. Clicking it calls the `/v1/global_plans/<id>/resume_execution` API to continue pending tasks.
 
+Additional improvements:
+- Agent status table shows online/offline state.
+- Manual refresh button and Auto-refresh checkbox.
+- Fullscreen toggle for the execution graph.
+- Final artifacts history displayed below the graphs.
+- Plan details sidebar with live statistics.
+- Clarification chat with force TEAM 1 option.
+- Failing tasks are highlighted in red.
+
 ## Node Colours
 
 In the Team&nbsp;2 execution graph, nodes now show additional visual cues:

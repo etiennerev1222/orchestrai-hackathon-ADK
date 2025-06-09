@@ -9,3 +9,6 @@
 - Runs tests on produced deliverables.
 - Checks compliance with the acceptance criteria.
 - Returns test reports to the execution phase.
+
+Dernière mise à jour : 2025
+Last update: 2025

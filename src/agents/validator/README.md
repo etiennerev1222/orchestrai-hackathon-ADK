@@ -9,3 +9,6 @@
 - Validates or rejects plans produced by TEAM&nbsp;1.
 - Explains rejection reasons and provides recommendations.
 - Marks completion of TEAM&nbsp;1 before TEAM&nbsp;2.
+
+Dernière mise à jour : 2025
+Last update: 2025

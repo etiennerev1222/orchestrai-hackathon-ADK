@@ -9,3 +9,6 @@
 - Breaks down the validated plan into executable tasks.
 - Builds an `ExecutionTaskGraph` with dependencies and expected artifacts.
 - Feeds the TEAM&nbsp;2 orchestration.
+
+Dernière mise à jour : 2025
+Last update: 2025
