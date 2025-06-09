@@ -77,16 +77,24 @@ textarea {
   z-index: 5;
 }
 
-.agent-status-bar {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+.agents-table {
+  border-collapse: collapse;
+  width: 100%;
   margin-bottom: 1rem;
 }
-.agent-status {
-  background: #f0f0f0;
-  border-radius: 4px;
+.agents-table th, .agents-table td {
+  border: 1px solid #ccc;
   padding: 0.25rem 0.5rem;
+}
+.agents-table .status-online {
+  background: #d4edda;
+  color: #155724;
+  font-weight: bold;
+}
+.agents-table .status-offline {
+  background: #f8d7da;
+  color: #721c24;
+  font-weight: bold;
 }
 
 .clarification-block {

@@ -137,18 +137,32 @@ function Graph({
 function AgentStatusBar({ agents }) {
   if (!agents?.length) return null;
   return (
-    <div className="agent-status-bar">
-      {agents.map(a => (
-        <div
-          key={a.name}
-          className="agent-status"
-          title={(a.skills || []).join(', ')}
-        >
-          <span>{a.health_status || ''}</span>
-          {a.name.replace('AgentServer', '')}
-        </div>
-      ))}
-    </div>
+    <table className="agents-table">
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Statut</th>
+          <th>Dernière mise à jour</th>
+          <th>Public URL</th>
+        </tr>
+      </thead>
+      <tbody>
+        {agents.map(a => (
+          <tr key={a.name} title={`Skills: ${(a.skills || []).join(', ')}\nInternal: ${a.internal_url}`}>
+            <td>{a.name.replace('AgentServer', '')}</td>
+            <td className={a.health_status?.includes('Online') ? 'status-online' : 'status-offline'}>
+              {a.health_status || ''}
+            </td>
+            <td>{new Date(a.timestamp).toLocaleString()}</td>
+            <td>
+              <a href={a.public_url} target="_blank" rel="noopener noreferrer">
+                {a.public_url}
+              </a>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
