@@ -1,38 +1,51 @@
-# OrchestrAI Hackathon ADK - Système de Planification et d'Exécution Multi-Agents Interactif
+# OrchestrAI – De l’idée à l’action par collaboration d’agents LLM  
+*OrchestrAI – From Idea to Action with LLM-Driven Agent Collaboration*
 
-## English Summary
-This repository hosts an interactive multi-agent system built for the OrchestrAI hackathon. Users submit an initial objective through the Streamlit dashboard. The system clarifies the goal with the `UserInteractionAgent`, generates and validates a plan with TEAM&nbsp;1 (`Reformulator`, `Evaluator`, `Validator`) and then executes it with TEAM&nbsp;2 (`Decomposition`, `Development`, `Research`, `Testing`). Supervisors orchestrate each phase and all agents register to the Resource and Agent Manager (GRA). Data is stored in Firestore and the interface displays interactive task graphs thanks to *streamlit-agraph*.
+---
 
-Ce projet est une implémentation d'un système multi-agents pour la clarification interactive d'objectifs, suivie par la génération, l'évaluation, la validation, la révision itérative de plans (TEAM 1), et enfin l'exécution décomposée de ces plans (TEAM 2). Il utilise un Agent Development Kit (ADK) basé sur le protocole A2A, avec une persistance des données via Firestore et une découverte de services gérée par un Gestionnaire de Ressources et d'Agents (GRA). Les agents intègrent des modèles de langage (LLM via Gemini) pour leur logique métier.
+[![Cloud Run Ready](https://img.shields.io/badge/cloud--run-ready-brightgreen)](https://cloud.google.com/run) [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://python.org/) [![Google ADK](https://img.shields.io/badge/ADK-Google%20Agent2Agent-blueviolet)](https://developers.google.com/agent-framework)
 
-La principale évolution est l'introduction d'un `GlobalSupervisorLogic` et d'un `UserInteractionAgent` pour affiner l'objectif initial avec l'utilisateur (Phase de Clarification), le passage à une équipe de planification détaillée (TEAM 1 : PLAN GENERATION orchestrée par `PlanningSupervisorLogic`), et enfin, une nouvelle phase d'exécution du plan validé (TEAM 2 : PLAN EXECUTION orchestrée par `ExecutionSupervisorLogic`).
+---
 
-### Principaux modules
-- `src/app_frontend.py` : Tableau de bord Streamlit avec graphes interactifs.
-- `src/agents/` : Implémentations des agents (clarification, planification, exécution).
-- `src/orchestrators/` : Superviseurs orchestrant chaque phase du projet.
-- `src/services/` : Services internes dont le Gestionnaire de Ressources et d'Agents (GRA).
-- `src/shared/` : Utilitaires communs (gestion des graphes, logique et exécuteurs de base).
-The English version of these summaries is provided in each module's `README.md`.
+## ✨ Pitch
 
-## Table des Matières
+> **Français :**  
+> OrchestrAI transforme tout objectif flou en plan d’action détaillé, puis en livrables concrets, grâce à une équipe d’agents IA spécialisés orchestrés dynamiquement. Clarification, planification, exécution : chaque étape est automatisée, supervisée, récupérable, et documentée, tout en intégrant l’utilisateur pour garantir pertinence et qualité.
 
-1.  [Architecture Fonctionnelle](#architecture-fonctionnelle)
-    * [Étape 1 : Clarification de l'Objectif (Orchestrée par GlobalSupervisorLogic)](#étape-1--clarification-de-lobjectif-orchestrée-par-globalsupervisorlogic)
-    * [Étape 2 : Génération et Itération de Plan (TEAM 1 : PLAN GENERATION, Orchestrée par PlanningSupervisorLogic)](#étape-2--génération-et-itération-de-plan-team-1--plan-generation-orchestrée-par-planningsupervisorlogic)
-    * [Étape 3 : Exécution du Plan (TEAM 2 : PLAN EXECUTION, Orchestrée par ExecutionSupervisorLogic)](#étape-3--exécution-du-plan-team-2--plan-execution-orchestrée-par-executionsupervisorlogic)
-2.  [Architecture Technique](#architecture-technique)
-3.  [Concepts Clés Mis en Œuvre](#concepts-clés-mis-en-œuvre)
-4.  [Architecture Générale Détaillée](#architecture-générale-détaillée)
-5.  [Prérequis](#prérequis)
-6.  [Installation](#installation)
-7.  [Utilisation](#utilisation)
-8.  [Structure du Projet](#structure-du-projet)
-9.  [Pistes d'Évolution Futures](#pistes-dévolution-futures)
+> **English:**  
+> OrchestrAI turns any vague user goal into a structured plan and concrete deliverables, thanks to a dynamically orchestrated team of specialized AI agents. Clarification, planning, execution: every step is automated, supervised, recoverable, and logged, keeping the user in the loop for quality and relevance.
 
-## Architecture Fonctionnelle
+---
 
-Cette section décrit les grandes capacités du système et comment les différents composants interagissent pour atteindre l'objectif global, désormais en trois phases distinctes.
+## 🚀 Why OrchestrAI Stands Out
+
+- **Human-in-the-loop automation**: L’utilisateur reste impliqué à chaque étape clé.
+- **Dynamic agent discovery**: Agents are registered and assigned in real time via the GRA registry.
+- **Error resilience & incremental execution**: Plans and tasks can be retried, extended, or patched without losing previous progress.
+- **Composable & extensible**: Add new agents/skills anytime—just register with the GRA and they’re orchestrated automatically.
+- **A2A protocol & Google ADK compliant**: Ensures interoperability and future-proofing.
+- **Full audit trail**: Every decision, correction, and outcome is persisted in Firestore for transparency.
+
+---
+
+## 🏗️ Table des Matières
+
+1. [Architecture Fonctionnelle](#architecture-fonctionnelle)
+2. [Architecture Technique](#architecture-technique)
+3. [Principaux Concepts](#principaux-concepts)
+4. [Installation et Prérequis](#installation-et-prérequis)
+5. [Utilisation](#utilisation)
+6. [Structure du Projet](#structure-du-projet)
+7. [Déploiement Cloud / Firebase](#déploiement-cloud--firebase)
+8. [Comment Ajouter Son Agent](#comment-ajouter-son-agent)
+9. [Roadmap & Perspectives](#roadmap--perspectives)
+
+---
+
+## 🧭 Architecture Fonctionnelle
+
+**Visualisez ce schéma sur [mermaidchart.com](https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit)**
+
 ```mermaid
 graph TD
     subgraph "Phase 1: Clarification"
@@ -42,34 +55,31 @@ graph TD
         D --o|Affiche à l'utilisateur| E[Interface UI]
         E --o|Réponse| C
     end
-
     C -->|Objectif Clarifié| F{Planning Supervisor}
-
     subgraph "Phase 2: Planification (TEAM 1)"
         F -->|Génère plan| G[Reformulator Agent]
         G -->|Évalue plan| H[Evaluator Agent]
         H -->|Valide plan| I[Validator Agent]
         I -- "Si plan rejeté" --> F
     end
-
     I -- "Plan Validé" --> J{Execution Supervisor}
-
     subgraph "Phase 3: Exécution (TEAM 2)"
-        J -->|1. Décomposer le plan| K[Decomposition Agent]
-        K -->|"2. Execution Task Graph"| J
-        J -- "3. Orchestre les tâches" --> L((Pool d'Agents d'Exécution))
+        J -->|Décomposer plan| K[Decomposition Agent]
+        K -->|Execution Task Graph| J
+        J -- "Orchestre tâches" --> L((Pool d'Agents d'Exécution))
         subgraph L
             direction LR
             L1[Development Agent]
             L2[Research Agent]
             L3[Testing Agent]
         end
-        L -- "4. Artefacts" --> J
+        L -- "Artefacts" --> J
     end
-
     J -->|Résultats Finaux| M[Output]
 ```
 https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit
+
+
 ### Étape 1 : Clarification de l'Objectif (Orchestrée par `GlobalSupervisorLogic`)
 
 Cette phase cruciale garantit que l'objectif soumis par l'utilisateur est suffisamment clair et détaillé avant d'engager des ressources dans la planification ou l'exécution.
@@ -226,6 +236,8 @@ https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/d
 
 ## Concepts Clés Mis en Œuvre
 
+* **DK/A2A Backbone : Tous les agents et superviseurs communiquent via le protocole A2A de Google Agent Development Kit.
+* **Agents indépendants : Chaque agent est un microservice indépendant, déployable en local ou cloud.
 * **Architecture Microservices/Agents** : Modularité et scalabilité.
 * **Orchestration à Plusieurs Niveaux** : `GlobalSupervisorLogic` (clarification, lancement TEAM 1 & 2), `PlanningSupervisorLogic` (TEAM 1), `ExecutionSupervisorLogic` (TEAM 2).
 * **Agent Interactif (Human-in-the-Loop)** : `UserInteractionAgent` pour la clarification.
