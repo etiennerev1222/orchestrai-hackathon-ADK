@@ -150,7 +150,7 @@ app = FastAPI(
 # Allow CORS for the React interface served on http://localhost:8080
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080","https://orchestrai-hackathon.web.app"],
+    allow_origins=["http://localhost:8080","https://orchestrai-hackathon.web.app","http://user_interaction_agent:8080:"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -177,49 +177,6 @@ async def register_agent(payload: AgentRegistration):
         logger.error(f"Erreur enregistrement agent '{payload.name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- ROUTE /agents MISE À JOUR AVEC HEALTH CHECK ---
-@app.get("/agents")
-async def get_agents_with_status():
-    """Récupère tous les agents enregistrés et vérifie leur statut."""
-    try:
-        agents_ref = db.collection("service_registry")
-        docs_stream = agents_ref.stream()
-        agents = []
-        
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            tasks = []
-            agent_docs = []
-
-            async for doc in docs_stream:
-                if doc.id != 'gra_instance_config':
-                    agent_data = doc.to_dict()
-                    agent_data['id'] = doc.id
-                    agent_docs.append(agent_data)
-                    # On vérifie la santé en utilisant l'URL INTERNE
-                    health_check_url = agent_data.get("internal_url")
-                    if health_check_url:
-                        # Ajoute une coroutine à la liste des tâches à exécuter
-                        tasks.append(client.get(f"{health_check_url}/health"))
-
-            # Exécute toutes les vérifications de santé en parallèle
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for i, agent_data in enumerate(agent_docs):
-                result = results[i]
-                if isinstance(result, httpx.Response) and result.status_code == 200:
-                    agent_data['status'] = 'running' # Vert !
-                else:
-                    agent_data['status'] = 'unhealthy' # Jaune/Rouge
-                    # Log l'erreur si ce n'est pas une simple réponse négative
-                    if not isinstance(result, httpx.Response):
-                         logger.warning(f"Health check a échoué pour {agent_data['name']}: {result}")
-
-                agents.append(agent_data)
-
-        return agents
-    except Exception as e:
-        logger.error(f"Erreur lors de la récupération des agents: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve agents")
 
 # === CORRECTION DANS LA FONCTION CI-DESSOUS ===
 @app.post("/register", status_code=201)
@@ -246,26 +203,41 @@ async def register_agent(payload: AgentRegistration):
         logger.error(f"Erreur enregistrement agent '{payload.name}': {e}", exc_info=True) # Utiliser payload.name
         raise HTTPException(status_code=500, detail=str(e))
 
+# Dans /app/src/services/gra/server.py
+# Fichier : /app/src/services/gra/server.py
 
-@app.get("/agents") # Renommé de find_agent pour plus de clarté sur ce qu'il retourne
-async def get_agents_by_skill(skill: str): # Renommé le paramètre pour la clarté
-    # ... (identique, mais vérifier le nom de la collection)
+@app.get("/agents", response_model=List[Dict[str, Any]]) # On peut même spécifier que la réponse est une liste
+async def get_agents(skill: Optional[str] = None):
+    """
+    Récupère les agents. Si une compétence ('skill') est fournie, filtre les résultats.
+    Cette fonction retourne TOUJOURS une liste d'agents.
+    """
     try:
-        agents_ref = db.collection("agents").where(field_path="skills", op_string="array_contains", value=skill).limit(1)
-        # Utiliser asyncio.to_thread pour les opérations Firestore bloquantes
-        agent_docs = await asyncio.to_thread(list, agents_ref.stream()) # Convertir le stream en liste dans le thread
-        
-        if not agent_docs:
-            raise HTTPException(status_code=404, detail=f"Aucun agent trouvé avec la compétence: {skill}")
-        
-        agent_data = agent_docs[0].to_dict()
-        logger.info(f"Agent trouvé pour la compétence '{skill}': {agent_data.get('name')}")
-        return {"name": agent_data.get("name"), "url": agent_data.get("url")} # Conforme à ce que _get_agent_url_from_gra attend
-    except HTTPException:
-        raise
+        agents_ref = db.collection(GRA_SERVICE_REGISTRY_COLLECTION)
+
+        if skill:
+            logger.info(f"Recherche d'agents avec la compétence: {skill}")
+            query = agents_ref.where("skills", "array_contains", skill)
+        else:
+            logger.info("Récupération de tous les agents enregistrés.")
+            query = agents_ref
+
+        docs_snapshots = await asyncio.to_thread(list, query.stream())
+
+        agents = []
+        for doc in docs_snapshots:
+            if doc.id != GRA_CONFIG_DOCUMENT_ID:
+                agent_data = doc.to_dict()
+                agent_data['id'] = doc.id
+                agents.append(agent_data)
+
+        logger.info(f"{len(agents)} agents trouvés pour la requête.")
+        # La ligne cruciale : on retourne bien la LISTE `agents`.
+        return agents
+
     except Exception as e:
-        logger.error(f"Erreur recherche agent par compétence '{skill}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Erreur lors de la récupération des agents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve agents")
     
 
 

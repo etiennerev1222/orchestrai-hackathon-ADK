@@ -36,7 +36,7 @@ async def get_gra_base_url() -> str:
 
     doc_ref = db.collection(GRA_SERVICE_REGISTRY_COLLECTION).document(GRA_CONFIG_DOCUMENT_ID)
     try:
-        doc = await doc_ref.get()
+        doc = await asyncio.to_thread(doc_ref.get)
         if doc.exists:
             gra_url = doc.to_dict().get('url')
             if gra_url:
@@ -47,6 +47,7 @@ async def get_gra_base_url() -> str:
     except Exception as e:
         logger.error(f"Erreur lors de la découverte du GRA via Firestore : {e}", exc_info=True)
         return ""
+    
 async def register_self_with_gra(agent_name: str, agent_public_url: str, agent_internal_url: str, skills: List[str]):
     gra_base_url = await get_gra_base_url()
     if not gra_base_url:

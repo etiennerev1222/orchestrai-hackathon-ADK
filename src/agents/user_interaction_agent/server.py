@@ -35,35 +35,45 @@ SKILL_CLARIFY_OBJECTIVE = ACTION_CLARIFY_OBJECTIVE # Utilise la constante de log
 # SKILL_GET_USER_DECISION = "get_user_decision"
 
 AGENT_SKILLS_LIST = [SKILL_CLARIFY_OBJECTIVE] # Ajoutez d'autres compétences ici au fur et à mesure
+# REMPLACEZ votre fonction par celle-ci
+def get_user_interaction_agent_card() -> AgentCard:
+    """
+    Crée et retourne la "carte d'agent".
+    L'URL est maintenant lue depuis la variable d'environnement PUBLIC_URL
+    pour garantir qu'elle est toujours correcte.
+    """
+    # On lit l'URL publique depuis l'environnement, qui est la source de vérité
+    agent_url = os.environ.get("PUBLIC_URL")
+    if not agent_url:
+        logger.warning("PUBLIC_URL n'est pas définie. L'URL de l'agent pourrait être incorrecte.")
+        # On met une valeur par défaut pour éviter un crash, même si elle est probablement fausse
+        agent_url = "http://localhost:8080/"
 
-def get_user_interaction_agent_card(host: str, port: int) -> AgentCard:
     capabilities = AgentCapabilities(streaming=False, push_notifications=False)
     
     skills_objects = [
         AgentSkill(
             id=SKILL_CLARIFY_OBJECTIVE,
             name="Clarify User Objective",
-            description="Interacts with the user to clarify an initial objective, potentially asking questions if details are missing.",
+            description="Interacts with the user to clarify an initial objective...",
             tags=["user_interaction", "clarification", "dialogue"],
             examples=[
-                '{"action": "clarify_objective", "raw_objective": "Plan a holiday.", "conversation_history": []}'
+                '{"action": "clarify_objective", "raw_objective": "Plan a holiday."}'
             ]
-        ),
-        # Ajoutez d'autres objets AgentSkill ici pour les compétences futures
+        )
     ]
 
     agent_card = AgentCard(
         name="User Interaction Agent",
-        description="An A2A agent that handles direct interactions with the user, such as clarifying objectives or presenting results for review.",
-        url=f"http://{host}:{port}/",
+        description="An A2A agent that handles direct interactions with the user...",
+        url=agent_url,  # On utilise l'URL lue depuis l'environnement
         version="0.1.0",
-        # Cet agent recevra un JSON et retournera un JSON (via un artefact textuel)
-        defaultInputModes=["application/json"], # Le GlobalSupervisor enverra un JSON
-        defaultOutputModes=["application/json"],# L'artefact sera un JSON
+        defaultInputModes=["application/json"],
+        defaultOutputModes=["application/json"],
         capabilities=capabilities,
-        skills=skills_objects # Utilise la liste d'objets AgentSkill
+        skills=skills_objects
     )
-    logger.info(f"Agent Card créée: {agent_card.name} accessible à {agent_card.url}")
+    logger.info(f"Agent Card créée: {agent_card.name} accessible à l'URL : {agent_card.url}")
     return agent_card
 
 
@@ -72,9 +82,10 @@ task_store = InMemoryTaskStore()
 request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 
 def create_app_instance(host: str, port: int) -> Starlette:
-    agent_card = get_user_interaction_agent_card(host, port)
+    agent_card = get_user_interaction_agent_card()
     a2a_server_app_instance = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
     return a2a_server_app_instance.build()
+
 
 app = create_app_instance(host="localhost", port=8080)
 # --- IMPORTS À AJOUTER ---
@@ -104,7 +115,7 @@ async def lifespan(app_param: Starlette):
     # === AJOUT : Récupérer les compétences ===
     # La fonction get_..._card est déjà définie dans chaque fichier server.py
     # On l'appelle pour obtenir la carte et extraire les compétences.
-    agent_card = get_user_interaction_agent_card("placeholder", 0) # l'host/port n'importe pas ici
+    agent_card = get_user_interaction_agent_card() # l'host/port n'importe pas ici
      # === LA CORRECTION EST ICI ===
     # On accède directement à l'attribut .skills de la carte, pas via .capabilities
     skill_ids = [skill.id for skill in agent_card.skills] if agent_card.skills else []

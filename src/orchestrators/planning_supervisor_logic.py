@@ -43,9 +43,9 @@ class PlanningSupervisorLogic:
                 response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
                 response.raise_for_status()
                 data = response.json()
-                agent_target_url = data.get("url")
+                agent_target_url = data.get("internal_url")
                 if agent_target_url:
-                    logger.info(f"[Superviseur] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data.get('name')})")
+                    logger.info(f"[Superviseur] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data.get('name')}, url: {agent_target_url})")
                 else:
                     logger.error(f"[Superviseur] Aucune URL retournée par le GRA pour la compétence '{skill}'. Réponse: {data}")
         except httpx.HTTPStatusError as e:

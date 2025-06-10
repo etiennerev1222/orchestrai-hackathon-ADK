@@ -17,6 +17,7 @@ from src.orchestrators.planning_supervisor_logic import PlanningSupervisorLogic
 from src.shared.task_graph_management import TaskGraph, TaskState as Team1TaskStateEnum  # Renommé pour clarté
 from src.orchestrators.execution_supervisor_logic import ExecutionSupervisorLogic # NOUVEL IMPORT
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
+
 from a2a.types import Task, TaskState, TextPart
 
 logger = logging.getLogger(__name__)
@@ -70,28 +71,43 @@ class GlobalSupervisorLogic:
         return self._gra_base_url
 
     async def _get_agent_url_from_gra(self, skill: str) -> Optional[str]:
-        # ... (identique)
         gra_url = await self._ensure_gra_url()
-        agent_target_url = None
+        if not gra_url:
+            return None
+
+        logger.info(f"[GlobalSupervisor] Demande au GRA ({gra_url}) un agent avec la compétence: '{skill}'")
+        
         try:
             async with httpx.AsyncClient() as client:
-                logger.info(f"[GlobalSupervisor] Demande au GRA ({gra_url}) un agent avec la compétence: '{skill}'")
-                response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
-                response.raise_for_status() 
-                data = response.json()
-                agent_target_url = data.get("url")
-                if agent_target_url:
-                    logger.info(f"[GlobalSupervisor] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data.get('name')})")
-                else:
-                    logger.error(f"[GlobalSupervisor] Aucune URL retournée par le GRA pour la compétence '{skill}'. Réponse: {data}")
-        except httpx.HTTPStatusError as e:
-            logger.error(f"[GlobalSupervisor] Erreur HTTP ({e.response.status_code}) en contactant le GRA pour '{skill}' à {e.request.url}: {e.response.text}")
-        except httpx.RequestError as e:
-            logger.error(f"[GlobalSupervisor] Erreur de requête en contactant le GRA pour '{skill}': {e}")
-        except Exception as e:
-            logger.error(f"[GlobalSupervisor] Erreur inattendue en contactant le GRA pour '{skill}': {e}", exc_info=True)
-        return agent_target_url
+                # On appelle l'API qui retourne maintenant une liste filtrée
+                response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=30.0)
+                response.raise_for_status()
+                data = response.json() # data est maintenant une liste, ex: [{'name': ..., 'skills':...}]
 
+                # On vérifie si la liste n'est pas vide
+                if data and isinstance(data, list) and len(data) > 0:
+                    # On prend le premier agent de la liste retournée (car l'API a déjà filtré)
+                    agent = data[0]
+                    
+                    # Pour le local, on utilise l'URL interne. Pour le cloud, la publique.
+                    # On peut ajouter une logique simple pour choisir, mais pour le local, prenons l'interne.
+                    agent_target_url = agent.get('internal_url') # C'est l'URL pour la communication Docker
+                    
+                    logger.info(f"[GlobalSupervisor] Agent trouvé pour '{skill}': {agent.get('name')} à l'URL {agent_target_url}")
+                    return agent_target_url
+                else:
+                    logger.error(f"[GlobalSupervisor] Aucun agent trouvé pour la compétence '{skill}'. Réponse du GRA: {data}")
+                    return None
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[GlobalSupervisor] Erreur HTTP en contactant le GRA : {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"[GlobalSupervisor] Erreur de requête en contactant le GRA : {e}")
+        except Exception as e:
+            logger.error(f"[GlobalSupervisor] Erreur inattendue en contactant le GRA : {e}", exc_info=True)
+        
+        return None
+    
 
     async def _save_global_plan_state(self, global_plan_id: str, plan_data_to_update: Dict[str, Any]):
         if not self.db:
@@ -142,7 +158,9 @@ class GlobalSupervisorLogic:
         # ... (Début identique : mise à jour état, découverte agent, préparation payload) ...
         await self._save_global_plan_state(global_plan_id, {"current_supervisor_state": GlobalPlanState.OBJECTIVE_BEING_CLARIFIED_BY_AGENT})
         ui_agent_skill = ACTION_CLARIFY_OBJECTIVE
+        
         ui_agent_url = await self._get_agent_url_from_gra(ui_agent_skill)
+        logger.info(f"[GlobalSupervisor] Plan '{global_plan_id}': Appel à l'agent de clarification d'objectif ({ui_agent_skill}) à l'URL {ui_agent_url}")
         if not ui_agent_url: # Gestion d'erreur identique
             logger.error(f"[GlobalSupervisor] UserInteractionAgent introuvable pour '{ui_agent_skill}'. Plan '{global_plan_id}'.")
             await self._save_global_plan_state(global_plan_id, {"current_supervisor_state": GlobalPlanState.FAILED_AGENT_ERROR, "error_message": "UserInteractionAgent not found"})

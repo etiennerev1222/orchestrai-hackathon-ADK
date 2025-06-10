@@ -19,6 +19,8 @@ from a2a.types import (
     Artifact,
 )
 
+from a2a.client import A2AClientHTTPError, A2AClientJSONError
+
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO)
@@ -42,7 +44,36 @@ def _create_agent_input_message(
         taskId=task_id,        # Peut être None si nouvelle tâche pour ce message
     )
 
+import httpx
+import logging
+from typing import Optional, Dict, Any
 
+logger = logging.getLogger(__name__)
+
+async def call_agent(
+    agent_url: str,
+    payload: Dict[str, Any],
+    timeout: float = 60.0
+) -> Optional[Dict[str, Any]]:
+    """
+    Appelle n'importe quel agent via un POST HTTP standard avec un payload JSON simple.
+    Cette fonction remplace la librairie A2A défectueuse.
+    """
+    logger.info(f"Appel HTTP POST direct vers {agent_url} avec le payload : {payload}")
+    try:
+        # On force http/1.1 pour une meilleure compatibilité (important pour le cloud)
+        async with httpx.AsyncClient(http2=False, timeout=timeout) as client:
+            response = await client.post(agent_url, json=payload)
+            response.raise_for_status() # Lève une erreur pour les statuts 4xx/5xx
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Erreur HTTP {e.response.status_code} en appelant {agent_url}. Réponse: {e.response.text}")
+        return None
+    except httpx.RequestError as e:
+        logger.error(f"Erreur de connexion/réseau en appelant {agent_url}: {e}")
+        return None
+    
+    
 async def call_a2a_agent(
     agent_url: str,
     input_text: str,
@@ -65,7 +96,7 @@ async def call_a2a_agent(
     """
     logger.info(f"Appel à l'agent A2A à l'URL: {agent_url} avec l'entrée: '{input_text}'")
 
-    async with httpx.AsyncClient(timeout=30.0) as http_client:
+    async with httpx.AsyncClient(timeout=30.0,http2=False) as http_client:
         try:
             a2a_client = await A2AClient.get_client_from_agent_card_url(
                 httpx_client=http_client,
@@ -94,7 +125,16 @@ async def call_a2a_agent(
                 error_content = send_response.model_dump_json(indent=2) if hasattr(send_response, 'model_dump_json') else str(send_response)
                 logger.error(f"Réponse inattendue de send_message à {agent_url}: {error_content}")
                 return None
-        except Exception as e:
+        except A2AClientHTTPError as e:
+            logger.error(f"Erreur HTTP lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
+            return None
+        except A2AClientJSONError as e:
+            logger.error(f"Erreur de parsing JSON lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
+            return None
+        except httpx.RequestError as e:
+            logger.error(f"Erreur de requête lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
+            return None
+        except  Exception as e:
             logger.error(f"Erreur lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
             return None
 

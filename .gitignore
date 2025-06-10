@@ -99,3 +99,4 @@ __pycache__/
 
 # Fichiers d'environnement
 .env
+src/agents/user_interaction_agent_old/

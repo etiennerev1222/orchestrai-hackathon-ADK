@@ -55,7 +55,7 @@ function configure() {
         fi
         
         cat <<EOF > "$COMPONENT_DIR/Dockerfile"
-FROM python:3.11-slim
+FROM python:3.13-slim
 WORKDIR /app
 COPY docker_build/${COMPONENT}/requirements.txt ./
 RUN pip install -r requirements.txt
@@ -175,7 +175,11 @@ function deploy_gcp() {
         exit 1
     fi
     echo "    ✅ 'gra-server' déployé avec l'URL : ${GRA_CLOUD_RUN_URL}"
-
+    gcloud run services update gra-server \
+        --region=${GCP_REGION} \
+        --set-env-vars="GEMINI_API_KEY=${GEMINI_API_KEY},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+        --project=${GCP_PROJECT_ID}
+    echo "    -> Mise à jour de 'gra-server' avec ses URLs...Terminée."        
     # --- Déploiement des agents ---
     echo "    -> Déploiement des 8 agents..."
     for AGENT_NAME in "${AGENTS[@]}"; do
