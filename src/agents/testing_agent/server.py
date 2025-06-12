@@ -23,7 +23,7 @@ if not logger.hasHandlers():
 AGENT_NAME = "TestingAgentServer"
 AGENT_SKILLS_LIST = [AGENT_SKILL_SOFTWARE_TESTING, AGENT_SKILL_TEST_CASE_GENERATION]
 
-def get_testing_agent_card(host: str, port: int) -> AgentCard:
+def get_testing_agent_card() -> AgentCard:
     capabilities = AgentCapabilities(streaming=False)
     skills_objects = [
         AgentSkill(
@@ -45,10 +45,17 @@ def get_testing_agent_card(host: str, port: int) -> AgentCard:
             ]
         )
     ]
+    agent_url = os.environ.get("PUBLIC_URL")
+    if not agent_url:
+        logger.error(f"[{AGENT_NAME}] PUBLIC_URL environment variable is not set. Agent cannot be registered.")
+        #on définit la varibeble d'environnement pour l'URL publique
+        agent_url = "http://localhost:8080"
+    logger.info(f"[{AGENT_NAME}] Agent URL temporaire set to {agent_url}")
+     
     return AgentCard(
         name="Software Testing Agent",
         description="Agent specialized in testing software and generating test reports.",
-        url=f"http://{host}:{port}/",
+        url=agent_url,
         version="0.1.0",
         defaultInputModes=["application/json"], # Prend les specs de test et le livrable en JSON string
         defaultOutputModes=["application/json"],# Retourne un rapport de test JSON string
@@ -61,7 +68,7 @@ task_store = InMemoryTaskStore()
 request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 
 def create_app_instance(host: str, port: int) -> Starlette:
-    agent_card = get_testing_agent_card(host, port)
+    agent_card = get_testing_agent_card()
     a2a_server_app_instance = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
     return a2a_server_app_instance.build()
 
@@ -94,7 +101,7 @@ async def lifespan(app_param: Starlette):
     # === AJOUT : Récupérer les compétences ===
     # La fonction get_..._card est déjà définie dans chaque fichier server.py
     # On l'appelle pour obtenir la carte et extraire les compétences.
-    agent_card = get_testing_agent_card("placeholder", 0) # l'host/port n'importe pas ici
+    agent_card = get_testing_agent_card() # l'host/port n'importe pas ici
      # === LA CORRECTION EST ICI ===
     # On accède directement à l'attribut .skills de la carte, pas via .capabilities
     skill_ids = [skill.id for skill in agent_card.skills] if agent_card.skills else []

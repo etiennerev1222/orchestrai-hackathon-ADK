@@ -43,9 +43,9 @@ class PlanningSupervisorLogic:
                 response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
                 response.raise_for_status()
                 data = response.json()
-                agent_target_url = data.get("internal_url")
+                agent_target_url = data[0].get("internal_url")
                 if agent_target_url:
-                    logger.info(f"[Superviseur] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data.get('name')}, url: {agent_target_url})")
+                    logger.info(f"[Superviseur] URL pour '{skill}' obtenue du GRA: {agent_target_url} (Agent: {data[0].get('name')}, url: {agent_target_url})")
                 else:
                     logger.error(f"[Superviseur] Aucune URL retournée par le GRA pour la compétence '{skill}'. Réponse: {data}")
         except httpx.HTTPStatusError as e:
@@ -510,7 +510,7 @@ class PlanningSupervisorLogic:
             plan_root_node.meta["revision_count"] = current_revision_count + 1
             self.task_graph.add_task(plan_root_node) # Sauvegarde la mise à jour du compteur
 
-            rejected_plan_text = validation_output.get("evaluated_plan", "")
+            rejected_plan_text = validation_output[0].get("evaluated_plan", "")
             new_objective = (f"La version précédente du plan a été rejetée. Commentaires: '{comments}'. "
                              f"Plan rejeté: '{rejected_plan_text}'. Ta mission est de générer une nouvelle version qui corrige ces problèmes.")
             

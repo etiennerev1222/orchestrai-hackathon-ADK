@@ -193,7 +193,7 @@ function deploy_gcp() {
           --region=${GCP_REGION} \
           --allow-unauthenticated \
           --port=8080 \
-          --set-env-vars="GEMINI_API_KEY=${GEMINI_API_KEY},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+          --set-env-vars="GEMINI_API_KEY=${GEMINI_API_KEY},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
           --project=${GCP_PROJECT_ID}
         
         # On récupère l'URL publique de l'agent qui vient d'être créé
