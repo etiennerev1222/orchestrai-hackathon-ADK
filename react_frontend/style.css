@@ -58,6 +58,15 @@ textarea {
   box-sizing: border-box;
 }
 
+textarea,
+select,
+input {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
 .artifact-popup {
   position: fixed;
   background: var(--card-bg);
@@ -129,6 +138,9 @@ textarea {
   max-height: 200px;
   overflow-y: auto;
   margin-bottom: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 0.25rem;
 }
 .chat-item {
   margin-bottom: 0.25rem;
