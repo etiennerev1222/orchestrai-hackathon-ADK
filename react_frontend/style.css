@@ -1,27 +1,45 @@
+:root {
+  --bg: #1e1e1e;
+  --sidebar-bg: #27272a;
+  --card-bg: #323236;
+  --border: #444;
+  --text: #e5e7eb;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --success-bg: #14532d;
+  --success-text: #bbf7d0;
+  --error-bg: #7f1d1d;
+  --error-text: #fecaca;
+}
+
 body {
-  font-family: Arial, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   margin: 0;
   padding: 0;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .sidebar {
   width: 300px;
   float: left;
   padding: 10px;
-  border-right: 1px solid #ccc;
+  border-right: 1px solid var(--border);
   height: 100vh;
   box-sizing: border-box;
-  background: #f5f5f5;
+  background: var(--sidebar-bg);
 }
 
 .content {
   margin-left: 320px;
   padding: 10px;
+  background: var(--bg);
+  position: relative;
 }
 
 button {
-  background: #007bff;
-  color: white;
+  background: var(--primary);
+  color: var(--text);
   border: none;
   padding: 0.5rem;
   cursor: pointer;
@@ -29,22 +47,19 @@ button {
 }
 
 button:hover {
-  background: #0056b3;
+  background: var(--primary-hover);
 }
 
 textarea {
   width: 100%;
   box-sizing: border-box;
 }
-.content {
-  position: relative;
-}
 
 .artifact-popup {
   position: fixed;
-  background: white;
-  border: 1px solid #ccc;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
   padding: 10px;
   max-width: 400px;
   max-height: 300px;
@@ -69,12 +84,16 @@ textarea {
   top: 10px;
   right: 10px;
   z-index: 5;
+  background: var(--primary);
+  color: var(--text);
 }
 .fullscreen-button {
   position: absolute;
   top: 10px;
   right: 110px;
   z-index: 5;
+  background: var(--primary);
+  color: var(--text);
 }
 
 .agents-table {
@@ -83,25 +102,25 @@ textarea {
   margin-bottom: 1rem;
 }
 .agents-table th, .agents-table td {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   padding: 0.25rem 0.5rem;
 }
 .agents-table .status-online {
-  background: #d4edda;
-  color: #155724;
+  background: var(--success-bg);
+  color: var(--success-text);
   font-weight: bold;
 }
 .agents-table .status-offline {
-  background: #f8d7da;
-  color: #721c24;
+  background: var(--error-bg);
+  color: var(--error-text);
   font-weight: bold;
 }
 
 .clarification-block {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   padding: 0.5rem;
   margin-bottom: 1rem;
-  background: #fafafa;
+  background: var(--card-bg);
 }
 .chat-history {
   max-height: 200px;
@@ -113,14 +132,14 @@ textarea {
 }
 
 .plan-info {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   padding: 0.5rem;
   margin-bottom: 1rem;
-  background: #fafafa;
+  background: var(--card-bg);
 }
 
 .plan-info-failure {
-  color: #721c24;
+  color: var(--error-text);
   font-weight: bold;
 }
 
@@ -130,12 +149,13 @@ textarea {
 }
 
 .plan-stats-table td {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   padding: 0.25rem 0.5rem;
 }
 
 .plan-stats-table .failed-state td {
-  background: #f8d7da;
+  background: var(--error-bg);
+  color: var(--error-text);
   font-weight: bold;
 }
 
@@ -147,10 +167,10 @@ textarea {
   margin-top: 1rem;
 }
 .message-item {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   padding: 0.5rem;
   margin-bottom: 0.5rem;
-  background: #fafafa;
+  background: var(--card-bg);
 }
 .message-item pre {
   margin: 0;
@@ -158,5 +178,5 @@ textarea {
 }
 .msg-date {
   font-size: 0.8rem;
-  color: #555;
+  color: #9ca3af;
 }
