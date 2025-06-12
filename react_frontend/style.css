@@ -1,11 +1,12 @@
 :root {
-  --bg: #1e1e1e;
-  --sidebar-bg: #27272a;
-  --card-bg: #323236;
-  --border: #444;
-  --text: #e5e7eb;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
+  /* Softer dark theme with better contrast */
+  --bg: #202124;
+  --sidebar-bg: #2b2c30;
+  --card-bg: #32343a;
+  --border: #555;
+  --text: #f1f1f1;
+  --primary: #4f8aff;
+  --primary-hover: #3d7bf2;
   --success-bg: #14532d;
   --success-text: #bbf7d0;
   --error-bg: #7f1d1d;
@@ -41,8 +42,10 @@ button {
   background: var(--primary);
   color: var(--text);
   border: none;
-  padding: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
   cursor: pointer;
+  transition: background 0.15s ease-in-out;
   margin-top: 0.5rem;
 }
 
@@ -178,5 +181,5 @@ textarea {
 }
 .msg-date {
   font-size: 0.8rem;
-  color: #9ca3af;
+  color: #a1a1aa;
 }
