@@ -108,24 +108,50 @@ input {
   color: var(--text);
 }
 
-.agents-table {
-  border-collapse: collapse;
-  width: 100%;
+.agents-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
-.agents-table th, .agents-table td {
+
+.agent-card {
   border: 1px solid var(--border);
-  padding: 0.25rem 0.5rem;
+  padding: 0.5rem;
+  background: var(--card-bg);
+  border-radius: 6px;
+  min-width: 160px;
 }
-.agents-table .status-online {
+
+.gra-card {
+  border-width: 2px;
+}
+
+.agent-name {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+}
+
+.agent-timestamp {
+  font-size: 0.8rem;
+}
+
+.status-online {
   background: var(--success-bg);
   color: var(--success-text);
   font-weight: bold;
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
 }
-.agents-table .status-offline {
+
+.status-offline {
   background: var(--error-bg);
   color: var(--error-text);
   font-weight: bold;
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
 }
 
 .clarification-block {

@@ -137,35 +137,46 @@ function Graph({
   );
 }
 
-function AgentStatusBar({ agents }) {
-  if (!agents?.length) return null;
+function AgentStatusBar({ agents, graHealth }) {
+  if (!agents?.length && !graHealth) return null;
+  const graCard = (
+    <div key="gra" className="agent-card gra-card">
+      <div className="agent-name">GRA Server</div>
+      <div className={graHealth === 'online' ? 'status-online' : 'status-offline'}>
+        {graHealth === 'online' ? '✅ Online' : '⚠️ Offline'}
+      </div>
+      <div className="agent-url">
+        <a href={BACKEND_API_URL} target="_blank" rel="noopener noreferrer">
+          {BACKEND_API_URL}
+        </a>
+      </div>
+    </div>
+  );
+
   return (
-    <table className="agents-table">
-      <thead>
-        <tr>
-          <th>Agent</th>
-          <th>Statut</th>
-          <th>Dernière mise à jour</th>
-          <th>Public URL</th>
-        </tr>
-      </thead>
-      <tbody>
-        {agents.map(a => (
-          <tr key={a.name} title={`Skills: ${(a.skills || []).join(', ')}\nInternal: ${a.internal_url}`}>
-            <td>{a.name.replace('AgentServer', '')}</td>
-            <td className={a.health_status?.includes('Online') ? 'status-online' : 'status-offline'}>
-              {a.health_status || ''}
-            </td>
-            <td>{new Date(a.timestamp).toLocaleString()}</td>
-            <td>
+    <div className="agents-container">
+      {graCard}
+      {agents.map(a => (
+        <div
+          key={a.name}
+          className="agent-card"
+          title={`Skills: ${(a.skills || []).join(', ')}\nInternal: ${a.internal_url}`}
+        >
+          <div className="agent-name">{a.name.replace('AgentServer', '')}</div>
+          <div className={a.health_status?.includes('Online') ? 'status-online' : 'status-offline'}>
+            {a.health_status || ''}
+          </div>
+          <div className="agent-timestamp">{new Date(a.timestamp).toLocaleString()}</div>
+          {a.public_url && (
+            <div className="agent-url">
               <a href={a.public_url} target="_blank" rel="noopener noreferrer">
                 {a.public_url}
               </a>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -289,6 +300,7 @@ function App() {
   const [team2Counts, setTeam2Counts] = React.useState(null);
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [stateFilter, setStateFilter] = React.useState('');
+  const [graHealth, setGraHealth] = React.useState(null);
 
   const uniqueStates = React.useMemo(
     () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
@@ -329,6 +341,12 @@ function App() {
       .then(res => res.json())
       .then(list => setAgentsStatus(list))
       .catch(err => console.error('Erreur chargement statut agents', err));
+  }, []);
+
+  React.useEffect(() => {
+    fetch(`${BACKEND_API_URL}/health`)
+      .then(res => setGraHealth(res.ok ? 'online' : 'offline'))
+      .catch(() => setGraHealth('offline'));
   }, []);
 
   React.useEffect(() => {
@@ -596,7 +614,7 @@ function App() {
         </select>
       </div>
       <div className="content">
-        <AgentStatusBar agents={agentsStatus} />
+        <AgentStatusBar agents={agentsStatus} graHealth={graHealth} />
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)} disabled={!selectedPlanId}>
             Rafraîchir le plan
