@@ -147,6 +147,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Simple healthcheck endpoint for the frontend
+@app.get("/health")
+async def healthcheck():
+    return {"status": "ok"}
+
 # Allow CORS for the React interface served on http://localhost:8080
 app.add_middleware(
     CORSMiddleware,
