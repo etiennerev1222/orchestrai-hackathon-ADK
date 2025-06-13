@@ -110,22 +110,30 @@ async def get_agents_status_with_health_from_api():
             response_agents = await client.get(f"{BACKEND_API_URL}/agents_status", timeout=10.0)
             response_agents.raise_for_status()
             agents_list = response_agents.json()
-            
-            async def check_agent_health(agent_url: str):
-                if not agent_url: return False
-                try:
-                    card_url = agent_url.strip('/') + "/.well-known/agent.json"
-                    res = await client.get(card_url, timeout=5.0)
-                    return res.status_code == 200
-                except Exception:
-                    return False
 
-            tasks = [check_agent_health(agent.get("url")) for agent in agents_list]
-            health_results = await asyncio.gather(*tasks)
-            
-            for agent, is_healthy in zip(agents_list, health_results):
+            async def fetch_health_and_card(agent: Dict[str, Any]):
+                url = agent.get("public_url")
+                is_healthy = False
+                card_data = None
+                if url:
+                    card_url = url.rstrip("/") + "/.well-known/agent.json"
+                    try:
+                        res = await client.get(card_url, timeout=5.0)
+                        is_healthy = res.status_code == 200
+                        if res.status_code == 200:
+                            card_data = res.json()
+                    except Exception:
+                        is_healthy = False
+                return is_healthy, card_data
+
+            tasks = [fetch_health_and_card(agent) for agent in agents_list]
+            results = await asyncio.gather(*tasks)
+
+            for agent, (is_healthy, card) in zip(agents_list, results):
                 agent["health_status"] = "✅ Online" if is_healthy else "⚠️ Offline"
                 agent["health_color"] = "green" if is_healthy else "orange"
+                if card:
+                    agent["card"] = card
             return agents_list
         except Exception as e:
             st.error(f"Erreur récupération statut enrichi agents: {e}")
@@ -230,27 +238,32 @@ def render_artifact_content(content: Any, display_key: str):
     else:
         st.info("Aucun contenu d'artefact à afficher.")
 def display_agent_status_bar(agents_status: List[Dict[str, Any]]):
-    """Affiche une barre de statut propre et visuellement agréable pour les agents."""
+    """Affiche les agents dans des containers avec nom, statut et date."""
     st.subheader("📡 Statut des Agents")
     if not agents_status:
         st.info("Aucun agent n'a été découvert. Vérifiez que le GRA et les serveurs d'agents sont lancés.")
         return
 
-    # Détermine le nombre de colonnes en fonction du nombre d'agents
     cols = st.columns(len(agents_status))
-
     for i, agent in enumerate(agents_status):
         with cols[i]:
             name = agent.get("name", "Inconnu").replace("AgentServer", "")
             status_text = agent.get("health_status", "Offline")
+            ts = agent.get("timestamp")
+            ts_str = str(ts)
+            public_url = agent.get("public_url")
+            card = agent.get("card")
             skills = ", ".join(agent.get("skills", []))
 
-            # Utilisation de st.metric pour un look propre et intégré
-            st.metric(
-                label=status_text,
-                value=name,
-                help=f"Compétences : {skills}"
-            )
+            with st.container(border=True):
+                st.markdown(f"**{name}**")
+                st.markdown(status_text)
+                st.caption(f"Maj : {ts_str}")
+                if public_url:
+                    st.markdown(f"[URL Publique]({public_url})")
+                if card:
+                    with st.expander("Agent Card"):
+                        st.json(card)
 
 def compute_state_counts(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
     """Calcule le nombre de tâches par état."""
