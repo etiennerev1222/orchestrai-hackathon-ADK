@@ -121,6 +121,13 @@ input {
   background: var(--card-bg);
   border-radius: 6px;
   min-width: 160px;
+  font-size: 0.9rem;
+}
+
+.agent-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .gra-card {
@@ -129,7 +136,8 @@ input {
 
 .agent-name {
   font-weight: bold;
-  margin-bottom: 0.25rem;
+  margin: 0;
+  margin-right: 0.25rem;
 }
 
 .agent-timestamp {

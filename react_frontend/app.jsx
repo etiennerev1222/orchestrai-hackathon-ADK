@@ -140,15 +140,16 @@ function Graph({
 function AgentStatusBar({ agents, graHealth }) {
   if (!agents?.length && !graHealth) return null;
   const graCard = (
-    <div key="gra" className="agent-card gra-card">
-      <div className="agent-name">GRA Server</div>
-      <div className={graHealth === 'online' ? 'status-online' : 'status-offline'}>
-        {graHealth === 'online' ? '✅ Online' : '⚠️ Offline'}
-      </div>
-      <div className="agent-url">
-        <a href={BACKEND_API_URL} target="_blank" rel="noopener noreferrer">
-          {BACKEND_API_URL}
-        </a>
+    <div
+      key="gra"
+      className="agent-card gra-card"
+      title={`URL: ${BACKEND_API_URL}`}
+    >
+      <div className="agent-header">
+        <div className="agent-name">GRA Server</div>
+        <div className={graHealth === 'online' ? 'status-online' : 'status-offline'}>
+          {graHealth === 'online' ? '✅ Online' : '⚠️ Offline'}
+        </div>
       </div>
     </div>
   );
@@ -160,20 +161,15 @@ function AgentStatusBar({ agents, graHealth }) {
         <div
           key={a.name}
           className="agent-card"
-          title={`Skills: ${(a.skills || []).join(', ')}\nInternal: ${a.internal_url}`}
+          title={`Skills: ${(a.skills || []).join(', ')}\nInternal: ${a.internal_url}${a.public_url ? `\nURL: ${a.public_url}` : ''}`}
         >
-          <div className="agent-name">{a.name.replace('AgentServer', '')}</div>
-          <div className={a.health_status?.includes('Online') ? 'status-online' : 'status-offline'}>
-            {a.health_status || ''}
+          <div className="agent-header">
+            <div className="agent-name">{a.name.replace('AgentServer', '')}</div>
+            <div className={a.health_status?.includes('Online') ? 'status-online' : 'status-offline'}>
+              {a.health_status || ''}
+            </div>
           </div>
           <div className="agent-timestamp">{new Date(a.timestamp).toLocaleString()}</div>
-          {a.public_url && (
-            <div className="agent-url">
-              <a href={a.public_url} target="_blank" rel="noopener noreferrer">
-                {a.public_url}
-              </a>
-            </div>
-          )}
         </div>
       ))}
     </div>
