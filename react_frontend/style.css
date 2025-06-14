@@ -192,6 +192,19 @@ input {
   font-weight: bold;
 }
 
+.plan-stats {
+  border: 1px solid var(--border);
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  background: var(--card-bg);
+}
+
+.plan-stats summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
 .plan-stats-table {
   border-collapse: collapse;
   margin-bottom: 0.5rem;
