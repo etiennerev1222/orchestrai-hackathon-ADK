@@ -137,7 +137,7 @@ function Graph({
   );
 }
 
-function AgentStatusBar({ agents, graHealth }) {
+function AgentStatusBar({ agents, graHealth, stats }) {
   if (!agents?.length && !graHealth) return null;
   const graCard = (
     <div
@@ -170,6 +170,13 @@ function AgentStatusBar({ agents, graHealth }) {
             </div>
           </div>
           <div className="agent-timestamp">{new Date(a.timestamp).toLocaleString()}</div>
+          {stats?.[a.name] && (
+            <div className="agent-stats">
+              <span>Total {stats[a.name].processed}</span>
+              <span>✅ {stats[a.name].completed}</span>
+              <span>❌ {stats[a.name].failed}</span>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -297,6 +304,7 @@ function App() {
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [stateFilter, setStateFilter] = React.useState('');
   const [graHealth, setGraHealth] = React.useState(null);
+  const [agentStats, setAgentStats] = React.useState({});
 
   const uniqueStates = React.useMemo(
     () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
@@ -343,6 +351,19 @@ function App() {
     fetch(`${BACKEND_API_URL}/health`)
       .then(res => setGraHealth(res.ok ? 'online' : 'offline'))
       .catch(() => setGraHealth('offline'));
+  }, []);
+
+  React.useEffect(() => {
+    fetch(`${BACKEND_API_URL}/v1/stats/agents`)
+      .then(res => res.json())
+      .then(data => {
+        const map = {};
+        (data.stats || []).forEach(s => {
+          map[s.agent_name] = s;
+        });
+        setAgentStats(map);
+      })
+      .catch(() => {});
   }, []);
 
   React.useEffect(() => {
@@ -610,7 +631,7 @@ function App() {
         </select>
       </div>
       <div className="content">
-        <AgentStatusBar agents={agentsStatus} graHealth={graHealth} />
+        <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentStats} />
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)} disabled={!selectedPlanId}>
             Rafraîchir le plan

@@ -134,6 +134,16 @@ class AllAgentTasksStatsResponse(BaseModel):
     stats: List[AllAgentTaskStats]
     last_updated: str
 
+class AgentStats(BaseModel):
+    agent_name: str
+    processed: int = 0
+    completed: int = 0
+    failed: int = 0
+
+class AgentStatsResponse(BaseModel):
+    stats: List[AgentStats]
+    last_updated: str
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await publish_gra_location()
@@ -768,6 +778,34 @@ async def get_all_agent_tasks_count_stats():
 
     logger.info(f"[GRA API] Statistiques de comptage de toutes les tâches agents générées: {response_stats}")
     return AllAgentTasksStatsResponse(stats=response_stats, last_updated=datetime.now(timezone.utc).isoformat())
+
+
+@app.get("/v1/stats/agents", response_model=AgentStatsResponse)
+async def get_agent_stats():
+    """Retourne les statistiques globales pour chaque agent."""
+    logger.info("[GRA API] Requête pour les statistiques d'agents.")
+    if not db:
+        logger.error("[GRA API] Client Firestore non disponible pour get_agent_stats.")
+        raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
+
+    try:
+        docs = await asyncio.to_thread(lambda: list(db.collection("agent_stats").stream()))
+        stats = []
+        for doc in docs:
+            data = doc.to_dict()
+            stats.append(
+                AgentStats(
+                    agent_name=doc.id,
+                    processed=data.get("processed", 0),
+                    completed=data.get("completed", 0),
+                    failed=data.get("failed", 0),
+                )
+            )
+        logger.info(f"[GRA API] Statistiques agents générées: {stats}")
+        return AgentStatsResponse(stats=stats, last_updated=datetime.now(timezone.utc).isoformat())
+    except Exception as e:
+        logger.error(f"[GRA API] Erreur lors de la récupération des statistiques agents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

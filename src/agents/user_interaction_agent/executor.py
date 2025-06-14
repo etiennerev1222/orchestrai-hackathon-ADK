@@ -4,6 +4,7 @@ import json
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import UserInteractionAgentLogic, ACTION_CLARIFY_OBJECTIVE
+from .server import AGENT_NAME
 
 from a2a.types import Artifact, Task, Message, TaskState, TaskStatus # Ajout de TaskState, TaskStatus
 from a2a.utils import new_text_artifact, new_agent_text_message # Ajout de new_agent_text_message
@@ -31,7 +32,8 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
         super().__init__(
             agent_logic=specific_agent_logic,
             default_artifact_name="user_interaction_output",
-            default_artifact_description="Résultat de l'interaction avec l'utilisateur."
+            default_artifact_description="Résultat de l'interaction avec l'utilisateur.",
+            agent_name=AGENT_NAME,
         )
         logger.info("UserInteractionAgentExecutor initialisé.")
 

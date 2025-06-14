@@ -4,6 +4,7 @@ import json
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import TestingAgentLogic
+from .server import AGENT_NAME
 
 from a2a.types import Artifact, Task
 from a2a.utils import new_text_artifact # Le rapport de test JSON sera un TextArtifact
@@ -16,7 +17,8 @@ class TestingAgentExecutor(BaseAgentExecutor):
         super().__init__(
             agent_logic=specific_agent_logic,
             default_artifact_name="test_report",
-            default_artifact_description="Rapport de test généré pour un livrable."
+            default_artifact_description="Rapport de test généré pour un livrable.",
+            agent_name=AGENT_NAME,
         )
         self.logger = logging.getLogger(f"{__name__}.TestingAgentExecutor")
         self.logger.info("TestingAgentExecutor initialisé.")
