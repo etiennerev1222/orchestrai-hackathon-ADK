@@ -1,7 +1,7 @@
 // react_frontend/app.jsx
 
 // La constante lit maintenant la variable globale définie dans config.js
-const BACKEND_API_URL = window.CONFIG.BACKEND_API_URL || 'https://gra-server-o3o3chxieq-ew.a.run.app';
+const BACKEND_API_URL = window.CONFIG.BACKEND_API_URL || 'http://localhost:8080';
 const FINISHED_STATES = [
   'TEAM2_EXECUTION_COMPLETED',
   'TEAM2_EXECUTION_FAILED',

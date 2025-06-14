@@ -108,7 +108,7 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
             result_payload, a2a_task_state_str = await self.agent_logic.process(user_input_dict, current_context_id)
             
             result_artifact = self._create_artifact_from_result(result_payload, task)
-            await event_queue.enqueue_event(TaskArtifactUpdateEvent(
+            event_queue.enqueue_event(TaskArtifactUpdateEvent(
                 append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
                 artifact=result_artifact
             ))
@@ -131,7 +131,7 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
                 context_id=current_context_id,
                 task_id=current_task_id
             )
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
+            event_queue.enqueue_event(TaskStatusUpdateEvent(
                 status=TaskStatus(state=final_a2a_state, message=status_update_message),
                 final=True, contextId=current_context_id, taskId=current_task_id
             ))
@@ -143,7 +143,7 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
                 text=f"Erreur interne de UserInteractionAgent: {str(e)}",
                 context_id=current_context_id, task_id=current_task_id
             )
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
+            event_queue.enqueue_event(TaskStatusUpdateEvent(
                 status=TaskStatus(state=TaskState.failed, message=error_status_message),
                 final=True, contextId=current_context_id, taskId=current_task_id
             ))

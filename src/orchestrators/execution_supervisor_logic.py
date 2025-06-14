@@ -88,6 +88,7 @@ class ExecutionSupervisorLogic:
                 response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
                 response.raise_for_status()
                 data = response.json()
+                data = data[0] if isinstance(data, list) and len(data) > 0 else data
                 if data.get("url") and data.get("name"):
                     agent_details = {"url": data["url"], "name": data["name"]}
                     self.logger.info(f"[{self.execution_plan_id}] Détails pour '{skill}' obtenus du GRA: {agent_details}")

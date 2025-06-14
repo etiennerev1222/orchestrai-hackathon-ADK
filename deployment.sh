@@ -20,49 +20,47 @@ ALL_COMPONENTS=("gra_server" "${AGENTS[@]}")
 # FONCTION 1 : CONFIGURATION DES FICHIERS DE BUILD
 # ==============================================================================
 function configure() {
-    echo "--- ÉTAPE 1: CONFIGURATION DES FICHIERS DE BUILD ---"
+    echo "--- ÉTAPE 1: CONFIGURATION DES FICHIERS DE BUILD (Python 3.11) ---"
 
-    # 1. Générer et nettoyer le requirements.txt
-    echo "    -> Génération du fichier requirements.txt..."
-    pip freeze > requirements.txt
-    sed -i.bak 's|a2a-sdk @ file://.*|a2a-sdk|' requirements.txt
-    rm requirements.txt.bak 2>/dev/null || true
-    echo "    ✅ Fichier requirements.txt prêt."
+    local REQUIREMENTS_FILE="requirements_py311.txt" # Assurez-vous que ce fichier existe
+    if [ ! -f "$REQUIREMENTS_FILE" ]; then
+        echo "Erreur : Le fichier de dépendances '$REQUIREMENTS_FILE' n'existe pas."
+        exit 1
+    fi
+    echo "    ✅ Utilisation de '$REQUIREMENTS_FILE' comme base."
 
-    # 2. Préparer le dossier de build
-    echo "    -> Préparation du dossier de build: $BUILD_DIR"
-    rm -rf "$BUILD_DIR"
-    mkdir -p "$BUILD_DIR"
+    rm -rf "$BUILD_DIR" && mkdir -p "$BUILD_DIR"
     local DOCKER_COMPOSE_PATH="$BUILD_DIR/docker-compose.yml"
-    echo "    -> Génération du fichier docker-compose.yml..."
     echo "services:" > "$DOCKER_COMPOSE_PATH"
 
-    # 3. Générer les Dockerfiles et sections docker-compose
     echo "    -> Génération des Dockerfiles pour chaque service..."
     local port_counter=8101
     for COMPONENT in "${ALL_COMPONENTS[@]}"; do
         local COMPONENT_DIR="$BUILD_DIR/$COMPONENT"
         mkdir -p "$COMPONENT_DIR"
-        cp "$ROOT_DIR/requirements.txt" "$COMPONENT_DIR/requirements.txt"
+        cp "$ROOT_DIR/$REQUIREMENTS_FILE" "$COMPONENT_DIR/requirements.txt"
         
         if [ "$COMPONENT" == "gra_server" ]; then
             local PUBLIC_PORT=8000; local INTERNAL_PORT=8000
-            local DOCKER_CMD='["python", "-m", "uvicorn", "src.services.gra.server:app", "--host", "0.0.0.0", "--port", "8000"]'
+            local DOCKER_CMD='["python", "src/services/gra/server.py"]'
         else
             local PUBLIC_PORT=$port_counter; local INTERNAL_PORT=8080
-            local DOCKER_CMD='["python", "-m", "uvicorn", "src.agents.'"$COMPONENT"'.server:app", "--host", "0.0.0.0", "--port", "8080"]'
+            # --- MODIFICATION CLÉ ICI ---
+            # On lance comme un module pour que les imports relatifs fonctionnent
+            local DOCKER_CMD='["python", "-m", "src.agents.'"$COMPONENT"'.server"]'
             port_counter=$((port_counter + 1))
         fi
         
         cat <<EOF > "$COMPONENT_DIR/Dockerfile"
-FROM python:3.13-slim
+FROM python:3.11-slim
 WORKDIR /app
 COPY docker_build/${COMPONENT}/requirements.txt ./
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 COPY src /app/src
 ENV PYTHONPATH=/app
 CMD ${DOCKER_CMD}
 EOF
+        # La configuration docker-compose reste la même
         cat <<EOF >> "$DOCKER_COMPOSE_PATH"
   ${COMPONENT}:
     build:
@@ -73,7 +71,8 @@ EOF
       - "${PUBLIC_PORT}:${INTERNAL_PORT}"
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
-      - GEMINI_API_KEY=\${GEMINI_API_KEY}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCP_REGION=${GCP_REGION}
       - GRA_PUBLIC_URL=http://gra_server:8000
       - PUBLIC_URL=http://localhost:${PUBLIC_PORT}
       - INTERNAL_URL=http://${COMPONENT}:${INTERNAL_PORT}
@@ -85,10 +84,8 @@ EOF
         fi
     done
 
-    echo "✅ ÉTAPE 1 TERMINÉE : Configuration générée."
+    echo "✅ ÉTAPE 1 TERMINÉE : Configuration générée pour Python 3.11 et Vertex AI."
 }
-
-
 # ==============================================================================
 # FONCTION 2 : CONSTRUCTION DES IMAGES DOCKER
 # ==============================================================================
@@ -142,20 +139,16 @@ if [ -z "$1" ]; then
     echo "  build       Construit les images Docker."
     echo "  push        Pousse les images vers GCP."
     echo "  deploy      Déploie les services sur GCP Cloud Run."
+    echo "  deploy-one  Déploie un SEUL agent. ex: ./deployment.sh deploy-one user_interaction_agent"    
     echo "  all         Exécute configure, build, push, puis deploy."
     exit 1
 fi
-
 function deploy_gcp() {
     echo ""
-    echo "--- ÉTAPE 4: DÉPLOIEMENT SUR GCP CLOUD RUN ---"
+    echo "--- ÉTAPE 4: DÉPLOIEMENT SUR GCP CLOUD RUN (Mode Vertex AI) ---"
 
-    # S'assurer que la clé API Gemini est définie
-    if [ -z "$GEMINI_API_KEY" ]; then
-        echo "Erreur : La variable d'environnement GEMINI_API_KEY n'est pas définie."
-        echo "Veuillez l'exporter avant de lancer le déploiement, ex: export GEMINI_API_KEY='votre_cle'"
-        exit 1
-    fi
+    # Définition des variables d'environnement de base pour Vertex AI
+    local VERTEX_ENV_VARS="GCP_PROJECT_ID=${GCP_PROJECT_ID},GCP_REGION=${GCP_REGION}"
 
     # --- Déploiement du GRA en premier ---
     echo "    -> Déploiement du 'gra-server'..."
@@ -165,56 +158,55 @@ function deploy_gcp() {
       --region=${GCP_REGION} \
       --allow-unauthenticated \
       --port=8000 \
-      --set-env-vars="GEMINI_API_KEY=${GEMINI_API_KEY}" \
+      --set-env-vars="${VERTEX_ENV_VARS}" \
       --project=${GCP_PROJECT_ID}
     
-    # Récupérer l'URL du GRA une fois déployé
     local GRA_CLOUD_RUN_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
     if [ -z "$GRA_CLOUD_RUN_URL" ]; then
         echo "Erreur: Impossible de récupérer l'URL du service GRA déployé."
         exit 1
     fi
     echo "    ✅ 'gra-server' déployé avec l'URL : ${GRA_CLOUD_RUN_URL}"
+    
     gcloud run services update gra-server \
         --region=${GCP_REGION} \
-        --set-env-vars="GEMINI_API_KEY=${GEMINI_API_KEY},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+        --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
         --project=${GCP_PROJECT_ID}
-    echo "    -> Mise à jour de 'gra-server' avec ses URLs...Terminée."        
+    echo "    -> Mise à jour de 'gra-server' avec ses URLs...Terminée."
+            
     # --- Déploiement des agents ---
     echo "    -> Déploiement des 8 agents..."
     for AGENT_NAME in "${AGENTS[@]}"; do
-        local AGENT_SERVICE_NAME=${AGENT_NAME//_/-} # Remplace les underscores pour les noms de service Cloud Run
+        local AGENT_SERVICE_NAME=${AGENT_NAME//_/-}
         echo "        -> Déploiement de '${AGENT_SERVICE_NAME}'..."
 
-        # On déploie une première fois pour créer le service et l'URL
+        # MODIFICATION CLÉ ICI : La première commande ne passe que les variables déjà connues.
         gcloud run deploy ${AGENT_SERVICE_NAME} \
           --image="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_REPO_NAME}/${AGENT_NAME}:latest" \
           --platform=managed \
           --region=${GCP_REGION} \
           --allow-unauthenticated \
           --port=8080 \
-          --set-env-vars="GEMINI_API_KEY=${GEMINI_API_KEY},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
+          --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
           --project=${GCP_PROJECT_ID}
         
         # On récupère l'URL publique de l'agent qui vient d'être créé
         local AGENT_PUBLIC_URL=$(gcloud run services describe ${AGENT_SERVICE_NAME} --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
         if [ -z "$AGENT_PUBLIC_URL" ]; then
             echo "Erreur : Impossible de récupérer l'URL pour ${AGENT_SERVICE_NAME}."
-            continue # Passe au suivant en cas d'erreur
+            continue
         fi
 
         echo "        -> Mise à jour de '${AGENT_SERVICE_NAME}' avec ses URLs..."
-
-        # On met à jour le service pour lui injecter sa propre URL publique et interne
-        # Sur Cloud Run, les deux peuvent être identiques pour la communication interne authentifiée.
+        
+        # La commande 'update' ajoute les variables d'URL maintenant qu'elles existent.
         gcloud run services update ${AGENT_SERVICE_NAME} \
             --region=${GCP_REGION} \
-            --set-env-vars="GEMINI_API_KEY=${GEMINI_API_KEY},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
+            --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
             --project=${GCP_PROJECT_ID}
 
         echo "        ✅ '${AGENT_SERVICE_NAME}' déployé et configuré."
     done
-
     echo "✅ ÉTAPE 4 TERMINÉE : Tous les services ont été déployés sur Cloud Run."
     echo ""
     echo "----------------------------------------------------------------"
@@ -223,6 +215,67 @@ function deploy_gcp() {
     echo "----------------------------------------------------------------"
     echo "N'oubliez pas de mettre à jour votre front-end avec cette URL."
 }
+
+# ==============================================================================
+# FONCTION : DÉPLOIEMENT D'UN SEUL AGENT
+# ==============================================================================
+function deploy_single_agent() {
+    local AGENT_NAME_TO_DEPLOY=$1
+
+    if [ -z "$AGENT_NAME_TO_DEPLOY" ]; then
+        echo "Erreur : Vous devez spécifier le nom de l'agent à déployer."
+        echo "Usage: ./deployment.sh deploy-one <nom_de_l_agent>"
+        echo "Exemple: ./deployment.sh deploy-one user_interaction_agent"
+        exit 1
+    fi
+
+    # Vérification optionnelle mais recommandée que le nom de l'agent est valide
+    if ! [[ " ${AGENTS[@]} " =~ " ${AGENT_NAME_TO_DEPLOY} " ]]; then
+        echo "Erreur : Le nom d'agent '${AGENT_NAME_TO_DEPLOY}' n'est pas dans la liste des agents valides."
+        exit 1
+    fi
+
+    echo ""
+    echo "--- DÉPLOIEMENT DE L'AGENT UNIQUE : ${AGENT_NAME_TO_DEPLOY} ---"
+
+    # 1. Récupérer l'URL du GRA, car elle est nécessaire pour les agents
+    echo "    -> Récupération de l'URL du GRA..."
+    local GRA_CLOUD_RUN_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
+    if [ -z "$GRA_CLOUD_RUN_URL" ]; then
+        echo "Erreur: Impossible de récupérer l'URL du service GRA. Assurez-vous qu'il est bien déployé."
+        exit 1
+    fi
+    echo "    -> URL du GRA : ${GRA_CLOUD_RUN_URL}"
+
+    # 2. Logique de déploiement copiée de la fonction deploy_gcp
+    local AGENT_SERVICE_NAME=${AGENT_NAME_TO_DEPLOY//_/-}
+    local VERTEX_ENV_VARS="GCP_PROJECT_ID=${GCP_PROJECT_ID},GCP_REGION=${GCP_REGION}"
+    
+    echo "    -> Lancement du déploiement de '${AGENT_SERVICE_NAME}'..."
+    gcloud run deploy ${AGENT_SERVICE_NAME} \
+      --image="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_REPO_NAME}/${AGENT_NAME_TO_DEPLOY}:latest" \
+      --platform=managed \
+      --region=${GCP_REGION} \
+      --allow-unauthenticated \
+      --port=8080 \
+      --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+      --project=${GCP_PROJECT_ID}
+    
+    local AGENT_PUBLIC_URL=$(gcloud run services describe ${AGENT_SERVICE_NAME} --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
+    if [ -z "$AGENT_PUBLIC_URL" ]; then
+        echo "Erreur : Impossible de récupérer l'URL pour ${AGENT_SERVICE_NAME}."
+        exit 1
+    fi
+
+    echo "    -> Mise à jour de '${AGENT_SERVICE_NAME}' avec ses URLs publiques..."
+    gcloud run services update ${AGENT_SERVICE_NAME} \
+        --region=${GCP_REGION} \
+        --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
+        --project=${GCP_PROJECT_ID}
+
+    echo "    ✅ Agent '${AGENT_SERVICE_NAME}' déployé et configuré avec l'URL : ${AGENT_PUBLIC_URL}"
+}
+
 function deploy_frontend() {
     echo "--- ÉTAPE 5: DÉPLOIEMENT DU FRONT-END ---"
     echo "    -> Récupération de l'URL du GRA sur Cloud Run..."
@@ -241,6 +294,10 @@ case "$1" in
     build) build_images ;;
     push) push_images ;;
     deploy) deploy_gcp ;;
+    deploy-one)
+        # On passe le deuxième argument ($2) à notre nouvelle fonction
+        deploy_single_agent "$2"
+        ;;
     deploy_frontend) deploy_frontend ;;
     all)
         configure

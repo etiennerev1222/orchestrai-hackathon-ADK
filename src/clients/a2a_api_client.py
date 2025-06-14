@@ -49,31 +49,8 @@ import logging
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
+    
 
-async def call_agent(
-    agent_url: str,
-    payload: Dict[str, Any],
-    timeout: float = 60.0
-) -> Optional[Dict[str, Any]]:
-    """
-    Appelle n'importe quel agent via un POST HTTP standard avec un payload JSON simple.
-    Cette fonction remplace la librairie A2A défectueuse.
-    """
-    logger.info(f"Appel HTTP POST direct vers {agent_url} avec le payload : {payload}")
-    try:
-        # On force http/1.1 pour une meilleure compatibilité (important pour le cloud)
-        async with httpx.AsyncClient(http2=False, timeout=timeout) as client:
-            response = await client.post(agent_url, json=payload)
-            response.raise_for_status() # Lève une erreur pour les statuts 4xx/5xx
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Erreur HTTP {e.response.status_code} en appelant {agent_url}. Réponse: {e.response.text}")
-        return None
-    except httpx.RequestError as e:
-        logger.error(f"Erreur de connexion/réseau en appelant {agent_url}: {e}")
-        return None
-    
-    
 async def call_a2a_agent(
     agent_url: str,
     input_text: str,

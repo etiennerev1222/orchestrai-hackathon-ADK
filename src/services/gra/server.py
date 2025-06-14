@@ -228,7 +228,14 @@ async def get_agents(skill: Optional[str] = None):
             query = agents_ref
 
         docs_snapshots = await asyncio.to_thread(list, query.stream())
-
+                # --- MODIFICATION ICI ---
+        if not docs_snapshots:
+            logger.warning(f"Aucun agent trouvé pour la compétence '{skill}'. Retour de 404.")
+            # Au lieu de retourner une réponse vide avec un statut 200,
+            # on lève une exception HTTP 404, ce qui est plus correct.
+            raise HTTPException(status_code=404, detail=f"Aucun agent trouvé avec la compétence: {skill}")
+        # --- FIN DE LA MODIFICATION ---
+   
         agents = []
         for doc in docs_snapshots:
             if doc.id != GRA_CONFIG_DOCUMENT_ID:
@@ -239,10 +246,17 @@ async def get_agents(skill: Optional[str] = None):
         logger.info(f"{len(agents)} agents trouvés pour la requête.")
         # La ligne cruciale : on retourne bien la LISTE `agents`.
         return agents
-
+ # --- MODIFICATION ICI ---
+    except HTTPException as http_exc:
+        # Si c'est une HTTPException que nous avons levée (comme le 404),
+        # on la relève directement pour que FastAPI la traite correctement.
+        raise http_exc
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des agents: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve agents")
+        # Pour toutes les autres erreurs imprévues (connexion à Firestore, etc.),
+        # on retourne une erreur 500.
+        logger.error(f"Erreur interne lors de la recherche d'agent pour la compétence '{skill}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur lors de la recherche d'agent.")
+    # --- FIN DE LA MODIFICATION ---
     
 
 
@@ -787,5 +801,28 @@ async def get_execution_task_graph_details_endpoint(execution_plan_id: str):
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
 if __name__ == "__main__":
-    logger.info("Démarrage du serveur du Gestionnaire de Ressources et d'Agents (GRA)...")
-    uvicorn.run(app, host="localhost", port=8000)
+    # --- MODIFICATION POUR LA COMPATIBILITÉ CLOUD RUN ---
+    
+    # Cloud Run (et d'autres fournisseurs de cloud) injecte une variable d'environnement PORT.
+    # Votre serveur DOIT écouter sur le port spécifié par cette variable.
+    # De plus, il doit écouter sur l'hôte '0.0.0.0' pour être accessible depuis l'extérieur du conteneur.
+    
+    is_production = 'K_SERVICE' in os.environ # 'K_SERVICE' est une variable d'environnement standard dans Cloud Run
+    
+    if is_production:
+        # En production (Cloud Run), lire le port depuis la variable d'environnement
+        port = int(os.environ.get("PORT", 8000)) # 8080 est un fallback courant si PORT n'est pas défini
+        host = "0.0.0.0"
+        log_level = "info"
+        reload_flag = False
+        logger.info(f"Démarrage du serveur GRA en mode PRODUCTION sur {host}:{port}...")
+    else:
+        # En développement local, garder votre configuration actuelle
+        port = 8000
+        host = "localhost"
+        log_level = "info"
+        reload_flag = True # Le rechargement est utile en développement
+        logger.info(f"Démarrage du serveur GRA en mode DÉVELOPPEMENT sur {host}:{port}...")
+
+    uvicorn.run("src.services.gra.server:app", host=host, port=port, log_level=log_level, reload=reload_flag)
+    # --- FIN DE LA MODIFICATION ---
