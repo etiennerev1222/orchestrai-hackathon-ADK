@@ -78,7 +78,6 @@ class ExecutionSupervisorLogic:
                 self.logger.error(msg)
                 raise ConnectionError(msg)
         return self._gra_base_url
-
     async def _get_agent_details_from_gra(self, skill: str) -> Optional[Dict[str, str]]:
         gra_url = await self._ensure_gra_url()
         agent_details = None
@@ -88,18 +87,33 @@ class ExecutionSupervisorLogic:
                 response = await client.get(f"{gra_url}/agents", params={"skill": skill}, timeout=10.0)
                 response.raise_for_status()
                 data = response.json()
-                data = data[0] if isinstance(data, list) and len(data) > 0 else data
-                if data.get("url") and data.get("name"):
-                    agent_details = {"url": data["url"], "name": data["name"]}
+                
+                # La réponse est une liste, on prend le premier élément s'il existe
+                agent_data = data[0] if isinstance(data, list) and len(data) > 0 else None
+                
+                if not agent_data:
+                    self.logger.warning(f"[{self.execution_plan_id}] Aucun agent retourné par le GRA pour la compétence '{skill}'.")
+                    return None
+
+                # --- CORRECTION PRINCIPALE ICI ---
+                # On vérifie la présence de 'internal_url' et 'name'.
+                # 'internal_url' est préférable pour la communication de service à service dans Cloud Run.
+                if agent_data.get("internal_url") and agent_data.get("name"):
+                    # On stocke l'internal_url dans la clé 'url' du dictionnaire retourné,
+                    # car c'est ce que le reste du code attend probablement pour contacter l'agent.
+                    agent_details = {"url": agent_data["internal_url"], "name": agent_data["name"]}
                     self.logger.info(f"[{self.execution_plan_id}] Détails pour '{skill}' obtenus du GRA: {agent_details}")
                 else:
-                    self.logger.error(f"[{self.execution_plan_id}] Données incomplètes du GRA pour '{skill}'. Réponse: {data}")
+                    # Le message d'erreur est maintenant plus précis.
+                    self.logger.error(f"[{self.execution_plan_id}] Données incomplètes du GRA pour '{skill}'. La réponse ne contient pas 'internal_url' ou 'name'. Réponse reçue: {agent_data}")
+        
         except httpx.HTTPStatusError as e:
             self.logger.error(f"[{self.execution_plan_id}] Erreur HTTP ({e.response.status_code}) en contactant le GRA pour '{skill}' à {e.request.url}: {e.response.text}")
         except httpx.RequestError as e:
             self.logger.error(f"[{self.execution_plan_id}] Erreur de requête en contactant le GRA pour '{skill}': {e}")
         except Exception as e:
             self.logger.error(f"[{self.execution_plan_id}] Erreur inattendue en contactant le GRA pour '{skill}': {e}", exc_info=True)
+            
         return agent_details
 
     async def _store_a2a_artifact_in_gra(self, 

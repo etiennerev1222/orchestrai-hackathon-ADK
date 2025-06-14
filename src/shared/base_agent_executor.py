@@ -86,7 +86,7 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
 
         if user_input is None: # Vérification plus robuste de l'absence d'entrée
             logger.warning(f"Aucune entrée utilisateur valide extraite du message pour la tâche {current_task_id}.")
-            event_queue.enqueue_event(TaskStatusUpdateEvent(
+            await event_queue.enqueue_event(TaskStatusUpdateEvent(
                 status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
                     text="Aucune entrée utilisateur valide fournie ou format de partie incorrect.",
                     context_id=current_context_id, task_id=current_task_id)), # Utiliser les variables définies
@@ -94,7 +94,7 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
             return
 
         logger.info(f"Entrée à traiter pour la tâche {current_task_id}: '{user_input}'")
-        event_queue.enqueue_event(TaskStatusUpdateEvent(
+        await event_queue.enqueue_event(TaskStatusUpdateEvent(
             status=TaskStatus(state=TaskState.working), final=False,
             contextId=current_context_id, taskId=current_task_id))
 
@@ -104,18 +104,18 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
             # Utiliser la méthode abstraite pour créer l'artefact
             result_artifact = self._create_artifact_from_result(result_data, task)
 
-            event_queue.enqueue_event(TaskArtifactUpdateEvent(
+            await event_queue.enqueue_event(TaskArtifactUpdateEvent(
                 append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
                 artifact=result_artifact
             ))
-            event_queue.enqueue_event(TaskStatusUpdateEvent(
+            await event_queue.enqueue_event(TaskStatusUpdateEvent(
                 status=TaskStatus(state=TaskState.completed), final=True,
                 contextId=current_context_id, taskId=current_task_id))
             logger.info(f"Tâche {current_task_id} complétée. Résultat de type: {type(result_data)}")
 
         except Exception as e:
             logger.error(f"Erreur pendant le traitement de la tâche {current_task_id}: {e}", exc_info=True)
-            event_queue.enqueue_event(TaskStatusUpdateEvent(
+            await event_queue.enqueue_event(TaskStatusUpdateEvent(
                 status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
                     text=f"Erreur interne de l'agent: {str(e)}",
                     context_id=current_context_id, task_id=current_task_id)),
