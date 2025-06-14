@@ -137,8 +137,15 @@ function Graph({
   );
 }
 
-function AgentStatusBar({ agents, graHealth }) {
+function AgentStatusBar({ agents, graHealth, stats }) {
   if (!agents?.length && !graHealth) return null;
+  const statsMap = React.useMemo(() => {
+    const map = {};
+    (stats || []).forEach(s => {
+      map[s.agent_name] = s;
+    });
+    return map;
+  }, [stats]);
   const graCard = (
     <div
       key="gra"
@@ -170,6 +177,12 @@ function AgentStatusBar({ agents, graHealth }) {
             </div>
           </div>
           <div className="agent-timestamp">{new Date(a.timestamp).toLocaleString()}</div>
+          {statsMap[a.name] && (
+            <div className="agent-metrics">
+              <span className="metric-success">{statsMap[a.name].tasks_completed || 0}</span>
+              <span className="metric-fail">{statsMap[a.name].tasks_failed || 0}</span>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -290,6 +303,7 @@ function App() {
   const [team2NodesMap, setTeam2NodesMap] = React.useState({});
   const [popup, setPopup] = React.useState(null);
   const [agentsStatus, setAgentsStatus] = React.useState([]);
+  const [agentsStats, setAgentsStats] = React.useState([]);
   const [newObjective, setNewObjective] = React.useState('');
   const [autoRefresh, setAutoRefresh] = React.useState(false);
   const [team1Counts, setTeam1Counts] = React.useState(null);
@@ -337,6 +351,13 @@ function App() {
       .then(res => res.json())
       .then(list => setAgentsStatus(list))
       .catch(err => console.error('Erreur chargement statut agents', err));
+  }, []);
+
+  React.useEffect(() => {
+    fetch(`${BACKEND_API_URL}/v1/stats/agents`)
+      .then(res => res.json())
+      .then(data => setAgentsStats(data.stats || []))
+      .catch(err => console.error('Erreur chargement statistiques agents', err));
   }, []);
 
   React.useEffect(() => {
@@ -610,7 +631,7 @@ function App() {
         </select>
       </div>
       <div className="content">
-        <AgentStatusBar agents={agentsStatus} graHealth={graHealth} />
+        <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentsStats} />
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)} disabled={!selectedPlanId}>
             Rafraîchir le plan

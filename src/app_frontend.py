@@ -150,6 +150,18 @@ async def get_all_agent_task_stats_from_api():
             st.error(f"Erreur récupération statistiques agents: {e}")
             return None
 
+async def get_agent_stats_from_api():
+    """Récupère les statistiques de traitement des tâches pour chaque agent."""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f"{BACKEND_API_URL}/v1/stats/agents", timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("stats", [])
+        except Exception as e:
+            st.error(f"Erreur récupération statistiques individuelles agents: {e}")
+            return []
+
 async def accept_and_start_planning_api(global_plan_id: str, user_final_objective: Optional[str] = None):
     async with httpx.AsyncClient() as client:
         try:
@@ -180,6 +192,7 @@ def initialize_session_state():
     keys_to_init = {
         'active_global_plan_id': None, 'active_global_plan_details': None, 
         'global_plans_summary_list': [], 'agents_status': [],
+        'agents_stats': [],
         'current_task_graph_details': None, 'current_task_graph_id_loaded': None,
         'current_execution_graph_details': None, 'current_execution_graph_id_loaded': None,
         'selected_artifact_content': None, 'selected_artifact_task_id': None,
@@ -237,12 +250,14 @@ def render_artifact_content(content: Any, display_key: str):
                 st.text_area("Contenu :", value=str(content), height=600, disabled=True, key=f"{display_key}_textarea")
     else:
         st.info("Aucun contenu d'artefact à afficher.")
-def display_agent_status_bar(agents_status: List[Dict[str, Any]]):
-    """Affiche les agents dans des containers avec nom, statut et date."""
+def display_agent_status_bar(agents_status: List[Dict[str, Any]], agent_stats: Optional[List[Dict[str, Any]]] = None):
+    """Affiche les agents dans des containers avec nom, statut, date et stats."""
     st.subheader("📡 Statut des Agents")
     if not agents_status:
         st.info("Aucun agent n'a été découvert. Vérifiez que le GRA et les serveurs d'agents sont lancés.")
         return
+
+    stats_map = {s.get("agent_name"): s for s in (agent_stats or [])}
 
     cols = st.columns(len(agents_status))
     for i, agent in enumerate(agents_status):
@@ -264,6 +279,11 @@ def display_agent_status_bar(agents_status: List[Dict[str, Any]]):
                 if card:
                     with st.expander("Agent Card"):
                         st.json(card)
+                agent_stat = stats_map.get(agent.get("name"))
+                if agent_stat:
+                    cols_metrics = st.columns(2)
+                    cols_metrics[0].metric("Succès", agent_stat.get("tasks_completed", 0))
+                    cols_metrics[1].metric("Échecs", agent_stat.get("tasks_failed", 0))
 
 def compute_state_counts(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
     """Calcule le nombre de tâches par état."""
@@ -284,7 +304,8 @@ st.title("🤖 OrchestrAI - Tableau de Bord")
 
 # --- Barre de Statut des Agents (Pleine Largeur) ---
 agents_status_list = asyncio.run(get_agents_status_with_health_from_api())
-display_agent_status_bar(agents_status_list)
+agents_stats_list = asyncio.run(get_agent_stats_from_api())
+display_agent_status_bar(agents_status_list, agents_stats_list)
 st.markdown("---")
 
 # --- Colonnes pour le contenu principal ---
@@ -333,7 +354,8 @@ with main_col:
     if st.session_state.agents_status:
         # On récupère le statut des agents et on l'affiche avec la nouvelle fonction
         agents_status_list = asyncio.run(get_agents_status_with_health_from_api())
-        display_agent_status_bar(agents_status_list)
+        agents_stats_list = asyncio.run(get_agent_stats_from_api())
+        display_agent_status_bar(agents_status_list, agents_stats_list)
         st.markdown("---") # Ajoute une ligne de séparation visuelle
     st.header("🔍 Plan Actif & Graphes")
     if st.session_state.active_global_plan_id:
