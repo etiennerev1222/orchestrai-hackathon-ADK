@@ -144,6 +144,12 @@ input {
   font-size: 0.8rem;
 }
 
+.agent-stats {
+  display: flex;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+}
+
 .status-online {
   background: var(--success-bg);
   color: var(--success-text);

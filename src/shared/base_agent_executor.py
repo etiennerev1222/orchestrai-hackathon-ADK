@@ -5,12 +5,15 @@ from abc import ABC, abstractmethod # Pour s'assurer que _create_artifact_from_r
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
+import asyncio
 from a2a.types import (
     TaskArtifactUpdateEvent, TaskState, TaskStatus,
     TaskStatusUpdateEvent, TextPart, Part, Message, Artifact, # Ajout de Message et Artifact
     Task # Nécessaire pour l'annotation de type de _create_artifact_from_result
 )
 from a2a.utils import new_task, new_agent_text_message # new_text_artifact sera utilisé dans la classe fille ou une méthode abstraite
+from firebase_admin import firestore
+from src.shared.firebase_init import get_firestore_client
 
 # Importation de notre BaseAgentLogic (ajustez le chemin si nécessaire, ici on suppose une structure plate dans shared)
 from .base_agent_logic import BaseAgentLogic
@@ -22,15 +25,35 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
     Classe de base pour les AgentExecutors.
     Gère le flux commun de traitement des tâches A2A.
     """
-    def __init__(self, 
-                 agent_logic: BaseAgentLogic, 
-                 default_artifact_name: str = "result", 
-                 default_artifact_description: str = "Result from agent processing."):
+    def __init__(self,
+                 agent_logic: BaseAgentLogic,
+                 default_artifact_name: str = "result",
+                 default_artifact_description: str = "Result from agent processing.",
+                 agent_name: str | None = None):
         super().__init__()
         self.agent_logic = agent_logic
         self.default_artifact_name = default_artifact_name
         self.default_artifact_description = default_artifact_description
-        logger.info(f"Executor de type '{self.__class__.__name__}' initialisé avec la logique '{type(agent_logic).__name__}'.")
+        self.agent_name = agent_name or self.__class__.__name__
+        self._db = get_firestore_client()
+        logger.info(
+            f"Executor de type '{self.__class__.__name__}' initialisé avec la logique '{type(agent_logic).__name__}' pour l'agent '{self.agent_name}'."
+        )
+
+    async def _record_agent_stats(self, success: bool) -> None:
+        """Incrémente les statistiques d'utilisation dans Firestore."""
+        if not self._db:
+            return
+        try:
+            doc = self._db.collection("agent_stats").document(self.agent_name)
+            updates = {"processed": firestore.Increment(1)}
+            if success:
+                updates["completed"] = firestore.Increment(1)
+            else:
+                updates["failed"] = firestore.Increment(1)
+            await asyncio.to_thread(doc.set, updates, merge=True)
+        except Exception as e:
+            logger.warning(f"Impossible d'enregistrer les statistiques pour {self.agent_name}: {e}")
 
     def _extract_input_from_message(self, message: Message) -> str | None:
         """
@@ -112,6 +135,7 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
                 status=TaskStatus(state=TaskState.completed), final=True,
                 contextId=current_context_id, taskId=current_task_id))
             logger.info(f"Tâche {current_task_id} complétée. Résultat de type: {type(result_data)}")
+            await self._record_agent_stats(True)
 
         except Exception as e:
             logger.error(f"Erreur pendant le traitement de la tâche {current_task_id}: {e}", exc_info=True)
@@ -120,6 +144,7 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
                     text=f"Erreur interne de l'agent: {str(e)}",
                     context_id=current_context_id, task_id=current_task_id)),
                 final=True, contextId=current_context_id, taskId=current_task_id))
+            await self._record_agent_stats(False)
 
     @override
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

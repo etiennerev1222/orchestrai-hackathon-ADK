@@ -4,6 +4,7 @@ import json
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import ResearchAgentLogic
+from .server import AGENT_NAME
 
 from a2a.types import Artifact, Task
 from a2a.utils import new_text_artifact
@@ -16,7 +17,8 @@ class ResearchAgentExecutor(BaseAgentExecutor):
         super().__init__(
             agent_logic=specific_agent_logic,
             default_artifact_name="research_analysis_output",
-            default_artifact_description="Résultat de la recherche ou de l'analyse effectuée."
+            default_artifact_description="Résultat de la recherche ou de l'analyse effectuée.",
+            agent_name=AGENT_NAME,
         )
         self.logger = logging.getLogger(f"{__name__}.ResearchAgentExecutor") # Logger d'instance
         self.logger.info("ResearchAgentExecutor initialisé.")

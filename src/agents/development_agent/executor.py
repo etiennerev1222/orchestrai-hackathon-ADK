@@ -4,6 +4,7 @@ import json # Bien que le résultat soit du code, l'input peut être JSON
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import DevelopmentAgentLogic
+from .server import AGENT_NAME
 
 from a2a.types import Artifact, Task
 from a2a.utils import new_text_artifact # Le code sera stocké comme un TextArtifact
@@ -16,7 +17,8 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
         super().__init__(
             agent_logic=specific_agent_logic,
             default_artifact_name="generated_code",
-            default_artifact_description="Code source généré par l'agent de développement."
+            default_artifact_description="Code source généré par l'agent de développement.",
+            agent_name=AGENT_NAME,
         )
         self.logger = logging.getLogger(f"{__name__}.DevelopmentAgentExecutor")
         self.logger.info("DevelopmentAgentExecutor initialisé.")

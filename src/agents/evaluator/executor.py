@@ -4,6 +4,7 @@ import json # Pour formater la sortie du dictionnaire en JSON pour l&#39;artefac
 
 from src.shared.base_agent_executor import BaseAgentExecutor # Ajustez si nécessaire
 from .logic import EvaluatorAgentLogic # Importe la logique spécifique de ce dossier
+from .server import AGENT_NAME
 
 from a2a.types import Artifact, Task
 from a2a.utils import new_text_artifact # Pour créer l'artefact
@@ -17,10 +18,11 @@ class EvaluatorAgentExecutor(BaseAgentExecutor):
     """
     def __init__(self): # CORRECTION: init -> init
         specific_agent_logic = EvaluatorAgentLogic()
-        super().__init__( # CORRECTION: init -> init
+        super().__init__(
         agent_logic=specific_agent_logic,
         default_artifact_name="evaluation_result",
-        default_artifact_description="Le résultat de l'évaluation du plan."
+        default_artifact_description="Le résultat de l'évaluation du plan.",
+        agent_name=AGENT_NAME,
         )
         # Le logger.info est déjà dans la classe de base init
         # logger.info("EvaluatorAgentExecutor (spécifique) initialisé.")

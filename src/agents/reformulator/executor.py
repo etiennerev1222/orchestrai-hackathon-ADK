@@ -17,6 +17,7 @@ from a2a.types import (
 # Ajustez les chemins d'importation si votre structure est différente
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import ReformulatorAgentLogic # Importe la logique spécifique de ce dossier
+from .server import AGENT_NAME
 
 from a2a.types import Artifact, Task # Nécessaire pour l'annotation de type de _create_artifact_from_result
 from a2a.utils import new_text_artifact # Utile pour créer l'artefact
@@ -38,7 +39,8 @@ class ReformulatorAgentExecutor(BaseAgentExecutor):
         super().__init__(
             agent_logic=specific_agent_logic,
             default_artifact_name="reformulated_objective",
-            default_artifact_description="L'objectif après reformulation par l'agent."
+            default_artifact_description="L'objectif après reformulation par l'agent.",
+            agent_name=AGENT_NAME,
         )
         # Le logger.info est déjà dans la classe de base __init__
         # logger.info("ReformulatorAgentExecutor (spécifique) initialisé.")

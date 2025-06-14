@@ -5,6 +5,7 @@ import json
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import DecompositionAgentLogic
+from .server import AGENT_NAME
 from typing import Dict, Any
 from a2a.types import Artifact, Task
 from a2a.utils import new_text_artifact
@@ -17,7 +18,8 @@ class DecompositionAgentExecutor(BaseAgentExecutor):
         super().__init__(
             agent_logic=specific_agent_logic,
             default_artifact_name="decomposed_execution_plan_structure", # Nom d'artefact mis à jour
-            default_artifact_description="Structure JSON complète du plan d'exécution, incluant contexte global, instructions et tâches décomposées."
+            default_artifact_description="Structure JSON complète du plan d'exécution, incluant contexte global, instructions et tâches décomposées.",
+            agent_name=AGENT_NAME,
         )
         logger.info("DecompositionAgentExecutor initialisé.")
     

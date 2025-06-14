@@ -4,6 +4,7 @@ import json
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import ValidatorAgentLogic
+from .server import AGENT_NAME
 
 from a2a.types import Artifact, Task, Message, TextPart  # Ajout de Message, TextPart
 from a2a.utils import new_text_artifact
@@ -21,7 +22,8 @@ class ValidatorAgentExecutor(BaseAgentExecutor):
         super().__init__(
             agent_logic=specific_agent_logic,
             default_artifact_name="validation_output",
-            default_artifact_description="Le résultat de la validation du plan."
+            default_artifact_description="Le résultat de la validation du plan.",
+            agent_name=AGENT_NAME,
         )
         logger.info("ValidatorAgentExecutor (spécifique) initialisé.")
 
