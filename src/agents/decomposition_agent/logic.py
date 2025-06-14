@@ -79,7 +79,7 @@ class DecompositionAgentLogic(BaseAgentLogic):
             f"'''{team1_plan_text}'''\n\n"
             f"Les compétences d'agent que tu DOIS utiliser pour 'assigned_agent_type' sont : [{skills_string}].\n"
             "Pour les tâches d'exécution de tests (généralement assignées à 'software_testing'), si elles nécessitent à la fois du code et des cas de test, assure-toi que leurs 'dependances' incluent les IDs locaux des tâches qui produisent le code et celles qui produisent les cas de test. "
-            "De plus, pour de telles tâches, utilise 'input_data_refs' pour spécifier comment les artefacts des dépendances doivent être nommés en entrée. Par exemple : `\"input_data_refs\": {\"code_input\": \"ID_TACHE_DEV\", \"test_specifications\": \"ID_TACHE_GEN_CAS_TEST\"}`. Adapte les noms des clés dans `input_data_refs` pour qu'ils soient descriptifs.\n"
+            "De plus, pour de telles tâches, utilise 'input_data_refs' pour spécifier comment les artefacts des dépendances doivent être nommés en entrée. L'entrée contenant le code à tester DOIT s'appeler 'code_to_test'. Par exemple : `\"input_data_refs\": {\"code_to_test\": \"ID_TACHE_DEV\", \"test_specifications\": \"ID_TACHE_GEN_CAS_TEST\"}`. Adapte les autres noms de clés si besoin.\n"
             "Génère l'objet JSON structuré comme décrit. Sois rigoureux sur le format JSON et les types de données.\n"
             "L'objet JSON global doit avoir les clés 'global_context', 'instructions', et 'tasks'."
         )

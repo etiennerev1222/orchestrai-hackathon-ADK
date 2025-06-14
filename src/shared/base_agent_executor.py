@@ -14,7 +14,10 @@ from a2a.utils import new_task, new_agent_text_message # new_text_artifact sera 
 
 # Importation de notre BaseAgentLogic (ajustez le chemin si nécessaire, ici on suppose une structure plate dans shared)
 from .base_agent_logic import BaseAgentLogic
+# Ajoutez cet import en haut du fichier
 
+from src.shared.firebase_init import db
+from google.cloud import firestore
 logger = logging.getLogger(__name__)
 
 class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation de _create_artifact_from_result
@@ -59,6 +62,41 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
         Exemple : utiliser new_text_artifact() si le résultat est du texte.
         """
         pass
+
+# Dans la classe BaseAgentExecutor
+
+    def _update_stats(self, success: bool):
+        """Met à jour les compteurs de statistiques dans Firestore."""
+        try:
+            # On suppose que l'agent_logic a un nom, sinon on utilise le nom de la classe
+            agent_name = getattr(self.agent_logic, 'AGENT_NAME', self.__class__.__name__)
+            
+            # On s'assure que db est bien initialisé
+            if not db:
+                logger.error("Client Firestore (db) non initialisé, impossible de mettre à jour les stats.")
+                return
+
+            stats_ref = db.collection("agent_stats").document(agent_name)
+            
+            field_to_update = {}
+            if success:
+                # --- CORRECTION ICI ---
+                # On utilise la nouvelle syntaxe firestore.Increment()
+                field_to_update["tasks_completed"] = firestore.Increment(1)
+                log_message = f"Statistiques mises à jour pour {agent_name}: +1 tâche complétée."
+            else:
+                # --- CORRECTION ICI ---
+                field_to_update["tasks_failed"] = firestore.Increment(1)
+                log_message = f"Statistiques mises à jour pour {agent_name}: +1 tâche échouée."
+
+            # L'appel .set(..., merge=True) est plus sûr car il crée le document s'il n'existe pas
+            stats_ref.set(field_to_update, merge=True)
+            logger.info(log_message)
+
+        except Exception as e:
+            # On ne veut pas que la logique de stats fasse planter l'agent
+            agent_name_for_log = getattr(self.agent_logic, 'AGENT_NAME', self.__class__.__name__)
+            logger.error(f"Impossible de mettre à jour les statistiques pour {agent_name_for_log}: {e}")
 
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
@@ -112,7 +150,8 @@ class BaseAgentExecutor(AgentExecutor, ABC): # ABC pour forcer l'implémentation
                 status=TaskStatus(state=TaskState.completed), final=True,
                 contextId=current_context_id, taskId=current_task_id))
             logger.info(f"Tâche {current_task_id} complétée. Résultat de type: {type(result_data)}")
-
+             # --- AJOUT DE LA LOGIQUE DE STATISTIQUES ---
+            self._update_stats(success=True)
         except Exception as e:
             logger.error(f"Erreur pendant le traitement de la tâche {current_task_id}: {e}", exc_info=True)
             await event_queue.enqueue_event(TaskStatusUpdateEvent(

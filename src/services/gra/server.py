@@ -800,6 +800,27 @@ async def get_execution_task_graph_details_endpoint(execution_plan_id: str):
         logger.error(f"[GRA] Erreur lors de la récupération des détails du plan d'exécution '{execution_plan_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
+@app.get("/v1/stats/agents")
+async def get_agent_stats():
+    """Récupère les statistiques de traitement des tâches pour chaque agent."""
+    try:
+        stats_ref = db.collection("agent_stats")
+        docs_snapshots = await asyncio.to_thread(list, stats_ref.stream())
+        
+        all_stats = []
+        for doc in docs_snapshots:
+            stats_data = doc.to_dict()
+            stats_data["agent_name"] = doc.id
+            all_stats.append(stats_data)
+            
+        logger.info(f"Statistiques récupérées pour {len(all_stats)} agents.")
+        return {"stats": all_stats}
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des statistiques des agents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
+
 if __name__ == "__main__":
     # --- MODIFICATION POUR LA COMPATIBILITÉ CLOUD RUN ---
     
