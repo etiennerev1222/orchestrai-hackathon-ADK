@@ -265,3 +265,11 @@ input {
   font-size: 0.8rem;
   color: #a1a1aa;
 }
+
+.json-viewer summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+.json-viewer {
+  margin-left: 0.5rem;
+}
