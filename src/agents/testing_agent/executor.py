@@ -4,7 +4,8 @@ import json
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import TestingAgentLogic
 from a2a.types import (
-    TaskState, TaskStatus, TaskStatusUpdateEvent, TaskArtifactUpdateEvent, Message, Task
+    Artifact, Task, Message, TaskState, TaskStatus,
+    TaskStatusUpdateEvent, TaskArtifactUpdateEvent
 )
 from a2a.utils import new_text_artifact, new_agent_text_message, new_task
 from a2a.server.agent_execution import RequestContext

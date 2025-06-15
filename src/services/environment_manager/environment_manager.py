@@ -465,7 +465,82 @@ class EnvironmentManager:
             logger.error(f"Unexpected error reading file '{file_path}' from '{pod_name}': {e}", exc_info=True)
             raise
 
-    
+    async def list_files_in_environment(self, environment_id: str, path: str = '.') -> List[Dict[str, Any]]:
+        """
+        Liste les fichiers et répertoires dans un chemin donné à l'intérieur d'un pod.
+        Retourne une liste d'objets avec des détails sur chaque entrée.
+        """
+        if environment_id not in self.environments:
+            await self._load_existing_environment_details(environment_id)
+            if environment_id not in self.environments:
+                raise ValueError(f"Environment '{environment_id}' not found for listing files.")
+
+        pod_name = self.environments[environment_id]['pod_name']
+        container_name = "developer-sandbox"
+
+        # Utilise 'find' pour obtenir des détails structurés et gère les noms de fichiers complexes.
+        # -maxdepth 1 pour ne pas lister récursivement.
+        # -printf '{"name":"%f", "type":"%y", "size":%s, "mtime":%T@}\n'
+        # %f: Nom du fichier, %y: Type (d=dir, f=file), %s: Taille, %T@: Mtime en timestamp Unix
+        # On échappe les guillemets pour le shell.
+        command = [
+            "/bin/sh",
+            "-c",
+            # On se place dans le bon répertoire et on exécute find
+            # On pipe vers 'jq' pour s'assurer que c'est bien un JSON valide et pour l'encapsuler dans un tableau
+            f"cd /workspace/{path.lstrip('/')} && find . -maxdepth 1 -mindepth 1 -printf '{{\"name\":\"%f\", \"type\":\"%y\", \"size\":%s, \"mtime\":%T@}}\\n' | jq -s ."
+        ]
+
+        try:
+            # Réutilise la logique de `execute_command_in_pod`
+            stdout, stderr, exit_code = await self.execute_command_in_pod(
+                environment_id,
+                command,
+                container_name=container_name
+            )
+
+            if exit_code != 0:
+                logger.error(f"Error listing files in '{pod_name}' at path '{path}'. Exit code: {exit_code}, Stderr: {stderr}")
+                if "No such file or directory" in stderr:
+                    raise FileNotFoundError(f"Path '{path}' not found in environment '{environment_id}'.")
+                raise RuntimeError(f"Failed to list files: {stderr}")
+
+            if not stdout:
+                return []
+            
+            # La sortie de jq est un unique objet JSON (un tableau de fichiers)
+            file_list_raw = json.loads(stdout)
+
+            # Convertit le type de 'y' (d, f, l) en un type plus lisible.
+            type_map = {
+                'd': 'directory',
+                'f': 'file',
+                'l': 'link'
+            }
+            
+            # Formatte la liste finale
+            formatted_list = []
+            for item in file_list_raw:
+                formatted_list.append({
+                    "name": item["name"],
+                    "type": type_map.get(item["type"], "unknown"),
+                    "size": int(item["size"]),
+                    # Convertir le timestamp en une chaîne ISO 8601 serait une bonne amélioration
+                    "last_modified": int(float(item["mtime"])) 
+                })
+
+            return formatted_list
+
+        except client.ApiException as e:
+            logger.error(f"Kubernetes API Error listing files in '{pod_name}': {e}", exc_info=True)
+            raise
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON from find command output: {stdout}", exc_info=True)
+            raise RuntimeError("Failed to parse file list from environment.")
+        except Exception as e:
+            logger.error(f"Unexpected error listing files in '{pod_name}': {e}", exc_info=True)
+            raise
+ 
     async def destroy_environment(self, environment_id: str) -> None:
         pod_name = f"dev-env-{environment_id}"
         pvc_name = f"dev-env-pvc-{environment_id}"

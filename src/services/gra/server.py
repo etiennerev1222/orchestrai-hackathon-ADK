@@ -1,20 +1,26 @@
 import uvicorn
 import logging
-from fastapi import FastAPI, HTTPException, Body, Path
-from fastapi.middleware.cors import CORSMiddleware
+
 import httpx
 from typing import Dict, Any, List, Optional
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pydantic import BaseModel, Field
 import os
+import io
 from datetime import datetime, timezone
 import asyncio
-from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
-import os
 import uuid
 from collections import Counter
+from fastapi import FastAPI, HTTPException, Body, Path, File, UploadFile, Form, Depends
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
+from src.services.environment_manager.environment_manager import EnvironmentManager
+from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
+
+
 
 
 logger = logging.getLogger(__name__)
@@ -115,6 +121,29 @@ class AllAgentTasksStatsResponse(BaseModel):
     stats: List[AllAgentTaskStats]
     last_updated: str
 
+
+# --- Fonction utilitaire pour remplacer l'import de Werkzeug ---
+import re
+_filename_ascii_strip_re = re.compile(r"[^A-Za-z0-9_.-]")
+
+def secure_filename(filename: str) -> str:
+    """
+    Fonction de sanitisation de nom de fichier, inspirée de werkzeug.
+    Cela évite d'avoir à installer la dépendance complète.
+    """
+    if not filename:
+        return ""
+    # Gère les cas avec des séparateurs de chemin pour ne garder que le nom de base
+    filename = os.path.basename(filename)
+    # Remplace les caractères non-ASCII et non sécurisés par un vide
+    ascii_name = _filename_ascii_strip_re.sub("", filename)
+    # S'assure que le nom de fichier ne commence pas par un point (fichier caché)
+    if ascii_name.startswith("."):
+        ascii_name = ascii_name.lstrip('.')
+    if not ascii_name:
+        return "_fallback_filename"
+    return ascii_name
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await publish_gra_location()
@@ -138,6 +167,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Instanciation du EnvironmentManager
+try:
+    environment_manager = EnvironmentManager()
+    logging.info("EnvironmentManager initialized successfully.")
+except Exception as e:
+    logging.error(f"Failed to initialize EnvironmentManager: {e}", exc_info=True)
+    environment_manager = None
+
 @app.post("/register", status_code=201)
 async def register_agent(payload: AgentRegistration):
     """Point de terminaison pour que les agents puissent s'enregistrer."""
@@ -698,6 +736,69 @@ async def get_agent_stats():
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des statistiques des agents: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
+@app.get("/api/environments/{environment_id}/files")
+async def list_files(environment_id: str, path: Optional[str] = "."):
+    """Liste les fichiers dans un environnement. Le chemin est relatif à /workspace."""
+    if not environment_manager:
+        raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
+    try:
+        files = await environment_manager.list_files_in_environment(environment_id, path)
+        return files
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) # Pour un env_id non valide
+    except Exception as e:
+        logging.error(f"Error listing files for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while listing files.")
+
+@app.get("/api/environments/{environment_id}/files/download")
+async def download_file(environment_id: str, path: str):
+    """Télécharge un fichier depuis un environnement."""
+    if not environment_manager:
+        raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
+    try:
+        file_content_str = await environment_manager.read_file_from_environment(environment_id, path)
+        file_content_bytes = file_content_str.encode('utf-8')
+        
+        # Utilise StreamingResponse pour envoyer des données binaires
+        return StreamingResponse(
+            io.BytesIO(file_content_bytes),
+            media_type='application/octet-stream',
+            headers={'Content-Disposition': f'attachment; filename="{os.path.basename(path)}"'}
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error downloading file for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while downloading the file.")
+
+@app.post("/api/environments/{environment_id}/files/upload")
+async def upload_file(environment_id: str, path: Optional[str] = Form(None), file: UploadFile = File(...)):
+    """Téléverse un fichier dans un environnement."""
+    if not environment_manager:
+        raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
+        
+    destination_path = path if path else file.filename
+    if not destination_path:
+        raise HTTPException(status_code=400, detail="File name or destination path is required.")
+
+    try:
+        filename = secure_filename(destination_path)
+        file_content_bytes = await file.read()
+        file_content = file_content_bytes.decode('utf-8')
+
+        await environment_manager.write_file_to_environment(environment_id, filename, file_content)
+
+        return {"message": f"File '{filename}' uploaded successfully to '{environment_id}'."}
+    except ValueError as e: # Erreur si l'env_id est invalide
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error uploading file for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred during file upload.")
 
 
 if __name__ == "__main__":

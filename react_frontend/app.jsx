@@ -755,6 +755,7 @@ function App() {
             Auto-refresh
           </label>
         </div>
+        
         <PlanInfo
           plan={planDetails}
           flowRunning={planDetails && !FINISHED_STATES.includes(planDetails.current_supervisor_state)}

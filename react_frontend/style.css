@@ -205,12 +205,17 @@ input {
 .chat-item {
   margin-bottom: 0.25rem;
 }
-
-.plan-cards {
+.plan-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-width: 160px;   /* Largeur minimale pour éviter que ça s'écrase trop */
+  flex: 1 1 200px;    /* Flex-grow:1, shrink:1, basis:200px => base raisonnable */
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  flex-direction: column;
+  word-wrap: break-word;   /* Important pour les longs mots */
+  overflow-wrap: break-word; /* Pour compatibilité */
 }
 
 .plan-card {
