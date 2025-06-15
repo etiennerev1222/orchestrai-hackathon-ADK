@@ -1,4 +1,3 @@
-# src/shared/service_discovery.py
 import httpx
 from src.shared.firebase_init import get_firestore_client
 import logging
@@ -12,8 +11,6 @@ if not logger.hasHandlers():
 GRA_SERVICE_REGISTRY_COLLECTION = "service_registry"
 GRA_CONFIG_DOCUMENT_ID = "gra_instance_config"
 
-# On ne cache plus l'URL, on la redemande pour plus de flexibilité
-# _cached_gra_url: Optional[str] = None
 
 async def get_gra_base_url() -> str:
     """
@@ -21,13 +18,11 @@ async def get_gra_base_url() -> str:
     Priorité 1: Variable d'environnement (idéal pour Docker).
     Priorité 2: Firestore (pour les déploiements plus complexes ou non-Docker).
     """
-    # Priorité 1: Variable d'environnement
     gra_url_from_env = os.environ.get("GRA_PUBLIC_URL")
     if gra_url_from_env:
         logger.info(f"URL du GRA trouvée via la variable d'environnement : {gra_url_from_env}")
         return gra_url_from_env
 
-    # Priorité 2: Firestore (méthode de secours)
     logger.info("Variable d'environnement GRA_PUBLIC_URL non trouvée, tentative via Firestore.")
     db = get_firestore_client()
     if not db:
@@ -55,7 +50,6 @@ async def register_self_with_gra(agent_name: str, agent_public_url: str, agent_i
         return
 
     register_url = f"{gra_base_url}/register"
-    # Le payload correspond maintenant au modèle Pydantic du GRA
     payload = {
         "agent_name": agent_name,
         "public_url": agent_public_url,
@@ -64,7 +58,7 @@ async def register_self_with_gra(agent_name: str, agent_public_url: str, agent_i
     }
     
     max_retries = 4
-    delay_between_retries = 2  # seconds
+    delay_between_retries = 2
 
     logger.info(f"[{agent_name}] Tentative d'enregistrement auprès du GRA à {register_url}")
     for attempt in range(1, max_retries + 1):

@@ -1,4 +1,3 @@
-# src/agents/development_agent/logic.py
 import logging
 import json
 from typing import Dict, Any, Tuple
@@ -18,10 +17,6 @@ class DevelopmentAgentLogic(BaseAgentLogic):
         self.logger = logging.getLogger(f"{__name__}.DevelopmentAgentLogic")
         self.logger.info("Logique du DevelopmentAgent initialisée.")
 
-    # La méthode `set_environment_manager` est héritée de BaseAgentLogic.
-    # Elle est appelée par l'executor pour passer l'instance de EnvironmentManager.
-    # La logique n'utilisera PAS directement self.environment_manager pour exécuter des actions,
-    # mais elle peut s'y référer pour comprendre les CAPACITÉS de l'environnement.
 
     async def process(self, input_data_str: str, context_id: str | None = None) -> str:
         """
@@ -34,9 +29,9 @@ class DevelopmentAgentLogic(BaseAgentLogic):
             objective = input_payload.get("objective", "Objectif de développement non spécifié.")
             local_instructions = input_payload.get("local_instructions", [])
             acceptance_criteria = input_payload.get("acceptance_criteria", [])
-            environment_id = input_payload.get("environment_id") # L'ID de l'environnement de travail
-            current_environment_state = input_payload.get("current_state", "L'environnement est vide ou inconnu. Aucune information préalable sur l'état.") # État connu de l'environnement (ex: liste de fichiers, logs)
-            last_action_result = input_payload.get("last_action_result", {}) # Résultat de la dernière action exécutée (par l'executor)
+            environment_id = input_payload.get("environment_id")
+            current_environment_state = input_payload.get("current_state", "L'environnement est vide ou inconnu. Aucune information préalable sur l'état.")
+            last_action_result = input_payload.get("last_action_result", {})
 
         except json.JSONDecodeError:
             self.logger.error(f"DevelopmentAgent: Input JSON invalide: {input_data_str}")
@@ -52,7 +47,6 @@ class DevelopmentAgentLogic(BaseAgentLogic):
         self.logger.debug(f"État actuel de l'environnement: {current_environment_state}")
         self.logger.debug(f"Résultat de la dernière action: {json.dumps(last_action_result, indent=2)}")
 
-        # --- NOUVEAU PROMPT SYSTÈME ---
         system_prompt = (
             "Tu es un développeur IA expert en Python et un planificateur d'actions atomiques. "
             "Ton rôle est d'analyser un objectif de développement, des instructions, des critères d'acceptation, "
@@ -97,7 +91,6 @@ class DevelopmentAgentLogic(BaseAgentLogic):
             "\n\nN'oublie pas : réponds UNIQUEMENT avec l'objet JSON de la prochaine action."
         )
         
-        # --- NOUVEAU PROMPT UTILISATEUR ---
         prompt = (
             f"**Objectif de développement global pour cette session :** {objective}\n\n"
             f"**Instructions spécifiques pour cette tâche :**\n"
@@ -110,18 +103,15 @@ class DevelopmentAgentLogic(BaseAgentLogic):
         )
 
         try:
-            # json_mode=True est crucial ici pour obtenir un JSON de la part du LLM
             llm_response_str = await call_llm(prompt, system_prompt, json_mode=True) 
             
             self.logger.info(f"DevelopmentAgentLogic - Réponse LLM (action JSON): {llm_response_str[:500]}...")
             
-            # La logique renvoie directement la string JSON du LLM. L'exécuteur la parsira.
-            json.loads(llm_response_str) # Simple validation pour s'assurer que c'est bien du JSON
+            json.loads(llm_response_str)
             return llm_response_str 
 
         except json.JSONDecodeError as e:
             self.logger.error(f"DevelopmentAgentLogic - La réponse LLM n'est pas un JSON valide: {e}. Réponse brute: {llm_response_str}", exc_info=True)
-            # Retourner une erreur structurée pour que l'exécuteur puisse la gérer
             return json.dumps({"status": "error", "action": "llm_error", "message": f"LLM returned invalid JSON: {e}. Raw: {llm_response_str}"})
         except Exception as e:
             self.logger.error(f"DevelopmentAgentLogic - Échec lors de la décision de l'action par le LLM: {e}", exc_info=True)

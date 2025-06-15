@@ -1,14 +1,13 @@
-# src/agents/decomposition_agent/logic.py
 import logging
 import json
-from typing import Dict, Any, List # Retrait de Tuple qui n'est plus utilisé ici
+from typing import Dict, Any, List
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
-import uuid # Ajouté pour les ID locaux si l'agent en génère
+import uuid
 
 logger = logging.getLogger(__name__)
-if not logger.hasHandlers(): # S'assurer que le logger de module a un handler
+if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 AGENT_SKILL_DECOMPOSE_EXECUTION_PLAN = "execution_plan_decomposition"
@@ -16,13 +15,11 @@ AGENT_SKILL_DECOMPOSE_EXECUTION_PLAN = "execution_plan_decomposition"
 class DecompositionAgentLogic(BaseAgentLogic):
     def __init__(self):
         super().__init__()
-        # Utiliser self.logger pour les logs d'instance pour une meilleure traçabilité
         self.logger = logging.getLogger(f"{__name__}.DecompositionAgentLogic")
         self.logger.info("Logique du DecompositionAgent initialisée.")
 
 
     async def process(self, input_data_str: str, context_id: str | None = None) -> Dict[str, Any]:
-        # ... (parsing de input_data_str pour obtenir team1_plan_text et available_skills_list comme avant) ...
         self.logger.info(f"DecompositionAgent - Reçu input_data_str (contexte: {context_id}): '{input_data_str[:300]}...'")
 
         try:
@@ -30,7 +27,6 @@ class DecompositionAgentLogic(BaseAgentLogic):
             team1_plan_text = input_payload.get("team1_plan_text") or input_payload.get("plan_text")
             available_skills_list = input_payload.get("available_execution_skills", [])
         except (json.JSONDecodeError, TypeError) as e:
-            # Autoriser un mode plus simple où input_data_str est directement le plan texte
             self.logger.warning(
                 "DecompositionAgent: input_data_str n'est pas un JSON valide, traitement comme texte brut"
             )
@@ -39,7 +35,6 @@ class DecompositionAgentLogic(BaseAgentLogic):
 
 
         if not team1_plan_text:
-            # ... (gestion plan vide existante) ...
             self.logger.warning("Texte du plan de TEAM 1 vide, aucune décomposition possible.")
             return {
                 "global_context": "Plan de TEAM 1 vide fourni à l'agent de décomposition.",
@@ -51,9 +46,9 @@ class DecompositionAgentLogic(BaseAgentLogic):
             skills_string = ", ".join([f"'{s}'" for s in available_skills_list])
         else:
             self.logger.warning(f"Liste des compétences disponibles non fournie ou mal formatée, utilisation d'une liste par défaut pour le prompt. Reçu: {available_skills_list}")
-            default_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design", "test_case_generation"] # Ajout de test_case_generation
+            default_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design", "test_case_generation"]
             skills_string = ", ".join([f"'{s}'" for s in default_skills])
-            available_skills_list = default_skills # S'assurer que la liste utilisée plus bas est à jour
+            available_skills_list = default_skills
 
 
         system_prompt = (
@@ -85,7 +80,6 @@ class DecompositionAgentLogic(BaseAgentLogic):
         )
 
         try:
-            # ... (logique d'appel LLM et de parsing JSON existante) ...
             self.logger.debug(f"DecompositionAgentLogic - Prompt Système LLM:\n{system_prompt}")
             self.logger.debug(f"DecompositionAgentLogic - Prompt Utilisateur LLM:\n{prompt}")
             llm_response_str = await call_llm(prompt, system_prompt, json_mode=True)

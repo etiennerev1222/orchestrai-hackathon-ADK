@@ -1,5 +1,3 @@
-# src/agents/decomposition_agent/executor.py
-# src/agents/decomposition_agent/executor.py
 import logging
 import json
 
@@ -16,19 +14,18 @@ class DecompositionAgentExecutor(BaseAgentExecutor):
         specific_agent_logic = DecompositionAgentLogic()
         super().__init__(
             agent_logic=specific_agent_logic,
-            default_artifact_name="decomposed_execution_plan_structure", # Nom d'artefact mis à jour
+            default_artifact_name="decomposed_execution_plan_structure",
             default_artifact_description="Structure JSON complète du plan d'exécution, incluant contexte global, instructions et tâches décomposées."
         )
         logger.info("DecompositionAgentExecutor initialisé.")
     
-    def _create_artifact_from_result(self, result_data: Dict[str, Any], task: Task) -> Artifact: # result_data est maintenant un Dict
+    def _create_artifact_from_result(self, result_data: Dict[str, Any], task: Task) -> Artifact:
         """
         Crée un Artifact A2A à partir de la structure JSON globale retournée par la logique.
         Le résultat est une chaîne JSON représentant cet objet global.
         """
         logger.info(f"Création de l'artefact pour la tâche de décomposition {task.id}.")
         try:
-            # result_data est déjà le dictionnaire Python complet
             result_text = json.dumps(result_data, indent=2, ensure_ascii=False)
         except TypeError as e:
             logger.error(f"Erreur de sérialisation JSON pour le résultat de la décomposition: {e}")

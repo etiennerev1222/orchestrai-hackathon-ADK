@@ -10,18 +10,15 @@ from google.oauth2 import credentials
 from google.auth.transport.requests import Request
 import google.auth
 
-# NOUVEAU: Import de la base de données Firestore
 from src.shared.firebase_init import db
 
 from google.oauth2 import service_account
 import google.auth
 
-# Ajouter cette variable globale en haut
 GKE_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
 logger = logging.getLogger(__name__)
 
-# Collection Firestore pour stocker les informations sur les environnements
 K8S_ENVIRONMENTS_COLLECTION = "kubernetes_environments"
 
 class EnvironmentManager:
@@ -36,7 +33,6 @@ class EnvironmentManager:
 
             configuration.host = f"https://{gke_cluster_endpoint}"
 
-            # SSL vérification correctement configurée
             configuration.verify_ssl = True
             configuration.ssl_ca_cert = os.environ.get("GKE_SSL_CA_CERT")
             if configuration.ssl_ca_cert:
@@ -45,8 +41,6 @@ class EnvironmentManager:
                 configuration.verify_ssl = False
                 logger.warning("EnvironmentManager: SSL verification is DISABLED because GKE_SSL_CA_CERT is not set. DO NOT USE IN PRODUCTION.")
 
-            # Obtenir explicitement les ADC credentials
-            # Dans __init__()
             credentials, project_id = google.auth.default(scopes=GKE_SCOPES)
             if credentials:
                 try:
@@ -60,7 +54,6 @@ class EnvironmentManager:
                 raise Exception("ADC credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS environment variable.")            
 
         else:
-            # Chargement kube_config localement
             try:
                 config.load_kube_config()
                 logger.info("Kubernetes config loaded from local kube_config.")
@@ -248,7 +241,7 @@ class EnvironmentManager:
                                                   field_selector=f"metadata.name={pod_name}", timeout_seconds=10)
                 try:
                     for event in event_stream:
-                        if event['type'] == 'ADDED' or event['type'] == 'MODIFIED': # Corrected: Removed duplicate 'or event['type'] == 'ADDED''
+                        if event['type'] == 'ADDED' or event['type'] == 'MODIFIED':
                             if event['object'].status.phase == 'Running':
                                 logger.info(f"Pod '{pod_name}' is running.")
                                 w_run.stop()
@@ -487,12 +480,11 @@ class EnvironmentManager:
                 else:
                     raise
             
-            # --- NOUVEAU: Supprimer l'entrée de Firestore après destruction K8s ---
             env_doc_ref = db.collection(K8S_ENVIRONMENTS_COLLECTION).document(environment_id)
             await asyncio.to_thread(env_doc_ref.delete)
             logger.info(f"Environment '{environment_id}' entry deleted from Firestore.")
 
-            try: # Tenter aussi de supprimer le PVC, mais on le fait après le document.
+            try:
                 await asyncio.to_thread(self.v1.delete_namespaced_persistent_volume_claim, name=pvc_name, namespace=self.namespace, body=client.V1DeleteOptions())
                 logger.info(f"PVC '{pvc_name}' requested for deletion.")
             except client.ApiException as e:

@@ -1,5 +1,3 @@
-# -----------------------------------------
-# src/shared/llm_client.py
 import os
 import logging
 import vertexai
@@ -8,19 +6,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# --- Configuration du client Vertex AI ---
 GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 GCP_REGION = os.environ.get("GCP_REGION")
 
-# Le nom du modèle peut être surchargé par une variable d'environnement.
-# Nous utilisons un nom de modèle qui a fonctionné pour vous.
-# "gemini-1.5-flash-001" est un choix stable et moderne.
 LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-1.5-flash-001")
-# -----------------------------------------
 LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash-001")
 
-# Initialisation du client Vertex AI (une seule fois par processus)
-# Cette section est cruciale pour que le SDK sache à quel projet se connecter.
 try:
     if GCP_PROJECT_ID and GCP_REGION:
         vertexai.init(project=GCP_PROJECT_ID, location=GCP_REGION)
@@ -55,7 +46,6 @@ async def call_llm(prompt: str, system_prompt: Optional[str] = "You are a helpfu
         
         response = await model.generate_content_async(prompt, generation_config=generation_config)
 
-        # Logique de lecture de la réponse, propre et validée
         if hasattr(response, 'text') and response.text:
             logger.info("Réponse de Vertex AI reçue avec succès.")
             return response.text

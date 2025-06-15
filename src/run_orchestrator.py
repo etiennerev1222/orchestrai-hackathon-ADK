@@ -1,4 +1,3 @@
-# run_orchestrator.py
 import asyncio
 import uuid
 import logging
@@ -27,8 +26,6 @@ async def main():
         
         await supervisor.process_plan(plan_id=plan_id)
 
-        # --- CORRECTION DE LA CONDITION D'ARRÊT ---
-        # On vérifie si TOUTES les tâches sont terminées, pas seulement la tâche racine.
         graph_reader = TaskGraph(plan_id=plan_id)
         all_tasks_data = graph_reader.as_dict().get("nodes", {})
         

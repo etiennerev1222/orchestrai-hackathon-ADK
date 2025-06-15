@@ -1,5 +1,4 @@
 
-# app_frontend.py
 import streamlit as st
 import httpx
 import asyncio
@@ -10,13 +9,10 @@ from streamlit_agraph import agraph, Node, Edge, Config
 import sys
 import pathlib
 
-# --- Configuration du chemin et Imports ---
-# Permet au script de trouver les modules dans le dossier 'src'
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 from src.shared.execution_task_graph_management import ExecutionTaskState
 from src.shared.task_graph_management import TaskState
 
-# --- Constantes et Classes ---
 class GlobalPlanState:
     INITIAL_OBJECTIVE_RECEIVED = "INITIAL_OBJECTIVE_RECEIVED"
     CLARIFICATION_PENDING_USER_INPUT = "CLARIFICATION_PENDING_USER_INPUT"
@@ -34,7 +30,6 @@ class GlobalPlanState:
    
 BACKEND_API_URL = os.environ.get("GRA_BACKEND_API_URL", "http://localhost:8000")
 
-# --- Fonctions Clientes API ---
 async def get_global_plans_summary_from_api():
     async with httpx.AsyncClient() as client:
         try:
@@ -82,7 +77,7 @@ async def get_global_plan_details_from_api(global_plan_id: str):
             st.error(f"Erreur récupération détails plan {global_plan_id}: {e}")
             return None
 
-async def get_task_graph_details_from_api(task_graph_plan_id: str): # Pour TEAM 1
+async def get_task_graph_details_from_api(task_graph_plan_id: str):
     if not task_graph_plan_id: return None
     async with httpx.AsyncClient() as client:
         try:
@@ -93,7 +88,7 @@ async def get_task_graph_details_from_api(task_graph_plan_id: str): # Pour TEAM 
             st.error(f"Erreur lors de la récupération du TaskGraph (TEAM 1) {task_graph_plan_id}: {e}")
             return None
 
-async def get_execution_task_graph_details_from_api(execution_plan_id: str): # Pour TEAM 2
+async def get_execution_task_graph_details_from_api(execution_plan_id: str):
     if not execution_plan_id: return None
     async with httpx.AsyncClient() as client:
         try:
@@ -185,7 +180,6 @@ async def get_artifact_content_from_api(gra_artifact_id: str):
             st.error(f"Erreur récupération contenu artefact {gra_artifact_id}: {e}")
             return f"Erreur: Impossible de récupérer l'artefact {gra_artifact_id}. {e}"
 
-# --- Fonctions de gestion d'état et Callbacks ---
 
 def initialize_session_state():
     """Initialise toutes les clés nécessaires au premier lancement."""
@@ -225,15 +219,14 @@ def handle_node_click(node_id: str, is_team1: bool):
         st.session_state.selected_artifact_content = "Ce noeud n'a pas d'artefact de sortie associé."
         return
 
-    if is_team1: # Artefact est le contenu direct (JSON ou texte)
+    if is_team1:
         st.session_state.selected_artifact_content = json.dumps(artifact_ref, indent=2, ensure_ascii=False) if isinstance(artifact_ref, dict) else str(artifact_ref)
-    else: # Artefact est un ID à récupérer via API
+    else:
         content = asyncio.run(get_artifact_content_from_api(artifact_ref))
         st.session_state.selected_artifact_content = content or "Contenu de l'artefact non trouvé ou vide."
 
     st.session_state.show_artifact_modal = True
 
-    # On ne fait pas de st.rerun() ici, on laisse le flux naturel de Streamlit mettre à jour l'UI.
 
 def render_artifact_content(content: Any, display_key: str):
     """Affiche le contenu d'un artefact dans le bon format."""
@@ -292,28 +285,23 @@ def compute_state_counts(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
         state = n.get("state", "unknown")
         counts[state] = counts.get(state, 0) + 1
     return counts
-# --- Interface Streamlit ---
 
 
-# --- Application Principale ---
 
 st.set_page_config(layout="wide", page_title="OrchestrAI Dashboard")
 initialize_session_state()
 
 st.title("🤖 OrchestrAI - Tableau de Bord")
 
-# --- Barre de Statut des Agents (Pleine Largeur) ---
 agents_status_list = asyncio.run(get_agents_status_with_health_from_api())
 agents_stats_list = asyncio.run(get_agent_stats_from_api())
 display_agent_status_bar(agents_status_list, agents_stats_list)
 st.markdown("---")
 
-# --- Colonnes pour le contenu principal ---
 main_col, artifact_col = st.columns([0.65, 0.35])
 
 initialize_session_state()
 
-# --- Sidebar ---
 with st.sidebar:
     st.header("🚀 Nouveau Plan Global")
     st.text_area("Objectif initial:", height=100, key="new_objective_sidebar_key")
@@ -321,7 +309,6 @@ with st.sidebar:
         if st.session_state.new_objective_sidebar_key:
             asyncio.run(submit_new_global_plan_to_api(st.session_state.new_objective_sidebar_key))
             st.session_state.new_objective_sidebar_key = ""
-            # On ne change pas de plan actif ici, on attend le rafraîchissement
         else:
             st.warning("Veuillez entrer un objectif.")
 
@@ -347,16 +334,14 @@ with st.sidebar:
         )
         st.session_state.active_global_plan_id = selected_id
 
-# --- Colonnes Principales ---
 main_col, artifact_col = st.columns([0.65, 0.35])
 
 with main_col:
     if st.session_state.agents_status:
-        # On récupère le statut des agents et on l'affiche avec la nouvelle fonction
         agents_status_list = asyncio.run(get_agents_status_with_health_from_api())
         agents_stats_list = asyncio.run(get_agent_stats_from_api())
         display_agent_status_bar(agents_status_list, agents_stats_list)
-        st.markdown("---") # Ajoute une ligne de séparation visuelle
+        st.markdown("---")
     st.header("🔍 Plan Actif & Graphes")
     if st.session_state.active_global_plan_id:
         if not st.session_state.active_global_plan_details or st.session_state.active_global_plan_details.get("global_plan_id") != st.session_state.active_global_plan_id:
@@ -387,8 +372,6 @@ with main_col:
 
 
 
-            # Affichage des détails du plan global et logique de clarification...
-           # --- Graphe TEAM 1 (Interactif avec AGraph) ---
             team1_plan_id = plan.get("team1_plan_id")
             if team1_plan_id:
                 st.subheader(f"📊 Graphe de Planification (TEAM 1 : `{team1_plan_id}`)")
@@ -404,7 +387,7 @@ with main_col:
                         a_nodes, a_edges = [], []
                         for node_id, node_info in nodes_t1.items():
                             node_state_val = node_info.get("state")
-                            color = {"background": "#D3D3D3", "border": "#808080"}  # Gris par défaut
+                            color = {"background": "#D3D3D3", "border": "#808080"}
                             if node_state_val == TaskState.COMPLETED.value:
                                 color = {"background": "#D4EDDA", "border": "#155724"}
                             elif node_state_val in [TaskState.FAILED.value, TaskState.UNABLE.value]:
@@ -453,7 +436,6 @@ with main_col:
                     st.info("Le graphe de planification est introuvable.")
 
 
-            # --- Graphe TEAM 2 (Interactif) ---
             team2_exec_id = plan.get("team2_execution_plan_id")
             if team2_exec_id:
                 st.subheader(f"📈 Graphe d'Exécution (TEAM 2 : `{team2_exec_id}`)")
@@ -468,7 +450,7 @@ with main_col:
                         a_nodes, a_edges = [], []
                         for node_id, node_info in nodes_data_t2.items():
                             node_state_val = node_info.get("state")
-                            color = {"background": "#D3D3D3", "border": "#808080"} # Gris par défaut
+                            color = {"background": "#D3D3D3", "border": "#808080"}
                             if node_state_val == ExecutionTaskState.COMPLETED.value: color = {"background": "#D4EDDA", "border": "#155724"}
                             elif node_state_val == ExecutionTaskState.FAILED.value: color = {"background": "#F8D7DA", "border": "#721C24"}
                             elif node_state_val == ExecutionTaskState.WORKING.value: color = {"background": "#FFF3CD", "border": "#856404"}
@@ -502,7 +484,6 @@ with main_col:
     else:
         st.info("Sélectionnez un plan dans la barre latérale pour commencer.")
 
-    # Affichage d'un modal pour les artefacts lorsqu'un nœud est sélectionné
     if st.session_state.get('show_artifact_modal'):
         with st.modal("Artefact"):
             st.markdown(f"**Tâche :** `{st.session_state.selected_artifact_task_id}`")

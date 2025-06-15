@@ -1,18 +1,14 @@
-# Dans un nouveau fichier tests/unit/test_decomposition_logic.py
-import pytest # ou unittest
+import pytest
 import asyncio
-from unittest.mock import patch, MagicMock # ou AsyncMock pour Python 3.8+
+from unittest.mock import patch, MagicMock
 
 from src.agents.decomposition_agent.logic import DecompositionAgentLogic
-# Assurez-vous que GEMINI_API_KEY est mockée ou non requise pour ce test si llm_client le vérifie
-# @patch.dict(os.environ, {"GEMINI_API_KEY": "fake_key"}) # Si nécessaire
 
 @pytest.mark.asyncio
 async def test_decomposition_logic_valid_plan_mocked_llm():
     logic = DecompositionAgentLogic()
     sample_plan_text = "Planifier un voyage à Paris pour 3 jours."
     
-    # JSON attendu que le LLM est censé retourner (sous forme de chaîne)
     expected_llm_output_str = """
     {
         "global_context": "Planification d'un voyage de 3 jours à Paris.",
@@ -44,9 +40,6 @@ async def test_decomposition_logic_valid_plan_mocked_llm():
     }
     """
     
-    # Mocker src.shared.llm_client.call_llm utilisé par DecompositionAgentLogic
-    # Si vous utilisez Python 3.8+, vous pouvez utiliser AsyncMock directement.
-    # Pour les versions antérieures, une coroutine factice peut être utilisée avec MagicMock.
     mock_call_llm = MagicMock(return_value=asyncio.Future())
     mock_call_llm.return_value.set_result(expected_llm_output_str)
 
@@ -60,6 +53,3 @@ async def test_decomposition_logic_valid_plan_mocked_llm():
     assert result_dict["tasks"][0]["assigned_agent_type"] == "web_research"
     assert result_dict["tasks"][1]["dependances"] == ["T01_Paris"]
 
-    # Vérifier que call_llm a été appelé avec les bons arguments (le prompt)
-    # Cela nécessite de regarder le contenu du prompt généré dans la logique.
-    # mock_call_llm.assert_called_once() # Ou assert_called_once_with(...) si vous voulez vérifier les args

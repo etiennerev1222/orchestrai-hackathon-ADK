@@ -1,11 +1,10 @@
-# src/agents/validator/executor.py
 import logging
 import json
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import ValidatorAgentLogic
 
-from a2a.types import Artifact, Task, Message, TextPart  # Ajout de Message, TextPart
+from a2a.types import Artifact, Task, Message, TextPart
 from a2a.utils import new_text_artifact
 
 logger = logging.getLogger(__name__)
@@ -25,16 +24,13 @@ class ValidatorAgentExecutor(BaseAgentExecutor):
         )
         logger.info("ValidatorAgentExecutor (spécifique) initialisé.")
 
-    # Surcharger _extract_input_from_message car l'entrée est un JSON (résultat de l'évaluateur)
-    # et non du texte simple.
     def _extract_input_from_message(self, message: Message) -> dict | None:
         """
         Extrait le dictionnaire JSON de l'artefact de l'évaluateur (passé en tant que texte).
         """
-        raw_text_input = super()._extract_input_from_message(message)  # Utilise la méthode de la base pour obtenir le texte
+        raw_text_input = super()._extract_input_from_message(message)
         if raw_text_input:
             try:
-                # Supposer que raw_text_input est une chaîne JSON venant de l'artefact de l'évaluateur
                 return json.loads(raw_text_input)
             except json.JSONDecodeError as e:
                 logger.error(f"Impossible de parser l'entrée JSON pour le validateur: {e}. Entrée brute: {raw_text_input}")

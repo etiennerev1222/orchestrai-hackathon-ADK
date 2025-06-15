@@ -1,18 +1,14 @@
-# check_health.py
 import asyncio
 import httpx
 import firebase_admin
 from firebase_admin import credentials, firestore
 import os
 
-# --- Configuration ---
 GCP_PROJECT_ID = "orchestrai-hackathon"
 SERVICE_REGISTRY_COLLECTION = "service_registry"
 
-# --- Initialisation ---
 try:
     print("--- Initialisation de Firestore ---")
-    # Utilise les identifiants par défaut de l'application gcloud
     cred = credentials.ApplicationDefault()
     firebase_admin.initialize_app(cred, {
         'projectId': GCP_PROJECT_ID,
@@ -28,7 +24,7 @@ except Exception as e:
 async def check_agent_health(agent_info: dict, client: httpx.AsyncClient):
     """Vérifie la santé d'un seul agent en utilisant son URL interne."""
     name = agent_info.get("name", "N/A")
-    url = agent_info.get("internal_url") # On teste l'URL interne
+    url = agent_info.get("internal_url")
     
     if not url:
         return name, "OFFLINE", "URL interne manquante dans la registry."
@@ -55,7 +51,7 @@ async def main():
     agents_to_check = []
     for doc in docs:
         if doc.id == "gra_instance_config":
-            continue # On ignore le document de config du GRA
+            continue
         
         agent_data = doc.to_dict()
         print(f"\nAgent trouvé: {agent_data.get('name')}")

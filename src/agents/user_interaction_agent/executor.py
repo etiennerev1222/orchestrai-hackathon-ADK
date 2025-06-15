@@ -1,12 +1,11 @@
-# src/agents/user_interaction_agent/executor.py
 import logging
 import json
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import UserInteractionAgentLogic, ACTION_CLARIFY_OBJECTIVE
 
-from a2a.types import Artifact, Task, Message, TaskState, TaskStatus # Ajout de TaskState, TaskStatus
-from a2a.utils import new_text_artifact, new_agent_text_message # Ajout de new_agent_text_message
+from a2a.types import Artifact, Task, Message, TaskState, TaskStatus
+from a2a.utils import new_text_artifact, new_agent_text_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
 from a2a.utils import new_task, new_agent_text_message
@@ -15,8 +14,8 @@ from a2a.types import (
     TaskState,
     TaskStatus,
     TaskStatusUpdateEvent,
-    Message, # Non utilisé directement ici, mais bon à savoir
-    TextPart, # Non utilisé directement ici
+    Message,
+    TextPart,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,39 +45,33 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
                 return json.loads(raw_text_input)
             except json.JSONDecodeError as e:
                 logger.error(f"Impossible de parser l'entrée JSON pour UserInteractionAgent: {e}. Entrée brute: {raw_text_input}")
-                # Retourner une structure d'erreur que la logique peut interpréter
                 return {"error": "Invalid JSON input", "raw_input": raw_text_input}
         logger.warning("Aucune entrée textuelle (JSON attendu) trouvée pour UserInteractionAgent.")
         return None
 
-    # Surcharge de la méthode execute pour gérer les états de tâche A2A spécifiques
-    # retournés par la logique (completed, input_required, failed).
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         task_context_id_for_log = context.context_id if context.context_id else (context.message.contextId if context.message and context.message.contextId else "N/A")
         logger.info(f"{self.__class__.__name__}.execute appelé pour le contexte: {task_context_id_for_log}")
 
         message = context.message
         task = context.current_task
-        # --- DÉBUT DE LA CORRECTION NÉCESSAIRE ---
-        if not task: # Si context.current_task est None
-            if message: # new_task requiert un 'request', qui est le 'message' ici.
+        if not task:
+            if message:
                 task = new_task(request=message)
                 logger.info(f"Nouvelle tâche créée par UserInteractionAgentExecutor: ID={task.id}, ContextID={task.contextId}")
-                event_queue.enqueue_event(task) # Enqueue l'objet tâche lui-même
+                event_queue.enqueue_event(task)
             else:
                 logger.error("Impossible de créer une tâche car le message est manquant pour UserInteractionAgentExecutor.")
                 return 
-        # --- FIN DE LA CORRECTION NÉCESSAIRE ---
 
-        if not message: # Devrait être géré par le SDK A2A en amont mais bonne pratique de vérifier
+        if not message:
             logger.error("Aucun message fourni dans le contexte.")
             return
 
-        if not task: # Devrait être géré par le SDK A2A en amont
+        if not task:
             logger.error("Aucune tâche actuelle dans le contexte.")
             return
 
-        # Utiliser les IDs de la tâche existante passée dans le contexte
         current_task_id = task.id
         current_context_id = task.contextId
 
@@ -104,7 +97,6 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
         ))
 
         try:
-            # La méthode process de UserInteractionAgentLogic retourne (result_payload, a2a_task_state_str)
             result_payload, a2a_task_state_str = await self.agent_logic.process(user_input_dict, current_context_id)
             
             result_artifact = self._create_artifact_from_result(result_payload, task)
@@ -113,7 +105,7 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
                 artifact=result_artifact
             ))
 
-            final_a2a_state = TaskState.completed # Par défaut
+            final_a2a_state = TaskState.completed
             status_message_text = "Traitement terminé."
 
             if a2a_task_state_str == "input_required":
@@ -156,11 +148,9 @@ class UserInteractionAgentExecutor(BaseAgentExecutor):
         """
         logger.info(f"Création de l'artefact pour la tâche d'interaction {task.id}.")
         try:
-            # Le result_data est déjà un dictionnaire préparé par la logique
             result_text = json.dumps(result_data, indent=2, ensure_ascii=False)
         except TypeError as e:
             logger.error(f"Erreur de sérialisation JSON pour le résultat de UserInteractionAgent: {e}")
-            # Fournir un fallback en cas d'erreur de sérialisation
             result_text = json.dumps({"error": "Failed to serialize result_data", "original_type": str(type(result_data))})
 
         return new_text_artifact(

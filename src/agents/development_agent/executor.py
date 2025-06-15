@@ -1,5 +1,3 @@
-# src/agents/development_agent/executor.py
-# src/agents/development_agent/executor.py
 import logging
 import json
 
@@ -7,13 +5,12 @@ from src.shared.base_agent_executor import BaseAgentExecutor
 from .logic import DevelopmentAgentLogic
 
 from a2a.types import (
-    Artifact, Task, Message, TaskState, TaskStatus, # Existing imports
-    TaskStatusUpdateEvent, TaskArtifactUpdateEvent # <--- ADD THESE
+    Artifact, Task, Message, TaskState, TaskStatus,
+    TaskStatusUpdateEvent, TaskArtifactUpdateEvent
 )
-from a2a.utils import new_text_artifact, new_agent_text_message, new_task # <--- ADD new_task
+from a2a.utils import new_text_artifact, new_agent_text_message, new_task
 from src.services.environment_manager.environment_manager import EnvironmentManager
-from typing_extensions import override # Import override decorator
-# Importations depuis le SDK A2A
+from typing_extensions import override
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
 
@@ -24,30 +21,26 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
         specific_agent_logic = DevelopmentAgentLogic()
         super().__init__(
             agent_logic=specific_agent_logic,
-            default_artifact_name="development_action_result", # Changed default artifact name to reflect actions
+            default_artifact_name="development_action_result",
             default_artifact_description="Résultat de l'action de développement (écriture/exécution/lecture)."
         )
         self.logger = logging.getLogger(f"{__name__}.DevelopmentAgentExecutor")
         self.logger.info("DevelopmentAgentExecutor initialisé.")
 
-        self.environment_manager = EnvironmentManager() #
-        self.agent_logic.set_environment_manager(self.environment_manager) # Pass the manager to the logic
+        self.environment_manager = EnvironmentManager()
+        self.agent_logic.set_environment_manager(self.environment_manager)
 
-    def _create_artifact_from_result(self, result_data: str, task: Task) -> Artifact: #
+    def _create_artifact_from_result(self, result_data: str, task: Task) -> Artifact:
         """
         Crée un Artifact A2A à partir des données JSON de résultat de l'action.
         """
         self.logger.info(f"Création de l'artefact de résultat pour la tâche {task.id}.")
-        # result_data est la chaîne JSON du résultat de l'action
         return new_text_artifact(
             name=self.default_artifact_name,
             description=self.default_artifact_description,
             text=result_data 
         )
 
-    # --- NOUVELLE SURCHARGE DE LA MÉTHODE EXECUTE ---
-    # Cette méthode va orchestrer le dialogue avec la logique de l'agent
-    # et l'exécution des actions dans l'environnement.
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         task_context_id_for_log = context.context_id if context.context_id else (context.message.contextId if context.message and context.message.contextId else "N/A")
@@ -61,9 +54,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             return
 
         if not task:
-            task = new_task(request=message) # Ensure new_task is available (from a2a.utils)
+            task = new_task(request=message)
             self.logger.info(f"Nouvelle tâche créée: ID={task.id}, ContextID={task.contextId}")
-            await event_queue.enqueue_event(task) # Enqueue the task object itself
+            await event_queue.enqueue_event(task)
 
         current_task_id = task.id
         current_context_id = task.contextId 
@@ -95,30 +88,23 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 return
 
             self.logger.info(f"Appel de la logique de l'agent pour décider de la prochaine action (env: {environment_id}).")
-            # La logique renvoie un JSON string décrivant l'action à prendre
             llm_action_json_str = await self.agent_logic.process(user_input_json_str, current_context_id)
 
             llm_action_payload = json.loads(llm_action_json_str)
             action_type = llm_action_payload.get("action")
             
-            final_status_state = TaskState.working # Default to working for intermediate actions
+            final_status_state = TaskState.working
             is_final_event = False
             action_result_summary = "Action exécutée par l'agent de développement."
             
-            # --- Exécuter l'action décidée par le LLM ---
             if action_type == "generate_code_and_write_file":
                 file_path = llm_action_payload.get("file_path", "/app/main.py")
                 code_objective = llm_action_payload.get("objective", "")
                 code_instructions = llm_action_payload.get("local_instructions", [])
                 code_acceptance_criteria = llm_action_payload.get("acceptance_criteria", [])
                 
-                # ICI, l'executor DOIT demander au LLM de générer le code
-                # (avec un prompt spécifique pour la génération de code, PAS le prompt d'action)
-                # puis écrire ce code.
                 self.logger.info(f"Développement : Action 'generate_code_and_write_file' décidée par LLM pour '{file_path}'.")
                 
-                # Le LLM est appelé directement ici pour la génération de code, PAS pour la décision d'action.
-                # Assurez-vous que src.shared.llm_client.call_llm est importé.
                 from src.shared.llm_client import call_llm 
 
                 code_system_prompt = (
@@ -187,7 +173,6 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 final_status_state = TaskState.failed
                 is_final_event = True
 
-            # Créer l'artefact avec le résumé de l'action exécutée
             artifact_content = {"action_taken": action_type, "summary": action_result_summary, "details": llm_action_payload}
             result_artifact = self._create_artifact_from_result(json.dumps(artifact_content), task)
 
@@ -196,7 +181,6 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 artifact=result_artifact
             ))
             
-            # Mettre à jour le statut de la tâche A2A
             status_message_text = f"Action '{action_type}' exécutée. {action_result_summary}"
             if final_status_state == TaskState.failed:
                 status_message_text = f"Action '{action_type}' a échoué. {action_result_summary}"

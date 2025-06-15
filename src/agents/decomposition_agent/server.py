@@ -1,4 +1,3 @@
-# src/agents/decomposition_agent/server.py
 import asyncio
 import logging
 import uvicorn
@@ -33,8 +32,6 @@ def get_decomposition_agent_card() -> AgentCard:
         tags=["planning", "decomposition", "execution_setup"],
         examples=["Decompose this plan: [Text of TEAM 1's validated plan]"]
     )
-    # MODIFIÉ : On utilise l'URL si elle existe, sinon on met une valeur temporaire.
-    # La vraie URL sera utilisée par la fonction lifespan pour l'enregistrement.
     agent_url = os.environ.get("PUBLIC_URL", f"http://localhost_placeholder_for_{AGENT_NAME}:8080")
     
     return AgentCard(
@@ -64,8 +61,6 @@ async def lifespan(app_param: Starlette):
     agent_public_url = os.environ.get("PUBLIC_URL")
     agent_internal_url = os.environ.get("INTERNAL_URL")
     
-    # --- LOGIQUE CORRIGÉE ---
-    # On ne tente de s'enregistrer QUE si les URLs sont présentes.
     if agent_public_url and agent_internal_url:
         try:
             agent_card = get_decomposition_agent_card()
@@ -75,23 +70,18 @@ async def lifespan(app_param: Starlette):
         except Exception as e:
             logger.error(f"[{AGENT_NAME}] L'enregistrement auprès du GRA a échoué durant le démarrage : {e}", exc_info=True)
     else:
-        # Si les URLs ne sont pas là, on logue un avertissement mais on continue.
-        # Le serveur va démarrer et attendre. Une future révision avec les bonnes URLs réussira l'enregistrement.
         logger.warning(f"[{AGENT_NAME}] PUBLIC_URL ou INTERNAL_URL manquant. Le serveur démarre en mode passif sans s'enregistrer.")
 
-    # La partie "yield" doit toujours être atteinte pour que le serveur reste en ligne.
     yield
     
     logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
 
 
-# --- Création de l'application ---
 def create_app_instance() -> Starlette:
     agent_card = get_decomposition_agent_card()
     a2a_app = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
     app = a2a_app.build()
 
-    # Ajouter la route de santé
     async def health_check_endpoint(request):
         return JSONResponse({"status": "ok"})
     
@@ -99,14 +89,12 @@ def create_app_instance() -> Starlette:
         Route("/health", endpoint=health_check_endpoint, methods=["GET"])
     )
     
-    # Attacher le gestionnaire de cycle de vie
     app.router.lifespan_context = lifespan
     
     return app
 
 app = create_app_instance()
 
-# --- Démarrage Uvicorn (si le fichier est exécuté directement) ---
 if __name__ == "__main__":
     is_production = 'K_SERVICE' in os.environ
     port = int(os.environ.get("PORT", 8080))

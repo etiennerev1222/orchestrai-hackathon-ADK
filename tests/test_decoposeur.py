@@ -1,4 +1,3 @@
-# tests/test_decomposition_agent_client.py
 import asyncio
 import httpx
 import logging
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO)
 
-DECOMPOSITION_AGENT_SERVER_URL = "http://localhost:8005" # Port de votre DecompositionAgentServer
+DECOMPOSITION_AGENT_SERVER_URL = "http://localhost:8005"
 
 def create_plan_to_decompose_message(plan_text: str) -> Message:
     """Crée un objet Message A2A simple contenant le plan textuel à décomposer."""
@@ -37,7 +36,7 @@ def create_plan_to_decompose_message(plan_text: str) -> Message:
 async def run_decomposition_test(plan_text_to_decompose: str):
     logger.info(f"Tentative de connexion à l'agent de Décomposition à: {DECOMPOSITION_AGENT_SERVER_URL}")
 
-    async with httpx.AsyncClient(timeout=60.0) as http_client: # Augmenter le timeout si le LLM prend du temps
+    async with httpx.AsyncClient(timeout=60.0) as http_client:
         try:
             a2a_client = await A2AClient.get_client_from_agent_card_url(
                 httpx_client=http_client,
@@ -76,8 +75,8 @@ async def run_decomposition_test(plan_text_to_decompose: str):
             return
 
         logger.info(f"Attente et récupération du résultat de la tâche {created_task_id}...")
-        max_retries = 20 # Le LLM peut prendre du temps
-        retry_delay = 5  # secondes
+        max_retries = 20
+        retry_delay = 5
         final_task_result: Task | None = None
 
         for attempt in range(max_retries):
@@ -134,7 +133,6 @@ async def run_decomposition_test(plan_text_to_decompose: str):
 
 
 if __name__ == "__main__":
-    # Exemple de plan texte que TEAM 1 pourrait avoir produit
     sample_plan_text = """
     Objectif Principal: Créer un prototype de jeu d'aventure textuel en Python.
     Phase 1: Conception Initiale
@@ -153,7 +151,6 @@ if __name__ == "__main__":
     """
     
     logger.info("Lancement du client de test pour DecompositionAgent...")
-    # Assurez-vous que le serveur (src/agents/decomposition_agent/server.py) est lancé.
     try:
         asyncio.run(run_decomposition_test(sample_plan_text))
     except Exception as e:

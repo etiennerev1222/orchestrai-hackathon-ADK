@@ -5,7 +5,6 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 USERNAME = os.environ.get("BASIC_AUTH_USERNAME", "admin")
 PASSWORD = os.environ.get("BASIC_AUTH_PASSWORD", "demo")
 
-# Precompute the valid Authorization header value
 VALID_TOKEN = "Basic " + base64.b64encode(f"{USERNAME}:{PASSWORD}".encode()).decode()
 
 class AuthHandler(SimpleHTTPRequestHandler):

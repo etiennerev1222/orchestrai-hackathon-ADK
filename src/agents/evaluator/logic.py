@@ -1,9 +1,8 @@
-# src/agents/evaluator/logic.py
 import logging
 import json
 from typing import Dict, Any
 from src.shared.base_agent_logic import BaseAgentLogic
-from src.shared.llm_client import call_llm # <-- Importer le client LLM
+from src.shared.llm_client import call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +34,8 @@ class EvaluatorAgentLogic(BaseAgentLogic):
         )
 
         try:
-            # Demander une sortie JSON au LLM
             json_response_str = await call_llm(prompt, system_prompt, json_mode=True)
             
-            # Parser la chaîne JSON en dictionnaire Python
             evaluation_result = json.loads(json_response_str)
             logger.info(f"EvaluatorAgentLogic - Évaluation JSON reçue du LLM: {evaluation_result}")
             return evaluation_result
@@ -50,26 +47,14 @@ class EvaluatorAgentLogic(BaseAgentLogic):
             logger.error(f"Échec de l'évaluation par le LLM: {e}")
             return {"error": f"LLM processing failed: {e}", "evaluated_plan": plan_to_evaluate}
         
-# Exemple d'utilisation (pour tester ce fichier isolément si besoin)
 
-# if **name** == "**main**":
 
-# import asyncio
 
-# async def test\_evaluator\_logic():
 
-# logic = EvaluatorAgentLogic()
 
-# test\_plan1 = "**URGENT** [Reformulé par ReformulatorAgentLogic]: PLANIFIER UNE RÉUNION D'ÉQUIPE URGENTE POUR LA SEMAINE PROCHAINE - prêt pour la suite."
 
-# result1 = await logic.process(test\_plan1, "test-eval-ctx-1")
 
-# print(f"Test 1: Entrée='{test\_plan1}'\\nSortie='{result1}'\\n")
 
-# test\_plan2 = "Plan court."
 
-# result2 = await logic.process(test\_plan2, "test-eval-ctx-2")
 
-# print(f"Test 2: Entrée='{test\_plan2}'\\nSortie='{result2}'\\n")
 
-# asyncio.run(test\_evaluator\_logic())

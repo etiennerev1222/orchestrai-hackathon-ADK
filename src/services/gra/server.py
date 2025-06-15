@@ -1,4 +1,3 @@
-# src/services/gra/server.py
 import uvicorn
 import logging
 from fastapi import FastAPI, HTTPException, Body, Path
@@ -8,46 +7,36 @@ from typing import Dict, Any, List, Optional
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pydantic import BaseModel, Field
-import os # <-- AJOUT
-from datetime import datetime, timezone # <-- AJOUT
+import os
+from datetime import datetime, timezone
 import asyncio
-# --- Nouveaux Imports ---
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
 import os
 import uuid
-from collections import Counter # Pour compter facilement
-from src.shared.execution_task_graph_management import ExecutionTaskGraph # Assurez-vous de l'importer
+from collections import Counter
+from src.shared.execution_task_graph_management import ExecutionTaskGraph
 
 
 logger = logging.getLogger(__name__)
 
-# --- Initialisation de Firestore ---
-# firebase_admin s'authentifiera automatiquement via la variable d'environnement
 
-from src.shared.firebase_init import db # Importez le client db centralisé
+from src.shared.firebase_init import db
 if db is None:
     logger.critical("CRITICAL: Échec de l'obtention du client Firestore depuis firebase_init. Arrêt du serveur GRA.")
     exit(1)
 else:
     logger.info("GRA Server: Client Firestore obtenu avec succès depuis firebase_init.")
 
-# --- AJOUT : Configuration de l'URL publique du GRA ---
-# Cette URL sera celle à laquelle les autres services peuvent atteindre le GRA.
-# Dans un environnement cloud, elle pourrait être injectée via une variable d'env.
-# Pour le développement local, vous pouvez la coder en dur ou la mettre dans une var d'env.
 GRA_PUBLIC_URL = os.environ.get("GRA_PUBLIC_URL", "http://localhost:8000")
 GRA_SERVICE_REGISTRY_COLLECTION = "service_registry"
 GRA_CONFIG_DOCUMENT_ID = "gra_instance_config"
-GLOBAL_PLANS_FIRESTORE_COLLECTION = "global_plans" # Nom de la collection pour les plans globaux
+GLOBAL_PLANS_FIRESTORE_COLLECTION = "global_plans"
 
-# --- Modèles de données Pydantic pour la validation ---
-# Ce modèle accepte exactement ce que les agents envoient maintenant,
-# y compris les compétences (skills) que nous allons rajouter à l'envoi.
 class AgentRegistration(BaseModel):
     name: str = Field(..., alias="agent_name")
     public_url: str
     internal_url: str
-    skills: List[str] = [] # La liste des compétences, optionnelle pour l'instant
+    skills: List[str] = []
 
 class Artifact(BaseModel):
     task_id: str
@@ -55,24 +44,23 @@ class Artifact(BaseModel):
     agent_name: str
     content: Dict[str, Any] | str
 
-# --- NOUVEAUX Modèles Pydantic pour les Global Plans ---
 class GlobalPlanCreateRequest(BaseModel):
     objective: str = Field(..., min_length=1, description="Objectif brut soumis par l'utilisateur.")
-    user_id: Optional[str] = "default_user" # Optionnel, avec une valeur par défaut
+    user_id: Optional[str] = "default_user"
 
-class GlobalPlanResponse(BaseModel): # Réponse générique pour la création et la clarification
-    status: str # ex: "clarification_pending", "objective_clarified", "error", "max_clarification_attempts_reached"
+class GlobalPlanResponse(BaseModel):
+    status: str
     message: Optional[str] = None
     question: Optional[str] = None
     clarified_objective: Optional[str] = None
     task_type_estimation: Optional[str] = None
     global_plan_id: str
-    current_supervisor_state: Optional[str] = None # Pourrait être utile pour le frontend
+    current_supervisor_state: Optional[str] = None
 
 class UserClarificationRequest(BaseModel):
     user_response: str = Field(..., min_length=1, description="Réponse de l'utilisateur à une question de clarification.")
 
-class GlobalPlanDetailResponse(BaseModel): # Pour GET /global_plans/{global_plan_id}
+class GlobalPlanDetailResponse(BaseModel):
     global_plan_id: str
     user_id: str
     raw_objective: str
@@ -84,12 +72,11 @@ class GlobalPlanDetailResponse(BaseModel): # Pour GET /global_plans/{global_plan
     clarification_attempts: int = 0
     team1_plan_id: Optional[str] = None
     team2_execution_plan_id: Optional[str] = None 
-    created_at: str # ISO format string
-    updated_at: str # ISO format string
-    last_agent_response_artifact: Optional[Dict[str, Any]] = None # Pourrait être verbeux, mais utile pour debug
+    created_at: str
+    updated_at: str
+    last_agent_response_artifact: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
 
-# --- NOUVEAU Modèle Pydantic pour le résumé des plans globaux ---
 class GlobalPlanSummaryItem(BaseModel):
     global_plan_id: str
     raw_objective: str
@@ -98,23 +85,17 @@ class GlobalPlanSummaryItem(BaseModel):
     created_at: str
     updated_at: str
 
-# --- Endpoints du Registre d'Agents ---
-# --- AJOUT : Gestionnaire de durée de vie de l'application FastAPI ---
 from contextlib import asynccontextmanager
-# --- NOUVEAUX Modèles Pydantic pour le Front-End ---
 class NewPlanRequest(BaseModel):
     objective: str
 
 class PlanSummary(BaseModel):
     plan_id: str
     objective: str
-    status: str # ex: "running", "completed", "failed"
-    created_at: str | None = None  # Optionnel, si vous stockez cette info
+    status: str
+    created_at: str | None = None
 
-# --- NOUVEAU Modèle Pydantic pour la requête d'acceptation d'objectif ---
 class AcceptObjectiveRequest(BaseModel):
-    # L'utilisateur peut optionnellement fournir une version finale de l'objectif.
-    # S'il est None, GlobalSupervisorLogic utilisera le dernier objectif enrichi ou clarifié.
     user_final_objective: Optional[str] = None 
 
 class AgentTaskCountStat(BaseModel):
@@ -125,10 +106,10 @@ class Team1AgentTasksCountResponse(BaseModel):
     stats: List[AgentTaskCountStat]
     last_updated: str
 
-class AllAgentTaskStats(BaseModel): # Nouveau modèle pour une réponse plus globale
+class AllAgentTaskStats(BaseModel):
     agent_name: str
     task_count: int
-    source_type: str # "global_plan" ou "team1_plan"
+    source_type: str
 
 class AllAgentTasksStatsResponse(BaseModel):
     stats: List[AllAgentTaskStats]
@@ -138,7 +119,6 @@ class AllAgentTasksStatsResponse(BaseModel):
 async def lifespan(app: FastAPI):
     await publish_gra_location()
     yield
-    # Ajoutez ici tout nettoyage nécessaire lors de l'arrêt de l'application
 
 app = FastAPI(
     title="Gestionnaire de Ressources et d'Agents (GRA)",
@@ -147,12 +127,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Simple healthcheck endpoint for the frontend
 @app.get("/health")
 async def healthcheck():
     return {"status": "ok"}
 
-# Allow CORS for the React interface served on http://localhost:8080
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8080","https://orchestrai-hackathon.web.app","http://user_interaction_agent:8080:"],
@@ -160,7 +138,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# --- ROUTE /register MISE À JOUR ---
 @app.post("/register", status_code=201)
 async def register_agent(payload: AgentRegistration):
     """Point de terminaison pour que les agents puissent s'enregistrer."""
@@ -183,16 +160,14 @@ async def register_agent(payload: AgentRegistration):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# === CORRECTION DANS LA FONCTION CI-DESSOUS ===
 @app.post("/register", status_code=201)
 async def register_agent(payload: AgentRegistration):
     """Point de terminaison pour que les agents puissent s'enregistrer ou mettre à jour leur statut."""
     try:
-        # On utilise payload.name ici, car c'est le nom de l'attribut dans le modèle Pydantic
         agent_ref = db.collection("service_registry").document(payload.name)
         
         agent_data = {
-            "name": payload.name, # Utiliser payload.name
+            "name": payload.name,
             "public_url": payload.public_url,
             "internal_url": payload.internal_url,
             "skills": payload.skills,
@@ -201,17 +176,15 @@ async def register_agent(payload: AgentRegistration):
         
         await asyncio.to_thread(agent_ref.set, agent_data)
         
-        logger.info(f"Agent '{payload.name}' enregistré/mis à jour.") # Utiliser payload.name
-        return {"status": "success", "name": payload.name} # Utiliser payload.name
+        logger.info(f"Agent '{payload.name}' enregistré/mis à jour.")
+        return {"status": "success", "name": payload.name}
         
     except Exception as e:
-        logger.error(f"Erreur enregistrement agent '{payload.name}': {e}", exc_info=True) # Utiliser payload.name
+        logger.error(f"Erreur enregistrement agent '{payload.name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# Dans /app/src/services/gra/server.py
-# Fichier : /app/src/services/gra/server.py
 
-@app.get("/agents", response_model=List[Dict[str, Any]]) # On peut même spécifier que la réponse est une liste
+@app.get("/agents", response_model=List[Dict[str, Any]])
 async def get_agents(skill: Optional[str] = None):
     """
     Récupère les agents. Si une compétence ('skill') est fournie, filtre les résultats.
@@ -228,13 +201,9 @@ async def get_agents(skill: Optional[str] = None):
             query = agents_ref
 
         docs_snapshots = await asyncio.to_thread(list, query.stream())
-                # --- MODIFICATION ICI ---
         if not docs_snapshots:
             logger.warning(f"Aucun agent trouvé pour la compétence '{skill}'. Retour de 404.")
-            # Au lieu de retourner une réponse vide avec un statut 200,
-            # on lève une exception HTTP 404, ce qui est plus correct.
             raise HTTPException(status_code=404, detail=f"Aucun agent trouvé avec la compétence: {skill}")
-        # --- FIN DE LA MODIFICATION ---
    
         agents = []
         for doc in docs_snapshots:
@@ -244,39 +213,29 @@ async def get_agents(skill: Optional[str] = None):
                 agents.append(agent_data)
 
         logger.info(f"{len(agents)} agents trouvés pour la requête.")
-        # La ligne cruciale : on retourne bien la LISTE `agents`.
         return agents
- # --- MODIFICATION ICI ---
     except HTTPException as http_exc:
-        # Si c'est une HTTPException que nous avons levée (comme le 404),
-        # on la relève directement pour que FastAPI la traite correctement.
         raise http_exc
     except Exception as e:
-        # Pour toutes les autres erreurs imprévues (connexion à Firestore, etc.),
-        # on retourne une erreur 500.
         logger.error(f"Erreur interne lors de la recherche d'agent pour la compétence '{skill}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erreur interne du serveur lors de la recherche d'agent.")
-    # --- FIN DE LA MODIFICATION ---
     
 
 
-@app.post("/v1/global_plans", response_model=GlobalPlanResponse, status_code=202) # 202 Accepted
+@app.post("/v1/global_plans", response_model=GlobalPlanResponse, status_code=202)
 async def create_global_plan(plan_request: GlobalPlanCreateRequest):
     """
     Crée un nouveau plan global et initie la clarification de l'objectif.
     """
     logger.info(f"[GRA API] Requête de création de plan global reçue. Objectif: {plan_request.objective}")
     try:
-        supervisor = GlobalSupervisorLogic() # Instancié par requête
-        # La méthode start_new_global_plan est maintenant asynchrone
+        supervisor = GlobalSupervisorLogic()
         result = await supervisor.start_new_global_plan(
             raw_objective=plan_request.objective,
             user_id=plan_request.user_id
         )
-        # result est un dict comme: {"status": "...", "question": "...", "global_plan_id": "..."}
-        # Il faut s'assurer qu'il correspond à GlobalPlanResponse
         return GlobalPlanResponse(**result)
-    except ConnectionError as e: # Si le GRA ne peut pas être découvert par le superviseur
+    except ConnectionError as e:
         logger.error(f"[GRA API] Erreur de connexion lors de la création du plan: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Erreur de service: {str(e)}")
     except Exception as e:
@@ -303,8 +262,7 @@ async def respond_to_clarification_question(
         return GlobalPlanResponse(**result)
     except Exception as e:
         logger.error(f"[GRA API] Erreur traitement réponse utilisateur pour plan '{global_plan_id}': {e}", exc_info=True)
-        # Vérifier si le plan n'existe pas pour un 404 potentiel
-        if "non trouvé" in str(e).lower(): # Heuristique simple
+        if "non trouvé" in str(e).lower():
              raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
@@ -319,22 +277,13 @@ async def get_global_plan_details(
     logger.info(f"[GRA API] Demande de détails pour plan global '{global_plan_id}'")
     try:
         supervisor = GlobalSupervisorLogic()
-        # Nous devons ajouter cette méthode à GlobalSupervisorLogic
-        plan_details = await supervisor._load_global_plan_state(global_plan_id) # Utilise la méthode existante
+        plan_details = await supervisor._load_global_plan_state(global_plan_id)
         
         if not plan_details:
             raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
         
-        # S'assurer que la réponse correspond au modèle GlobalPlanDetailResponse
-        # Il faudra peut-être mapper les champs si _load_global_plan_state ne retourne pas exactement ce format.
-        # Pour l'instant, on suppose que _load_global_plan_state retourne un dict compatible.
-        # Ajoutons global_plan_id au dictionnaire s'il n'y est pas déjà (c'est la clé du doc)
         plan_details['global_plan_id'] = global_plan_id
         
-        # Vérifier les champs obligatoires pour GlobalPlanDetailResponse et fournir des valeurs par défaut si manquant
-        # pour éviter les erreurs Pydantic.
-        # Ceci est important car _load_global_plan_state retourne ce qui est dans la DB,
-        # qui pourrait ne pas avoir tous les champs si le plan est à une étape précoce.
         response_data = {
             "global_plan_id": plan_details.get('global_plan_id', global_plan_id),
             "user_id": plan_details.get('user_id', 'N/A'),
@@ -346,15 +295,15 @@ async def get_global_plan_details(
             "conversation_history": plan_details.get('conversation_history', []),
             "clarification_attempts": plan_details.get('clarification_attempts', 0),
             "team1_plan_id": plan_details.get('team1_plan_id'),
-            "team2_execution_plan_id": plan_details.get('team2_execution_plan_id'), # <--- VÉRIFIEZ/AJOUTEZ CETTE LIGNE
-            "created_at": plan_details.get('created_at', datetime.now(timezone.utc).isoformat()), # Fallback
-            "updated_at": plan_details.get('updated_at', datetime.now(timezone.utc).isoformat()), # Fallback
+            "team2_execution_plan_id": plan_details.get('team2_execution_plan_id'),
+            "created_at": plan_details.get('created_at', datetime.now(timezone.utc).isoformat()),
+            "updated_at": plan_details.get('updated_at', datetime.now(timezone.utc).isoformat()),
             "last_agent_response_artifact": plan_details.get('last_agent_response_artifact'),
             "error_message": plan_details.get('error_message')
         }
         return GlobalPlanDetailResponse(**response_data)
         
-    except HTTPException: # Re-lever les exceptions HTTP pour que FastAPI les gère
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[GRA API] Erreur récupération détails plan '{global_plan_id}': {e}", exc_info=True)
@@ -372,7 +321,6 @@ async def get_all_global_plans_summary():
         logger.error("[GRA API] Client Firestore non disponible pour get_all_global_plans_summary.")
         raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
     try:
-        # Récupérer la liste des documents dans un thread pour éviter de bloquer l'event loop
         docs = await asyncio.to_thread(
             lambda: list(
                 db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION)
@@ -381,11 +329,11 @@ async def get_all_global_plans_summary():
             )
         )
 
-        for doc in docs:  # doc est un DocumentSnapshot
+        for doc in docs:
             plan_data = doc.to_dict()
-            if plan_data: # S'assurer que les données existent
+            if plan_data:
                 summaries.append(GlobalPlanSummaryItem(
-                    global_plan_id=doc.id, # L'ID du document est l'ID du plan
+                    global_plan_id=doc.id,
                     raw_objective=plan_data.get("raw_objective", "Objectif non disponible"),
                     current_supervisor_state=plan_data.get("current_supervisor_state", "État inconnu"),
                     task_type_estimation=plan_data.get("task_type_estimation"),
@@ -399,13 +347,11 @@ async def get_all_global_plans_summary():
         logger.error(f"[GRA API] Erreur lors de la récupération des résumés de plans globaux: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
-# --- Endpoints du Magasin d'Artefacts ---
 
 @app.post("/artifacts", status_code=201)
 async def store_artifact(artifact: Artifact):
     """Stocke un artefact et retourne son ID unique."""
     try:
-        # Ajoute l'artefact à la collection, Firestore génère un ID unique
         update_time, doc_ref = db.collection("artifacts").add(artifact.model_dump())
         logger.info(f"Artefact stocké avec l'ID: {doc_ref.id}")
         return {"status": "success", "artifact_id": doc_ref.id}
@@ -426,7 +372,6 @@ async def get_artifact(artifact_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- AJOUT : Fonction pour publier l'URL du GRA ---
 async def publish_gra_location():
     try:
         doc_ref = db.collection(GRA_SERVICE_REGISTRY_COLLECTION).document(GRA_CONFIG_DOCUMENT_ID)
@@ -439,24 +384,19 @@ async def publish_gra_location():
         logger.info(f"URL du GRA ({GRA_PUBLIC_URL}) publiée dans Firestore sur '{GRA_SERVICE_REGISTRY_COLLECTION}/{GRA_CONFIG_DOCUMENT_ID}'.")
     except Exception as e:
         logger.error(f"Impossible de publier l'URL du GRA dans Firestore : {e}")
-# -------------------------------------------------
-# --- NOUVEAUX Endpoints pour le Front-End des Plans ---
 
-@app.post("/plans", status_code=202) # 202 Accepted car le traitement est asynchrone
+@app.post("/plans", status_code=202)
 async def create_new_plan_endpoint(plan_request: NewPlanRequest):
     """Crée un nouveau plan et démarre son traitement."""
-    from src.orchestrators.planning_supervisor_logic import PlanningSupervisorLogic # Import local
+    from src.orchestrators.planning_supervisor_logic import PlanningSupervisorLogic
     
     plan_id = f"plan_{uuid.uuid4().hex[:12]}"
     logger.info(f"[GRA] Requête de création de plan reçue. ID: {plan_id}, Objectif: {plan_request.objective}")
     
     try:
-        # Le superviseur est instancié ici pour ce plan spécifique
         supervisor = PlanningSupervisorLogic(max_revisions=2)
         supervisor.create_new_plan(raw_objective=plan_request.objective, plan_id=plan_id)
         
-        # Lancer process_plan en tâche de fond pour ne pas bloquer la requête HTTP
-        # Note : Pour une application de production, un vrai gestionnaire de tâches (Celery, RQ) serait mieux.
         asyncio.create_task(supervisor.process_plan(plan_id=plan_id))
         
         logger.info(f"[GRA] Plan '{plan_id}' créé et traitement démarré en arrière-plan.")
@@ -470,25 +410,16 @@ async def get_all_plans_summary():
     """Récupère un résumé de tous les plans, triés par date de création descendante."""
     summaries: List[PlanSummary] = []
     try:
-        # 'task_graphs' est la collection où les détails des plans sont stockés
         plans_ref = db.collection("task_graphs").stream() 
         
         for doc in plans_ref:
             plan_data = doc.to_dict()
             plan_id = doc.id
-            # Le nœud racine du plan a le même ID que le plan lui-même
             root_node_data = plan_data.get("nodes", {}).get(plan_id, {})
             
-            created_at_timestamp = "N/A" # Valeur par défaut
+            created_at_timestamp = "N/A"
             history = root_node_data.get("history", [])
             if history and isinstance(history, list) and len(history) > 0:
-                # Le premier enregistrement de l'historique devrait correspondre à la création/soumission
-                # ou à la première mise à jour d'état, qui inclut un timestamp.
-                # Si la tâche racine est créée avec un état SUBMITTED, son premier history entry
-                # lors du passage à WORKING ou COMPLETED aura le timestamp.
-                # Pour être plus précis, on pourrait chercher le timestamp du premier état "submitted"
-                # ou simplement prendre le premier de la liste si la structure est cohérente.
-                # Prenons le timestamp du tout premier événement de l'historique du nœud racine.
                 first_event = history[0]
                 created_at_timestamp = first_event.get("timestamp", "N/A")
 
@@ -496,13 +427,11 @@ async def get_all_plans_summary():
                 plan_id=plan_id,
                 objective=root_node_data.get("objective", "Objectif non trouvé"),
                 status=root_node_data.get("state", "inconnu"),
-                created_at=created_at_timestamp # <-- Le timestamp est maintenant inclus
+                created_at=created_at_timestamp
             ))
             
         logger.info(f"[GRA] {len(summaries)} plans résumés récupérés bruts.")
         
-        # Trier la liste summaries par created_at en ordre descendant
-        # Gérer les cas où created_at pourrait être "N/A" ou None pour éviter les erreurs de tri
         summaries.sort(key=lambda p: p.created_at if p.created_at and p.created_at != "N/A" else "", reverse=True)
         
         logger.info(f"[GRA] {len(summaries)} plans résumés triés retournés.")
@@ -515,33 +444,28 @@ async def get_all_plans_summary():
 async def get_plan_details_endpoint(plan_id: str):
     """Récupère les détails complets (TaskGraph) d'un plan spécifique."""
     try:
-        # La classe TaskGraph elle-même peut lire son document
-        from src.shared.task_graph_management import TaskGraph # Import local
+        from src.shared.task_graph_management import TaskGraph
         graph_manager = TaskGraph(plan_id=plan_id)
-        plan_data = graph_manager.as_dict() # Utilise la méthode existante qui lit depuis Firestore
-        if not plan_data.get("nodes"): # Vérifie si le plan existe vraiment ou est vide
+        plan_data = graph_manager.as_dict()
+        if not plan_data.get("nodes"):
             raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' non trouvé ou vide.")
         logger.info(f"[GRA] Détails du plan '{plan_id}' récupérés.")
         return plan_data
     except HTTPException:
-        raise # Re-lever les exceptions HTTP pour que FastAPI les gère
+        raise
     except Exception as e:
         logger.error(f"[GRA] Erreur lors de la récupération des détails du plan '{plan_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# Dans src/services/gra/server.py
 
-# ... (imports et autres routes) ...
 
 @app.get("/agents_status")
 async def get_agents_status_endpoint():
     """Récupère la liste des agents enregistrés et leur statut de santé."""
     agents_list: List[Dict[str, Any]] = []
     try:
-        # On utilise "service_registry" comme collection, comme le montre votre screenshot
         docs = await asyncio.to_thread(lambda: list(db.collection("service_registry").stream()))
         
-        # On exclut le document de configuration du GRA lui-même
         agents_list = [doc.to_dict() for doc in docs if doc.id != 'gra_instance_config']
         
     except Exception as e:
@@ -550,23 +474,19 @@ async def get_agents_status_endpoint():
 
     async with httpx.AsyncClient() as client:
         async def check(agent_data: Dict[str, Any]) -> bool:
-            # === CORRECTION PRINCIPALE ICI ===
-            # On utilise 'internal_url' pour le health check entre conteneurs.
             url_to_check = agent_data.get("internal_url")
             
             if not url_to_check:
                 logger.warning(f"Agent {agent_data.get('name')} n'a pas d'internal_url pour le health check.")
                 return False
             try:
-                # On peut appeler la route /health que nous avons ajoutée
                 health_url = url_to_check.rstrip("/") + "/health"
-                res = await client.get(health_url, timeout=2.0) # Timeout plus court
+                res = await client.get(health_url, timeout=2.0)
                 return res.status_code == 200
             except Exception as e:
                 logger.warning(f"Health check a échoué pour {agent_data.get('name')} à {health_url}: {e}")
                 return False
 
-        # On passe le dictionnaire complet de l'agent à la fonction check
         results = await asyncio.gather(*(check(agent) for agent in agents_list))
 
     for agent, ok in zip(agents_list, results):
@@ -577,11 +497,10 @@ async def get_agents_status_endpoint():
 
 
 
-# --- NOUVEL Endpoint pour accepter l'objectif et lancer TEAM 1 ---
 @app.post("/v1/global_plans/{global_plan_id}/accept_and_plan", response_model=GlobalPlanResponse)
 async def accept_objective_and_trigger_team1_planning(
     global_plan_id: str = Path(..., description="L'ID du plan global."),
-    request_body: AcceptObjectiveRequest = Body(None, description="Optionnellement, l'objectif finalisé par l'utilisateur.") # None comme défaut si corps vide
+    request_body: AcceptObjectiveRequest = Body(None, description="Optionnellement, l'objectif finalisé par l'utilisateur.")
 ):
     """
     Permet à l'utilisateur d'accepter l'objectif actuel (potentiellement enrichi ou modifié)
@@ -592,17 +511,12 @@ async def accept_objective_and_trigger_team1_planning(
     
     try:
         supervisor = GlobalSupervisorLogic()
-        # La méthode accept_objective_and_initiate_team1 s'occupe de choisir le meilleur objectif
-        # si user_final_objective est None.
         result = await supervisor.accept_objective_and_initiate_team1(
             global_plan_id=global_plan_id,
             user_provided_objective=final_objective_from_user 
         )
-        # La réponse de accept_objective_and_initiate_team1 devrait déjà être compatible
-        # avec GlobalPlanResponse (ou nous l'ajusterons si besoin).
-        # Elle devrait indiquer un statut comme OBJECTIVE_CLARIFIED ou TEAM1_PLANNING_INITIATED
         return GlobalPlanResponse(**result)
-    except FileNotFoundError: # Si _load_global_plan_state retourne None et que accept_objective... le gère mal
+    except FileNotFoundError:
         logger.warning(f"[GRA API] Tentative d'accepter l'objectif pour un plan non trouvé: {global_plan_id}")
         raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
     except Exception as e:
@@ -636,10 +550,9 @@ async def get_team1_agent_tasks_count_stats():
         raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
 
     agent_task_counts = Counter()
-    processed_task_ids_for_counting = set() # Pour éviter de compter une tâche plusieurs fois si elle apparaît dans plusieurs snapshots
+    processed_task_ids_for_counting = set()
 
     try:
-        # 1. Récupérer tous les plans globaux pour trouver les team1_plan_id
         global_plans_ref = db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION)
         global_plans_docs = await asyncio.to_thread(list, global_plans_ref.stream())
 
@@ -648,7 +561,6 @@ async def get_team1_agent_tasks_count_stats():
             team1_plan_id = global_plan_data.get("team1_plan_id")
 
             if team1_plan_id:
-                # 2. Pour chaque team1_plan_id, récupérer son TaskGraph
                 task_graph_doc_ref = db.collection("task_graphs").document(team1_plan_id)
                 task_graph_doc = await asyncio.to_thread(task_graph_doc_ref.get)
 
@@ -656,16 +568,13 @@ async def get_team1_agent_tasks_count_stats():
                     task_graph_data = task_graph_doc.to_dict()
                     nodes = task_graph_data.get("nodes", {})
                     for task_id, task_node_data in nodes.items():
-                        # On ne compte que les tâches qui ont un agent assigné et sont dans un état terminal.
-                        # Et qui n'ont pas déjà été comptées (au cas où, bien que peu probable ici).
                         agent_name = task_node_data.get("assigned_agent")
                         task_state = task_node_data.get("state")
 
                         if agent_name and task_state in [
-                            "completed", "failed", # États terminaux de TaskState dans task_graph_management.py
-                            "cancelled", "unable_to_complete" # Autres états terminaux potentiels
+                            "completed", "failed",
+                            "cancelled", "unable_to_complete"
                         ] and task_id not in processed_task_ids_for_counting:
-                            # On s'intéresse aux agents de la TEAM 1
                             if agent_name in ["ReformulatorAgentServer", "EvaluatorAgentServer", "ValidatorAgentServer"]:
                                 agent_task_counts[agent_name] += 1
                                 processed_task_ids_for_counting.add(task_id)
@@ -693,49 +602,23 @@ async def get_all_agent_tasks_count_stats():
         logger.error("[GRA API] Client Firestore non disponible pour get_all_agent_tasks_count_stats.")
         raise HTTPException(status_code=500, detail="Service de base de données non disponible.")
 
-    # Utiliser des compteurs séparés ou un compteur avec des clés composites
-    agent_task_counts = Counter() # Clé sera (agent_name, source_type)
+    agent_task_counts = Counter()
 
-    processed_task_ids_for_counting = set() # Pour éviter double comptage si une logique complexe le permettait
+    processed_task_ids_for_counting = set()
 
     try:
-        # 1. Traiter les tâches du UserInteractionAgent depuis les global_plans
-        #    On pourrait inférer l'achèvement d'une "tâche" de clarification par le UserInteractionAgent
-        #    en regardant le nombre de fois qu'un global_plan est passé à CLARIFICATION_PENDING_USER_INPUT
-        #    ou quand OBJECTIVE_CLARIFIED est atteint après des interactions.
-        #    Pour une approche plus directe, si le UserInteractionAgent crée des "tâches" A2A réelles
-        #    qui sont tracées, on les chercherait. Actuellement, son "travail" est plus implicite
-        #    dans l'état du global_plan.
-        #
-        #    Simplification : On va se baser sur le nombre de fois où l'agent UI a été sollicité et a répondu
-        #    (ce qui est stocké dans `last_agent_response_artifact` et `clarification_attempts`).
-        #    Ou, si l'on considère chaque appel A2A au UserInteractionAgent comme une "tâche traitée".
-        #    Adoptons une approche où chaque réponse de l'agent UI est comptée.
 
         global_plans_ref = db.collection(GLOBAL_PLANS_FIRESTORE_COLLECTION)
         global_plans_docs = await asyncio.to_thread(list, global_plans_ref.stream())
 
         for global_plan_doc in global_plans_docs:
             global_plan_data = global_plan_doc.to_dict()
-            # Chaque fois qu'il y a un last_agent_response_artifact, on peut considérer que l'agent UI a "traité" une demande.
-            # Ou, plus simplement, le nombre de clarification_attempts peut donner une idée.
-            # Si `clarification_attempts` > 0, l'agent UI a travaillé au moins une fois.
-            # Si l'état est `OBJECTIVE_CLARIFIED` ou `TEAM1_PLANNING_INITIATED`, et `clarification_attempts` > 0
-            # on peut compter cela comme une "tâche complétée" pour UserInteractionAgent.
-            # Si l'état est `FAILED_MAX_CLARIFICATION_ATTEMPTS` ou `FAILED_AGENT_ERROR` après des tentatives,
-            # on peut compter cela comme un "échec".
 
             attempts = global_plan_data.get("clarification_attempts", 0)
-            if attempts > 0 : # Signifie que l'agent UI a été appelé au moins une fois
-                 # On pourrait affiner cela en vérifiant si l'objectif a été clarifié ou si on a atteint max_attempts
-                 # Pour la simplicité, on compte chaque "cycle" de clarification comme une tâche.
-                 # Ou, mieux, si l'agent UserInteractionAgent était un agent A2A standard dont on suivait les tâches,
-                 # on lirait ses tâches. Ici, on se base sur les traces laissées dans global_plan.
-                 # On va assumer pour cette stat que chaque appel (tentative) est une "tâche".
+            if attempts > 0 :
                  agent_task_counts[("UserInteractionAgentServer", "global_plan_clarification")] += attempts
 
 
-            # 2. Traiter les tâches des agents de TEAM 1 depuis les task_graphs
             team1_plan_id = global_plan_data.get("team1_plan_id")
             if team1_plan_id:
                 task_graph_doc_ref = db.collection("task_graphs").document(team1_plan_id)
@@ -748,7 +631,6 @@ async def get_all_agent_tasks_count_stats():
                         agent_name = task_node_data.get("assigned_agent")
                         task_state = task_node_data.get("state")
 
-                        # Agents de TEAM 1 spécifiques
                         team1_agents = ["ReformulatorAgentServer", "EvaluatorAgentServer", "ValidatorAgentServer"]
 
                         if agent_name in team1_agents and task_state in [
@@ -777,23 +659,20 @@ async def get_execution_task_graph_details_endpoint(execution_plan_id: str):
     """Récupère les détails complets (ExecutionTaskGraph) d'un plan d'exécution spécifique."""
     try:
         graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id)
-        plan_data = await asyncio.to_thread(graph_manager.as_dict) # Utiliser to_thread pour les opérations bloquantes de Firestore
+        plan_data = await asyncio.to_thread(graph_manager.as_dict)
         
-        # Vérifier si le graphe existe réellement ou est vide après la lecture
-        if not plan_data or not plan_data.get("nodes"): # Si "nodes" est vide ou absent, le graphe n'a pas été peuplé
-            # Vérifier aussi le overall_status pour voir s'il est juste en PENDING_DECOMPOSITION
+        if not plan_data or not plan_data.get("nodes"):
             if plan_data and plan_data.get("overall_status") in ["INITIALIZING", "PENDING_DECOMPOSITION"]:
                  logger.info(f"[GRA] Plan d'exécution '{execution_plan_id}' trouvé mais en attente de décomposition.")
-                 # Retourner quand même les données pour que le frontend puisse afficher le statut
             else:
                 logger.warning(f"[GRA] Plan d'exécution '{execution_plan_id}' non trouvé ou vide.")
                 raise HTTPException(status_code=404, detail=f"Plan d'exécution '{execution_plan_id}' non trouvé ou vide.")
         
         logger.info(f"[GRA] Détails du plan d'exécution '{execution_plan_id}' récupérés.")
         return plan_data
-    except HTTPException: # Re-lever les exceptions HTTP
+    except HTTPException:
         raise
-    except ValueError as ve: # Par exemple, si execution_plan_id est vide dans le constructeur de ExecutionTaskGraph
+    except ValueError as ve:
         logger.error(f"[GRA] Erreur de valeur pour get_execution_task_graph_details_endpoint: {ve}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
@@ -822,28 +701,21 @@ async def get_agent_stats():
 
 
 if __name__ == "__main__":
-    # --- MODIFICATION POUR LA COMPATIBILITÉ CLOUD RUN ---
     
-    # Cloud Run (et d'autres fournisseurs de cloud) injecte une variable d'environnement PORT.
-    # Votre serveur DOIT écouter sur le port spécifié par cette variable.
-    # De plus, il doit écouter sur l'hôte '0.0.0.0' pour être accessible depuis l'extérieur du conteneur.
     
-    is_production = 'K_SERVICE' in os.environ # 'K_SERVICE' est une variable d'environnement standard dans Cloud Run
+    is_production = 'K_SERVICE' in os.environ
     
     if is_production:
-        # En production (Cloud Run), lire le port depuis la variable d'environnement
-        port = int(os.environ.get("PORT", 8000)) # 8080 est un fallback courant si PORT n'est pas défini
+        port = int(os.environ.get("PORT", 8000))
         host = "0.0.0.0"
         log_level = "info"
         reload_flag = False
         logger.info(f"Démarrage du serveur GRA en mode PRODUCTION sur {host}:{port}...")
     else:
-        # En développement local, garder votre configuration actuelle
         port = 8000
         host = "localhost"
         log_level = "info"
-        reload_flag = True # Le rechargement est utile en développement
+        reload_flag = True
         logger.info(f"Démarrage du serveur GRA en mode DÉVELOPPEMENT sur {host}:{port}...")
 
     uvicorn.run("src.services.gra.server:app", host=host, port=port, log_level=log_level, reload=reload_flag)
-    # --- FIN DE LA MODIFICATION ---
