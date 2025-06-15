@@ -154,9 +154,10 @@ input {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.25rem 0.5rem;
+  padding: 0.15rem 0.3rem;
   text-align: center;
-  min-width: 70px;
+  min-width: 50px;
+  font-size: 0.8rem;
 }
 
 .metric-tile.success {
@@ -307,4 +308,32 @@ input {
 }
 .json-viewer {
   margin-left: 0.5rem;
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.spinner {
+  border: 4px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
