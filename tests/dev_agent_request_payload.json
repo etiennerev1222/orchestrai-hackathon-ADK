@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "method": "message/send",
+  "params": {
+    "message": {
+      "contextId": "test-manual-context-123",
+      "messageId": "msg-a8e5f1d7-2c3b-4e0d-8a1c-9b6f7e8d9c0b",
+      "role": "user",
+      "parts": [
+        {
+          "text": "{\n  \"action\": \"generate_code_and_write_file\",\n  \"file_path\": \"/app/sum_util.py\",\n  \"objective\": \"Create a Python function named 'sum_numbers' that takes two arguments and returns their sum.\",\n  \"local_instructions\": [\"Ensure it handles both integers and floats.\", \"Add docstrings and type hints.\"],\n  \"acceptance_criteria\": [\"sum_numbers(2, 3) should return 5\", \"sum_numbers(2.5, 3.5) should return 6.0\"],\n  \"environment_id\": \"my-test-env-001\",\n  \"current_state\": \"\",\n  \"last_action_result\": {}\n}"
+        }
+      ]
+    },
+    "skillId": "coding_python"
+  },
+  "id": "1"
+}

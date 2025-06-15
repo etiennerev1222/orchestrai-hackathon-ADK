@@ -45,8 +45,6 @@ function configure() {
             local DOCKER_CMD='["python", "src/services/gra/server.py"]'
         else
             local PUBLIC_PORT=$port_counter; local INTERNAL_PORT=8080
-            # --- MODIFICATION CLÉ ICI ---
-            # On lance comme un module pour que les imports relatifs fonctionnent
             local DOCKER_CMD='["python", "-m", "src.agents.'"$COMPONENT"'.server"]'
             port_counter=$((port_counter + 1))
         fi
@@ -60,7 +58,6 @@ COPY src /app/src
 ENV PYTHONPATH=/app
 CMD ${DOCKER_CMD}
 EOF
-        # La configuration docker-compose reste la même
         cat <<EOF >> "$DOCKER_COMPOSE_PATH"
   ${COMPONENT}:
     build:
@@ -86,6 +83,7 @@ EOF
 
     echo "✅ ÉTAPE 1 TERMINÉE : Configuration générée pour Python 3.11 et Vertex AI."
 }
+
 # ==============================================================================
 # FONCTION 2 : CONSTRUCTION DES IMAGES DOCKER
 # ==============================================================================
@@ -114,7 +112,6 @@ function push_images() {
     echo "--- ÉTAPE 3: PUSH DES IMAGES VERS ARTIFACT REGISTRY ---"
     
     echo "    -> Vérification de l'authentification gcloud..."
-    # Petite vérification pour s'assurer que l'utilisateur est authentifié
     gcloud auth print-access-token > /dev/null || (echo "Erreur: Non authentifié sur gcloud. Lancez 'gcloud auth login' et 'gcloud auth configure-docker ${GCR_HOSTNAME}'." && exit 1)
     
     if [ ! -d "$BUILD_DIR" ]; then
@@ -130,25 +127,39 @@ function push_images() {
     echo "✅ ÉTAPE 3 TERMINÉE : Toutes les images ont été poussées vers ${GCR_HOSTNAME}."
 }
 
-# --- Logique principale du script ---
-if [ -z "$1" ]; then
-    echo "Usage: ./deployment.sh [commande]"
-    echo ""
-    echo "Commandes:"
-    echo "  configure   Génère les fichiers de configuration."
-    echo "  build       Construit les images Docker."
-    echo "  push        Pousse les images vers GCP."
-    echo "  deploy      Déploie les services sur GCP Cloud Run."
-    echo "  deploy-one  Déploie un SEUL agent. ex: ./deployment.sh deploy-one user_interaction_agent"    
-    echo "  all         Exécute configure, build, push, puis deploy."
-    exit 1
-fi
+# ==============================================================================
+# FONCTION UTILITAIRE : Récupérer l'endpoint GKE
+# ==============================================================================
+function get_gke_cluster_endpoint() {
+    local cluster_name="dev-orchestra-cluster"
+    local gke_zone="europe-west1-b"
+
+    echo "    -> Récupération de l'endpoint du cluster GKE '${cluster_name}'..."
+    GKE_ENDPOINT=$(gcloud container clusters describe "${cluster_name}" \
+        --zone "${gke_zone}" \
+        --format="value(endpoint)" \
+        --project="${GCP_PROJECT_ID}" 2>/dev/null)
+    
+    if [ -z "$GKE_ENDPOINT" ]; then
+        echo "Erreur: Impossible de récupérer l'endpoint du cluster GKE. Le cluster n'existe peut-être pas ou n'est pas prêt, ou les permissions sont insuffisantes."
+        exit 1
+    fi
+    echo "    ✅ Endpoint GKE : ${GKE_ENDPOINT}"
+}
+
+# ==============================================================================
+# FONCTION 4 : DÉPLOIEMENT SUR GCP CLOUD RUN (Mode Vertex AI)
+# ==============================================================================
 function deploy_gcp() {
     echo ""
     echo "--- ÉTAPE 4: DÉPLOIEMENT SUR GCP CLOUD RUN (Mode Vertex AI) ---"
 
-    # Définition des variables d'environnement de base pour Vertex AI
-    local VERTEX_ENV_VARS="GCP_PROJECT_ID=${GCP_PROJECT_ID},GCP_REGION=${GCP_REGION}"
+    local BASE_ENV_VARS="GCP_PROJECT_ID=${GCP_PROJECT_ID},GCP_REGION=${GCP_REGION}"
+    
+    get_gke_cluster_endpoint
+    local COMMON_AGENT_ENV_VARS="${BASE_ENV_VARS},GKE_CLUSTER_ENDPOINT=${GKE_ENDPOINT}"
+    
+    local CONNECTOR_NAME="my-vpc-connector" # Assurez-vous que ce nom correspond à votre connecteur VPC
 
     # --- Déploiement du GRA en premier ---
     echo "    -> Déploiement du 'gra-server'..."
@@ -158,7 +169,7 @@ function deploy_gcp() {
       --region=${GCP_REGION} \
       --allow-unauthenticated \
       --port=8000 \
-      --set-env-vars="${VERTEX_ENV_VARS}" \
+      --set-env-vars="${COMMON_AGENT_ENV_VARS}" \
       --project=${GCP_PROJECT_ID}
     
     local GRA_CLOUD_RUN_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
@@ -170,7 +181,7 @@ function deploy_gcp() {
     
     gcloud run services update gra-server \
         --region=${GCP_REGION} \
-        --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+        --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
         --project=${GCP_PROJECT_ID}
     echo "    -> Mise à jour de 'gra-server' avec ses URLs...Terminée."
             
@@ -180,17 +191,16 @@ function deploy_gcp() {
         local AGENT_SERVICE_NAME=${AGENT_NAME//_/-}
         echo "        -> Déploiement de '${AGENT_SERVICE_NAME}'..."
 
-        # MODIFICATION CLÉ ICI : La première commande ne passe que les variables déjà connues.
         gcloud run deploy ${AGENT_SERVICE_NAME} \
           --image="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_REPO_NAME}/${AGENT_NAME}:latest" \
           --platform=managed \
           --region=${GCP_REGION} \
-          --allow-unauthenticated \
+          --no-allow-unauthenticated \
           --port=8080 \
-          --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+          --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+          --vpc-connector="${CONNECTOR_NAME}" \
           --project=${GCP_PROJECT_ID}
         
-        # On récupère l'URL publique de l'agent qui vient d'être créé
         local AGENT_PUBLIC_URL=$(gcloud run services describe ${AGENT_SERVICE_NAME} --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
         if [ -z "$AGENT_PUBLIC_URL" ]; then
             echo "Erreur : Impossible de récupérer l'URL pour ${AGENT_SERVICE_NAME}."
@@ -199,10 +209,9 @@ function deploy_gcp() {
 
         echo "        -> Mise à jour de '${AGENT_SERVICE_NAME}' avec ses URLs..."
         
-        # La commande 'update' ajoute les variables d'URL maintenant qu'elles existent.
         gcloud run services update ${AGENT_SERVICE_NAME} \
             --region=${GCP_REGION} \
-            --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
+            --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
             --project=${GCP_PROJECT_ID}
 
         echo "        ✅ '${AGENT_SERVICE_NAME}' déployé et configuré."
@@ -229,7 +238,6 @@ function deploy_single_agent() {
         exit 1
     fi
 
-    # Vérification optionnelle mais recommandée que le nom de l'agent est valide
     if ! [[ " ${AGENTS[@]} " =~ " ${AGENT_NAME_TO_DEPLOY} " ]]; then
         echo "Erreur : Le nom d'agent '${AGENT_NAME_TO_DEPLOY}' n'est pas dans la liste des agents valides."
         exit 1
@@ -238,7 +246,12 @@ function deploy_single_agent() {
     echo ""
     echo "--- DÉPLOIEMENT DE L'AGENT UNIQUE : ${AGENT_NAME_TO_DEPLOY} ---"
 
-    # 1. Récupérer l'URL du GRA, car elle est nécessaire pour les agents
+    get_gke_cluster_endpoint
+    local BASE_ENV_VARS="GCP_PROJECT_ID=${GCP_PROJECT_ID},GCP_REGION=${GCP_REGION}"
+    local COMMON_AGENT_ENV_VARS="${BASE_ENV_VARS},GKE_CLUSTER_ENDPOINT=${GKE_ENDPOINT}"
+    
+    local CONNECTOR_NAME="my-vpc-connector" # Assurez-vous que ce nom correspond à votre connecteur VPC
+
     echo "    -> Récupération de l'URL du GRA..."
     local GRA_CLOUD_RUN_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
     if [ -z "$GRA_CLOUD_RUN_URL" ]; then
@@ -247,18 +260,16 @@ function deploy_single_agent() {
     fi
     echo "    -> URL du GRA : ${GRA_CLOUD_RUN_URL}"
 
-    # 2. Logique de déploiement copiée de la fonction deploy_gcp
-    local AGENT_SERVICE_NAME=${AGENT_NAME_TO_DEPLOY//_/-}
-    local VERTEX_ENV_VARS="GCP_PROJECT_ID=${GCP_PROJECT_ID},GCP_REGION=${GCP_REGION}"
-    
-    echo "    -> Lancement du déploiement de '${AGENT_SERVICE_NAME}'..."
+    echo "    -> Lancement du déploiement de '${AGENT_SERVICE_NAME}'..." # Corrected: AGENT_SERVICE_NAME was not set
+    local AGENT_SERVICE_NAME=${AGENT_NAME_TO_DEPLOY//_/-} # Set AGENT_SERVICE_NAME here
     gcloud run deploy ${AGENT_SERVICE_NAME} \
       --image="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_REPO_NAME}/${AGENT_NAME_TO_DEPLOY}:latest" \
       --platform=managed \
       --region=${GCP_REGION} \
-      --allow-unauthenticated \
+      --no-allow-unauthenticated \
       --port=8080 \
-      --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+      --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+      --vpc-connector="${CONNECTOR_NAME}" \
       --project=${GCP_PROJECT_ID}
     
     local AGENT_PUBLIC_URL=$(gcloud run services describe ${AGENT_SERVICE_NAME} --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
@@ -270,7 +281,7 @@ function deploy_single_agent() {
     echo "    -> Mise à jour de '${AGENT_SERVICE_NAME}' avec ses URLs publiques..."
     gcloud run services update ${AGENT_SERVICE_NAME} \
         --region=${GCP_REGION} \
-        --set-env-vars="${VERTEX_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
+        --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
         --project=${GCP_PROJECT_ID}
 
     echo "    ✅ Agent '${AGENT_SERVICE_NAME}' déployé et configuré avec l'URL : ${AGENT_PUBLIC_URL}"
@@ -295,7 +306,6 @@ case "$1" in
     push) push_images ;;
     deploy) deploy_gcp ;;
     deploy-one)
-        # On passe le deuxième argument ($2) à notre nouvelle fonction
         deploy_single_agent "$2"
         ;;
     deploy_frontend) deploy_frontend ;;

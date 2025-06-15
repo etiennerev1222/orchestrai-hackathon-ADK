@@ -20,6 +20,8 @@ from src.agents.testing_agent.logic import AGENT_SKILL_SOFTWARE_TESTING
 from src.agents.development_agent.logic import AGENT_SKILL_CODING_PYTHON
 from src.agents.decomposition_agent.logic import AGENT_SKILL_DECOMPOSE_EXECUTION_PLAN
 
+from src.services.environment_manager.environment_manager import EnvironmentManager # <--- ADD THIS
+
 logger = logging.getLogger(__name__) # Logger au niveau du module
 
 class ExecutionSupervisorLogic:
@@ -48,6 +50,9 @@ class ExecutionSupervisorLogic:
             if not logging.getLogger().hasHandlers():
                 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self.logger.info(f"ExecutionSupervisorLogic initialisé pour global_plan '{global_plan_id}'. Execution plan ID: '{self.execution_plan_id}'")
+        self.environment_manager = EnvironmentManager() # <--- ADD THIS
+        self.plan_environment_id = None # Store the environment ID for this entire execution plan
+
 
     async def initialize_and_decompose_plan(self):
         """
@@ -202,6 +207,12 @@ class ExecutionSupervisorLogic:
             "task_type": task_node.task_type.value,
             "assigned_skill": task_node.assigned_agent_type 
         }
+        # --- NEW: Pass the environment_id to the agent ---
+        if self.plan_environment_id:
+            input_payload["environment_id"] = self.plan_environment_id
+            self.logger.info(f"[{self.execution_plan_id}] Passing environment_id '{self.plan_environment_id}' to task {task_node.id}")
+        else:
+            self.logger.warning(f"[{self.execution_plan_id}] No plan_environment_id set for task {task_node.id}. Agent might fail if it needs an environment.")
 
         if task_node.task_type == ExecutionTaskType.EXPLORATORY:
             available_skills = await self._get_all_available_execution_skills_from_gra()
@@ -428,6 +439,14 @@ class ExecutionSupervisorLogic:
         self.logger.info(f"[{self.execution_plan_id}] Fin du cycle de traitement d'exécution.")
 
     async def run_full_execution(self):
+        # Create environment for this plan
+        self.plan_environment_id = await self.environment_manager.create_isolated_environment(self.execution_plan_id)
+        if not self.plan_environment_id:
+            self.logger.error(f"[{self.execution_plan_id}] Failed to create dedicated environment. Aborting execution.")
+            self.task_graph.set_overall_status("FAILED_ENVIRONMENT_CREATION")
+            return
+
+   
         await self.initialize_and_decompose_plan()
         
         max_cycles = 10 
@@ -471,12 +490,26 @@ class ExecutionSupervisorLogic:
                     self.task_graph.set_overall_status("TIMEOUT_EXECUTION")
                 break 
             await asyncio.sleep(5)         
+        # Clean up the environment after full execution completes (or fails)
+        if self.plan_environment_id:
+            self.environment_manager.destroy_environment(self.plan_environment_id)
+            self.plan_environment_id = None
+            self.logger.info(f"[{self.execution_plan_id}] Environment '{self.execution_plan_id}' cleaned up.")
         
         final_status = self.task_graph.as_dict().get("overall_status", "UNKNOWN")
         self.logger.info(f"[{self.execution_plan_id}] Exécution terminée avec le statut: {final_status}")
 
     async def continue_execution(self, max_cycles: int = 5):
         """Reprendre un plan existant pour traiter les tâches restantes."""
+        # When continuing, ensure the environment is recreated/attached
+        if not self.plan_environment_id:
+            # Recreate or ensure environment exists based on the execution_plan_id
+            self.plan_environment_id = await self.environment_manager.create_isolated_environment(self.execution_plan_id)
+            if not self.plan_environment_id:
+                self.logger.error(f"[{self.execution_plan_id}] Failed to recreate/attach dedicated environment for continuation. Aborting.")
+                self.task_graph.set_overall_status("FAILED_ENVIRONMENT_RECREATION")
+                return
+
         for i in range(max_cycles):
             self.logger.info(f"\n--- CYCLE DE REPRISE N°{i+1}/{max_cycles} pour le plan {self.execution_plan_id} ---")
             await self.process_plan_execution()
@@ -513,6 +546,12 @@ class ExecutionSupervisorLogic:
                 break
 
             await asyncio.sleep(5)
+        # Clean up environment after continuation completes
+        if self.plan_environment_id:
+            self.environment_manager.destroy_environment(self.plan_environment_id)
+            self.plan_environment_id = None
+            self.logger.info(f"[{self.execution_plan_id}] Environment '{self.execution_plan_id}' cleaned up after continuation.")
+
 
     async def _get_all_available_execution_skills_from_gra(self) -> List[str]:
         self.logger.info(f"[{self.execution_plan_id}] Récupération des compétences d'exécution disponibles depuis le GRA.")

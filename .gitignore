@@ -102,3 +102,6 @@ __pycache__/
 src/agents/user_interaction_agent_old/
 requirements_vertex.txt
 requirements.txt.bak
+cluster-ca.crt.base64 
+curl_iam_test_response.json
+credentials.json

@@ -83,6 +83,8 @@ def create_app_instance() -> Starlette:
     a2a_app = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
     app = a2a_app.build()
 
+    logger.info(f"Routes enregistrées après a2a_app.build(): {[str(r.path) + ' (' + str(r.methods) + ')' for r in app.router.routes]}")
+
     async def health_check_endpoint(request):
         return JSONResponse({"status": "ok"})
     

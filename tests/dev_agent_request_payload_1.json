@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "method": "message/send",
+  "params": {
+    "message": {
+      "contextId": "test-manual-context-123",
+      "messageId": "msg-exec-$(uuidgen)", 
+      "role": "user",
+      "parts": [
+        {
+          "text": "{\n  \"action\": \"execute_command\",\n  \"command\": \"python /app/sum_numbers.py\",\n  \"workdir\": \"/app\",\n  \"environment_id\": \"my-test-env-001\",\n  \"current_state\": \"Code written to /app/sum_numbers.py.\",\n  \"last_action_result\": {\"action_taken\": \"generate_code_and_write_file\", \"status\": \"success\"}\n}"
+        }
+      ]
+    },
+    "skillId": "coding_python"
+  },
+  "id": "2" 
+}
