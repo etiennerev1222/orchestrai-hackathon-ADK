@@ -250,10 +250,10 @@ function AgentStatusBar({ agents, graHealth, stats }) {
           <div className="agent-timestamp">{new Date(a.timestamp).toLocaleString()}</div>
           <div className="agent-metrics">
             <div className="metric-tile success">
-              {statsMap[a.name]?.tasks_completed ?? 0}
+              {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_completed ?? 0}
             </div>
             <div className="metric-tile fail">
-              {statsMap[a.name]?.tasks_failed ?? 0}
+              {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_failed ?? 0}
             </div>
           </div>
         </div>
@@ -397,6 +397,7 @@ function App() {
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [stateFilter, setStateFilter] = React.useState('');
   const [graHealth, setGraHealth] = React.useState(null);
+  const [initialLoading, setInitialLoading] = React.useState(true);
 
   const uniqueStates = React.useMemo(
     () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
@@ -426,30 +427,28 @@ function App() {
   }, [team1Counts, team2Counts]);
 
   React.useEffect(() => {
-    fetch(`${BACKEND_API_URL}/v1/global_plans_summary`)
-      .then(res => res.json())
-      .then(data => setPlans(data))
-      .catch(err => console.error('Erreur chargement plans', err));
-  }, []);
-
-  React.useEffect(() => {
-    fetch(`${BACKEND_API_URL}/agents_status`)
-      .then(res => res.json())
-      .then(list => setAgentsStatus(list))
-      .catch(err => console.error('Erreur chargement statut agents', err));
-  }, []);
-
-  React.useEffect(() => {
-    fetch(`${BACKEND_API_URL}/v1/stats/agents`)
-      .then(res => res.json())
-      .then(data => setAgentsStats(data.stats || data || []))
-      .catch(err => console.error('Erreur chargement statistiques agents', err));
-  }, []);
-
-  React.useEffect(() => {
-    fetch(`${BACKEND_API_URL}/health`)
-      .then(res => setGraHealth(res.ok ? 'online' : 'offline'))
-      .catch(() => setGraHealth('offline'));
+    async function fetchInitial() {
+      try {
+        const [plansRes, agentsRes, statsRes, healthRes] = await Promise.all([
+          fetch(`${BACKEND_API_URL}/v1/global_plans_summary`),
+          fetch(`${BACKEND_API_URL}/agents_status`),
+          fetch(`${BACKEND_API_URL}/v1/stats/agents`),
+          fetch(`${BACKEND_API_URL}/health`)
+        ]);
+        const plansData = await plansRes.json();
+        setPlans(plansData);
+        const agentsList = await agentsRes.json();
+        setAgentsStatus(agentsList);
+        const statsData = await statsRes.json();
+        setAgentsStats(statsData.stats || statsData || []);
+        setGraHealth(healthRes.ok ? 'online' : 'offline');
+      } catch (err) {
+        console.error('Erreur chargement initial', err);
+      } finally {
+        setInitialLoading(false);
+      }
+    }
+    fetchInitial();
   }, []);
 
   React.useEffect(() => {
@@ -676,6 +675,11 @@ function App() {
 
   return (
     <div className="app">
+      {initialLoading && (
+        <div className="loading-overlay">
+          <div className="spinner"></div>
+        </div>
+      )}
       <div className="sidebar">
         <h3>Nouveau Plan</h3>
         <textarea value={newObjective} onChange={e => setNewObjective(e.target.value)} rows="4" style={{ width: '100%' }} />
