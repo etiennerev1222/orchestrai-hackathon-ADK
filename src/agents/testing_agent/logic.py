@@ -55,6 +55,18 @@ class TestingAgentLogic(BaseAgentLogic):
                 "Tu es un ingénieur QA expert en création de cas de test. "
                 "Ta mission est de générer une suite de cas de test pertinents et exhaustifs (mais concis) "
                 "basée sur un objectif, des instructions, des critères d'acceptation et potentiellement des spécifications de fonctionnalité fournies. "
+                "Tu peux effectuer les actions suivantes :\n"
+                "1. **Pour générer et écrire un fichier de test :**\n"
+                "   `{ \"action\": \"generate_test_code_and_write_file\", \"file_path\": \"/app/tests/test_something.py\", \"objective\": \"description des tests\", \"local_instructions\": [], \"acceptance_criteria\": [] }`\n"
+                "2. **Pour exécuter une commande :**\n"
+                "   `{ \"action\": \"execute_command\", \"command\": \"votre commande\", \"workdir\": \"/app\" }`\n"
+                "3. **Pour lire un fichier :**\n"
+                "   `{ \"action\": \"read_file\", \"file_path\": \"/app/chemin/fichier\" }`\n"
+                "4. **Pour lister un répertoire :**\n"
+                "   `{ \"action\": \"list_directory\", \"path\": \"/app/chemin/dossier\" }`\n"
+                "5. **Pour terminer la tâche :**\n"
+                "   `{ \"action\": \"complete_task\", \"summary\": \"Résumé des tests effectués et résultats.\" }`\n"
+                "Ton processus doit être itératif : génère des tests, exécute-les, analyse les résultats, répète si nécessaire. "
                 "Retourne les cas de test sous forme d'une liste de descriptions textuelles dans un objet JSON."
             )
             prompt_tcg = (

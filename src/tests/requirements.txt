@@ -1,0 +1,9 @@
+starlette
+uvicorn
+kubernetes
+google-auth
+google-auth-oauthlib
+google-cloud-firestore 
+firebase-admin 
+httpx
+google-auth

@@ -11,7 +11,7 @@ from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.responses import JSONResponse
-
+from src.services.environment_manager.environment_manager import EnvironmentManager
 from src.shared.service_discovery import register_self_with_gra
 from .executor import TestingAgentExecutor
 from .logic import AGENT_SKILL_SOFTWARE_TESTING, AGENT_SKILL_TEST_CASE_GENERATION
@@ -57,7 +57,12 @@ def get_testing_agent_card() -> AgentCard:
         skills=skills_objects
     )
 
-agent_executor = TestingAgentExecutor()
+
+# Crée un EnvironmentManager
+env_manager = EnvironmentManager()
+
+# Passe-le à l’exécuteur
+agent_executor = TestingAgentExecutor(environment_manager=env_manager)
 task_store = InMemoryTaskStore()
 request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 
