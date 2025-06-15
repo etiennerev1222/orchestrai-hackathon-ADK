@@ -24,10 +24,20 @@ function parseMaybeJson(data) {
 
 function FormattedContent({ data, open }) {
   const value = parseMaybeJson(data);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (ref.current && window.hljs) {
+      ref.current.querySelectorAll('pre code').forEach(block => {
+        window.hljs.highlightElement(block);
+      });
+    }
+  }, [value]);
+
   if (value === null || value === undefined) return <span>{String(value)}</span>;
   if (typeof value === 'string') {
-    if (value.length > 80 || value.includes('\n')) return <pre>{value}</pre>;
-    return <span>{value}</span>;
+    const html = window.DOMPurify.sanitize(window.marked.parse(value));
+    return <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />;
   }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return <span>{String(value)}</span>;
