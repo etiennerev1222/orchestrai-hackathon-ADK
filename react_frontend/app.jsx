@@ -399,6 +399,181 @@ function FinalArtifactsHistory({ nodes }) {
   );
 }
 
+function FileBrowser({ environmentId }) {
+  const [files, setFiles] = React.useState([]);
+  const [currentPath, setCurrentPath] = React.useState('.');
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const fileInputRef = React.useRef(null);
+
+  const fetchFiles = React.useCallback(async path => {
+    if (!environmentId) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${BACKEND_API_URL}/api/environments/${environmentId}/files?path=${encodeURIComponent(
+          path
+        )}`
+      );
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || `Erreur ${response.status}`);
+      }
+      const data = await response.json();
+      data.sort((a, b) => {
+        if (a.type === 'directory' && b.type !== 'directory') return -1;
+        if (a.type !== 'directory' && b.type === 'directory') return 1;
+        return a.name.localeCompare(b.name);
+      });
+      setFiles(data);
+      setCurrentPath(path);
+    } catch (err) {
+      console.error('Erreur lors de la récupération des fichiers:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [environmentId]);
+
+  React.useEffect(() => {
+    fetchFiles(currentPath);
+  }, [fetchFiles, currentPath]);
+
+  const handleDirectoryClick = name => {
+    const newPath = currentPath === '.' ? name : `${currentPath}/${name}`;
+    fetchFiles(newPath);
+  };
+
+  const handleBackClick = () => {
+    if (currentPath === '.') return;
+    const parentPath =
+      currentPath.substring(0, currentPath.lastIndexOf('/')) || '.';
+    fetchFiles(parentPath);
+  };
+
+  const handleDownload = name => {
+    const filePath = currentPath === '.' ? name : `${currentPath}/${name}`;
+    const url = `${BACKEND_API_URL}/api/environments/${environmentId}/files/download?path=${encodeURIComponent(
+      filePath
+    )}`;
+    window.open(url, '_blank');
+  };
+
+  const handleUpload = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('path', `${currentPath}/${file.name}`);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${BACKEND_API_URL}/api/environments/${environmentId}/files/upload`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      );
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Échec du téléversement');
+      }
+      fetchFiles(currentPath);
+    } catch (err) {
+      console.error('Erreur de téléversement:', err);
+      setError(err.message);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="file-browser">
+      <h3>Explorateur de Fichiers (ID: {environmentId})</h3>
+      <div className="path-bar">
+        <span>Chemin: /workspace/{currentPath}</span>
+        <div className="file-actions">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleUpload}
+            style={{ display: 'none' }}
+          />
+          <button
+            onClick={() =>
+              fileInputRef.current && fileInputRef.current.click()
+            }
+          >
+            Téléverser un fichier
+          </button>
+          <button onClick={() => fetchFiles(currentPath)} disabled={isLoading}>
+            Rafraîchir
+          </button>
+        </div>
+      </div>
+
+      {isLoading && <p>Chargement...</p>}
+      {error && <p className="error-message">Erreur: {error}</p>}
+
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Nom</th>
+            <th>Taille</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {currentPath !== '.' && (
+            <tr className="clickable-row" onClick={handleBackClick}>
+              <td>📁</td>
+              <td>..</td>
+              <td></td>
+              <td></td>
+            </tr>
+          )}
+          {files.map(file => (
+            <tr
+              key={file.name}
+              className={file.type === 'directory' ? 'clickable-row' : ''}
+              onClick={() =>
+                file.type === 'directory' && handleDirectoryClick(file.name)
+              }
+            >
+              <td>{file.type === 'directory' ? '📁' : '📄'}</td>
+              <td>{file.name}</td>
+              <td>{file.type === 'file' ? formatBytes(file.size) : ''}</td>
+              <td>
+                {file.type === 'file' && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleDownload(file.name);
+                    }}
+                  >
+                    Télécharger
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function App() {
   const [plans, setPlans] = React.useState([]);
   const [selectedPlanId, setSelectedPlanId] = React.useState('');
@@ -418,6 +593,7 @@ function App() {
   const [stateFilter, setStateFilter] = React.useState('');
   const [graHealth, setGraHealth] = React.useState(null);
   const [initialLoading, setInitialLoading] = React.useState(true);
+  const [activeEnvironmentId, setActiveEnvironmentId] = React.useState('test-env-12345');
 
   const uniqueStates = React.useMemo(
     () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
@@ -739,6 +915,14 @@ function App() {
             </option>
           ))}
         </select>
+        <hr />
+        <h3>Environment ID</h3>
+        <input
+          type="text"
+          value={activeEnvironmentId}
+          onChange={e => setActiveEnvironmentId(e.target.value)}
+          style={{ width: '100%' }}
+        />
       </div>
       <div className="content">
         <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentsStats} />
@@ -804,6 +988,9 @@ function App() {
           </div>
         )}
         {team2NodesMap && <FinalArtifactsHistory nodes={team2NodesMap} />}
+        {activeEnvironmentId && (
+          <FileBrowser environmentId={activeEnvironmentId} />
+        )}
       </div>
     </div>
   );
