@@ -23,6 +23,7 @@
 - **Composable & extensible**: Add new agents/skills anytime—just register with the GRA and they’re orchestrated automatically.
 - **A2A protocol & Google ADK compliant**: Ensures interoperability and future-proofing.
 - **Full audit trail**: Every decision, correction, and outcome is persisted in Firestore for transparency.
+- **Isolated dev environments**: Generated code runs in Kubernetes pods managed by the `EnvironmentManager` for safety (see `docs/environment_manager.md`).
 
 ---
 
@@ -166,6 +167,7 @@ graph LR
 * **Communication Inter-Services** : Protocole A2A (via `src/clients/a2a_api_client.py`).
 * **Front-End** : React, déployé sur Firebase Hosting.
 * **Gestion des Tâches Asynchrones** : `asyncio` utilisé extensivement.
+* **Environment Manager** : création et gestion de pods Kubernetes isolés pour l'exécution du code produit.
 
 ## Prérequis
 
@@ -252,7 +254,8 @@ orchestrai-hackathon-ADK/
 │   ├── clients/
 │   ├── orchestrators/
 │   ├── services/
-│   │   └── gra/
+│   │   ├── gra/
+│   │   └── environment_manager/
 │   └── shared/
 ├── react_frontend/                   # Interface React légère
 ├── deployment.sh                     # Script de déploiement Cloud Run
