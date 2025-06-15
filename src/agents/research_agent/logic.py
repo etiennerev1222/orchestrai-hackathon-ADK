@@ -1,8 +1,7 @@
-# src/agents/research_agent/logic.py
 import logging
 import json
 from typing import Dict, Any, List 
-import uuid # Assurez-vous qu'il est importé si vous générez des ID locaux
+import uuid
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
@@ -27,9 +26,8 @@ class ResearchAgentLogic(BaseAgentLogic):
             objective = input_payload.get("objective", "Objectif de recherche non spécifié.")
             local_instructions = input_payload.get("local_instructions", [])
             acceptance_criteria = input_payload.get("acceptance_criteria", [])
-            # Récupérer les compétences disponibles si elles sont passées
             available_skills_list = input_payload.get("available_execution_skills", []) 
-            task_type_for_agent = input_payload.get("task_type", "exploratory") # Le type de la tâche actuelle
+            task_type_for_agent = input_payload.get("task_type", "exploratory")
             
         except json.JSONDecodeError as e:
             self.logger.error(f"ResearchAgent: Input JSON invalide: {input_data_str}. Erreur: {e}")
@@ -45,7 +43,7 @@ class ResearchAgentLogic(BaseAgentLogic):
         self.logger.debug(f"Compétences d'exécution disponibles pour suggestion de sous-tâches: {available_skills_list}")
 
         skills_string_for_prompt = ", ".join([f"'{s}'" for s in available_skills_list]) if available_skills_list else "la liste fournie par le superviseur"
-        if not available_skills_list: # Fallback si la liste est vide
+        if not available_skills_list:
             default_skills = ["coding_python", "web_research", "software_testing", "document_synthesis", "general_analysis", "database_design"]
             skills_string_for_prompt = ", ".join([f"'{s}'" for s in default_skills])
 
@@ -87,7 +85,6 @@ class ResearchAgentLogic(BaseAgentLogic):
             llm_response_str = await call_llm(prompt, system_prompt, json_mode=True)
             self.logger.debug(f"ResearchAgentLogic - Réponse brute du LLM: {llm_response_str}")
 
-            # Valider la structure de la réponse JSON du LLM
             try:
                 llm_json_output = json.loads(llm_response_str)
                 if not isinstance(llm_json_output, dict) or \
@@ -95,13 +92,11 @@ class ResearchAgentLogic(BaseAgentLogic):
                    "new_sub_tasks" not in llm_json_output or \
                    not isinstance(llm_json_output["new_sub_tasks"], list):
                     self.logger.error(f"Réponse LLM pour ResearchAgent n'a pas la structure attendue (summary, new_sub_tasks): {llm_json_output}")
-                    # Retourner une erreur structurée
                     return json.dumps({
                         "summary": "Erreur: La réponse du LLM n'a pas la structure JSON attendue.",
                         "new_sub_tasks": [],
                         "error": "LLM response structure incorrect."
                     })
-                # Ici, la structure est correcte, on peut la retourner directement (sérialisée en string)
                 self.logger.info(f"ResearchAgent - Résultat traité. Summary: '{llm_json_output.get('summary')[:100]}...'. Nombre de nouvelles sous-tâches: {len(llm_json_output.get('new_sub_tasks',[]))}")
                 return json.dumps(llm_json_output, ensure_ascii=False)
 

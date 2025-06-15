@@ -1,4 +1,3 @@
-# src/shared/task_graph_management.py
 from typing import Optional, Dict, List, Any
 from enum import Enum
 from datetime import datetime
@@ -6,16 +5,13 @@ import uuid
 import firebase_admin
 from firebase_admin import firestore, credentials
 
-# --- Initialisation de Firestore pour le TaskGraph ---
 if not firebase_admin._apps:
     try:
         cred = credentials.ApplicationDefault()
         firebase_admin.initialize_app(cred)
     except Exception as e:
         print(f"CRITICAL: Firestore initialization failed. Ensure GOOGLE_APPLICATION_CREDENTIALS is set. Error: {e}")
-        # Dans une vraie application, on pourrait vouloir quitter ou avoir un fallback.
 db = firestore.client()
-# ----------------------------------------------------
 
 class TaskState(str, Enum):
     SUBMITTED = "submitted"
@@ -55,7 +51,6 @@ class TaskNode:
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'TaskNode':
         """Crée un objet TaskNode à partir d'un dictionnaire Firestore."""
-        # Crée une instance vide puis la remplit pour éviter les problèmes de constructeur
         node = TaskNode(task_id=data['id'])
         for key, value in data.items():
             if key == 'state':
@@ -128,18 +123,17 @@ class TaskGraph:
         if node_data:
             return TaskNode.from_dict(node_data)
         return None
-# Dans la classe TaskGraph
 
-    def update_state(self, task_id: str, state: TaskState, details: Optional[str] = None, artifact_ref: Optional[Any] = None): # Ajout de artifact_ref
+    def update_state(self, task_id: str, state: TaskState, details: Optional[str] = None, artifact_ref: Optional[Any] = None):
         node = self.get_task(task_id)
         if not node:
             raise ValueError(f"Tâche {task_id} introuvable.")
         
-        node.update_state(state, details) # update_state gère l'historique
-        if artifact_ref is not None: # Si un artefact est fourni, on le met à jour aussi
+        node.update_state(state, details)
+        if artifact_ref is not None:
             node.artifact_ref = artifact_ref
             
-        self.add_task(node) # add_task ré-enregistre le noeud mis à jour avec état ET artefact
+        self.add_task(node)
 
     def get_ready_tasks(self) -> List[TaskNode]:
         """CORRIGÉ : Lit depuis Firestore et applique la logique."""
@@ -167,15 +161,11 @@ class TaskGraph:
         if task_id not in nodes:
             raise ValueError(f"Tâche {task_id} introuvable pour la replanification.")
         
-        # Supprimer les anciens enfants (s'ils existent)
-        # Note : Cette version simple ne supprime pas les descendants des enfants.
-        # Une version plus complexe serait récursive.
         old_children_ids = nodes[task_id].get("children", [])
         for child_id in old_children_ids:
             if child_id in nodes:
                 del nodes[child_id]
         
-        # Mettre à jour la tâche parente et ajouter les nouveaux enfants
         nodes[task_id]["children"] = [t.id for t in new_subtasks]
         for sub_task in new_subtasks:
             nodes[sub_task.id] = sub_task.to_dict()

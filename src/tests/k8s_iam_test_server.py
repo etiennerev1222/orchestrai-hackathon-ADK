@@ -1,4 +1,3 @@
-# src/tests/k8s_iam_test_server.py
 import os
 import logging
 import asyncio
@@ -7,15 +6,13 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from kubernetes import client, config
-import httpx # NOUVEAU
-import google.auth # NOUVEAU
-from google.auth.transport.requests import Request # NOUVEAU
+import httpx
+import google.auth
+from google.auth.transport.requests import Request
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# --- Configuration du client Kubernetes (pour le test K8s client) ---
-# Laissons cette section telle quelle, elle est utilisée par la route /test-k8s-iam
 api_client = None
 v1_api = None
 try:
@@ -26,7 +23,7 @@ try:
             configuration = client.Configuration()
             configuration.host = f"https://{gke_cluster_endpoint}"
             
-            configuration.verify_ssl = False # <--- N'OUBLIEZ PAS DE LAISSER CELA POUR LE TEST
+            configuration.verify_ssl = False
             logger.warning("Test Server: SSL verification is DISABLED. DO NOT USE IN PRODUCTION.")
             
             client.Configuration.set_default(configuration)
@@ -45,7 +42,6 @@ if api_client:
 else:
     logger.error("Test Server: CoreV1Api client could not be initialized due to config failure.")
 
-# --- Endpoint de test IAM (original) ---
 async def test_k8s_iam(request):
     logger.info("Test Server: Received request for /test-k8s-iam (Kubernetes client).")
     if not v1_api:
@@ -69,7 +65,6 @@ async def test_k8s_iam(request):
         logger.error(f"Test Server: Unexpected error for /test-k8s-iam (K8s client): {e}", exc_info=True)
         return JSONResponse({"status": "error", "message": f"Internal server error (K8s client): {str(e)}"}, status_code=500)
 
-# --- NOUVEAU ENDPOINT DE TEST IAM AVEC HTTPX ---
 async def test_k8s_iam_httpx(request):
     logger.info("Test Server: Received request for /test-k8s-iam-httpx (using httpx).")
     try:
@@ -78,26 +73,22 @@ async def test_k8s_iam_httpx(request):
             logger.error("Test Server: GKE_CLUSTER_ENDPOINT not set for httpx test.")
             return JSONResponse({"status": "error", "message": "GKE_CLUSTER_ENDPOINT not set."}, status_code=500)
         
-        # Obtenir les Application Default Credentials (ADC)
         credentials, project_id = google.auth.default()
         if not credentials:
             logger.error("Test Server: Failed to get Application Default Credentials for httpx test.")
             return JSONResponse({"status": "error", "message": "Failed to get Application Default Credentials."}, status_code=500)
         
-        # Rafraîchir le jeton d'accès si nécessaire (synchrone ici, mais bon pour un jeton à jour)
         await asyncio.to_thread(credentials.refresh, Request())
         
-        # Construire l'en-tête d'autorisation
         headers = {"Authorization": f"Bearer {credentials.token}"}
         
-        # URL de l'API Kubernetes (par exemple, pour lister les pods)
         api_url = f"https://{gke_cluster_endpoint}/api/v1/namespaces/{os.environ.get('KUBERNETES_NAMESPACE', 'default')}/pods?limit=1"
 
         logger.info(f"Test Server: Attempting httpx GET call to K8s API at {api_url} with token (first 10 chars): {credentials.token[:10]}...")
 
         async with httpx.AsyncClient(verify=False, headers=headers, timeout=10.0) as client_httpx:
             response = await client_httpx.get(api_url)
-            response.raise_for_status() # Lèvera une exception pour les statuts 4xx/5xx
+            response.raise_for_status()
             
             logger.info(f"Test Server: httpx call successful. Status: {response.status_code}. Response body preview: {response.text[:200]}")
             return JSONResponse({"status": "success", "message": "httpx call to K8s API successful.", "status_code": response.status_code, "response_body_preview": response.text[:200]})
@@ -109,15 +100,13 @@ async def test_k8s_iam_httpx(request):
         return JSONResponse({"status": "error", "message": f"Internal server error (httpx test): {str(e)}"}, status_code=500)
 
 
-# --- Initialisation de l'application Starlette ---
 routes = [
-    Route("/test-k8s-iam", endpoint=test_k8s_iam, methods=["GET"]), # Garde la route originale
-    Route("/test-k8s-iam-httpx", endpoint=test_k8s_iam_httpx, methods=["GET"]), # NOUVEAU
+    Route("/test-k8s-iam", endpoint=test_k8s_iam, methods=["GET"]),
+    Route("/test-k8s-iam-httpx", endpoint=test_k8s_iam_httpx, methods=["GET"]),
 ]
 
 app = Starlette(routes=routes)
 
-# --- Démarrage Uvicorn ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

@@ -1,10 +1,9 @@
-# tests/test_evaluator_client.py
 
 import asyncio
 import httpx
 import logging
 from uuid import uuid4
-import json # Pour désérialiser le JSON de l'artefact de réponse
+import json
 
 from a2a.client import A2AClient
 from a2a.types import (
@@ -23,9 +22,8 @@ logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO)
 
-# URL de notre EvaluatorAgentServer
 
-EVALUATOR_AGENT_SERVER_URL = "http://localhost:8002" # Doit correspondre au port du serveur évaluateur
+EVALUATOR_AGENT_SERVER_URL = "http://localhost:8002"
 
 def create_plan_message(plan_text: str) -> Message:
         """
@@ -33,7 +31,7 @@ def create_plan_message(plan_text: str) -> Message:
         """
         return Message(
             messageId=str(uuid4()),
-            role="user", # Le client agit comme un utilisateur envoyant un plan pour évaluation
+            role="user",
             parts=[
             TextPart(text=plan_text)
             ]
@@ -67,7 +65,7 @@ async def run_evaluation_test():
             if hasattr(send_response, 'root') and hasattr(send_response.root, 'result') and isinstance(send_response.root.result, Task):
                 created_task = send_response.root.result
                 task_id = created_task.id
-                context_id = created_task.contextId # Utiliser contextId avec 'I' majuscule
+                context_id = created_task.contextId
                 logger.info(f"Message envoyé avec succès. Tâche créée/mise à jour: ID={task_id}, ContextID={context_id}, Statut={created_task.status.state}")
             else:
                 logger.error(f"Réponse inattendue de send_message: {send_response.model_dump_json(indent=2) if hasattr(send_response, 'model_dump_json') else send_response}")
@@ -137,7 +135,6 @@ async def run_evaluation_test():
                         evaluation_result_text = artifact_item.parts[0].root.text
                         logger.info(f"    Texte de l'artefact (brut): {evaluation_result_text}")
                         try:
-                            # Essayer de parser le JSON pour un affichage plus agréable
                             evaluation_data = json.loads(evaluation_result_text)
                             logger.info(f"    Données d'évaluation (parsées): {evaluation_data}")
                         except json.JSONDecodeError:

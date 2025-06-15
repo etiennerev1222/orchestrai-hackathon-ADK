@@ -1,4 +1,3 @@
-# src/agents/testing_agent/executor.py
 import logging
 import json
 
@@ -12,7 +11,7 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events.event_queue import EventQueue
 import json
 from src.services.environment_manager.environment_manager import EnvironmentManager
-from typing_extensions import override # Import override decorator
+from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,6 @@ class TestingAgentExecutor(BaseAgentExecutor):
         self.logger = logging.getLogger(f"{__name__}.TestingAgentExecutor")
         self.logger.info("TestingAgentExecutor initialisé.")
 
-        # Créer l'EnvironmentManager et le passer à la logique
         self.environment_manager = EnvironmentManager()
         self.agent_logic.set_environment_manager(self.environment_manager)
 
@@ -36,7 +34,6 @@ class TestingAgentExecutor(BaseAgentExecutor):
         Crée un Artifact A2A à partir du rapport de test (chaîne JSON) retourné par la logique.
         """
         self.logger.info(f"Création de l'artefact du rapport de test pour la tâche {task.id}.")
-        # result_data est la chaîne JSON du rapport de test
         return new_text_artifact(
             name=self.default_artifact_name,
             description=self.default_artifact_description,

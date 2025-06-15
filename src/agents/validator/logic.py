@@ -1,4 +1,3 @@
-# src/agents/validator/logic.py
 import logging
 import json
 from typing import Dict, Any
@@ -27,8 +26,6 @@ class ValidatorAgentLogic(BaseAgentLogic):
                 "evaluated_plan": evaluation_result.get("evaluated_plan")
             }
 
-        # La seule et unique instruction système pour le validateur.
-                # --- NOUVEAU PROMPT SYSTÈME ---
         system_prompt = (
             "Tu es un chef de projet expérimenté et pragmatique. Ta mission est de valider si un plan d'action est suffisamment mûr pour être transmis à l'équipe d'exécution (TEAM 2). "
             "Tu n'exiges pas la perfection, mais la clarté et la cohérence. Un plan 'approuvé' signifie que l'équipe d'exécution a une base de travail solide pour commencer à décomposer le projet en tâches techniques, même si certains détails devront être affinés par eux."
@@ -41,7 +38,6 @@ class ValidatorAgentLogic(BaseAgentLogic):
         
         evaluation_str = json.dumps(evaluation_result, indent=2, ensure_ascii=False)
 
-          # --- NOUVEAU PROMPT UTILISATEUR ---
         prompt = (
             "Voici l'évaluation d'un plan produit par la TEAM 1. Analyse-la en gardant à l'esprit que tu dois décider si ce plan est 'assez bon pour commencer l'exécution'.\n\n"
             f"'''{evaluation_str}'''\n\n"

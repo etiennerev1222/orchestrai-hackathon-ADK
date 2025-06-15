@@ -1,4 +1,3 @@
-# src/orchestrators/execution_supervisor_logic.py
 import logging
 import uuid
 import asyncio
@@ -20,9 +19,9 @@ from src.agents.testing_agent.logic import AGENT_SKILL_SOFTWARE_TESTING
 from src.agents.development_agent.logic import AGENT_SKILL_CODING_PYTHON
 from src.agents.decomposition_agent.logic import AGENT_SKILL_DECOMPOSE_EXECUTION_PLAN
 
-from src.services.environment_manager.environment_manager import EnvironmentManager # <--- ADD THIS
+from src.services.environment_manager.environment_manager import EnvironmentManager
 
-logger = logging.getLogger(__name__) # Logger au niveau du module
+logger = logging.getLogger(__name__)
 
 class ExecutionSupervisorLogic:
     def __init__(self, global_plan_id: str, team1_plan_final_text: str, execution_plan_id: Optional[str] = None):
@@ -50,8 +49,8 @@ class ExecutionSupervisorLogic:
             if not logging.getLogger().hasHandlers():
                 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self.logger.info(f"ExecutionSupervisorLogic initialisé pour global_plan '{global_plan_id}'. Execution plan ID: '{self.execution_plan_id}'")
-        self.environment_manager = EnvironmentManager() # <--- ADD THIS
-        self.plan_environment_id = None # Store the environment ID for this entire execution plan
+        self.environment_manager = EnvironmentManager()
+        self.plan_environment_id = None
 
 
     async def initialize_and_decompose_plan(self):
@@ -93,23 +92,16 @@ class ExecutionSupervisorLogic:
                 response.raise_for_status()
                 data = response.json()
                 
-                # La réponse est une liste, on prend le premier élément s'il existe
                 agent_data = data[0] if isinstance(data, list) and len(data) > 0 else None
                 
                 if not agent_data:
                     self.logger.warning(f"[{self.execution_plan_id}] Aucun agent retourné par le GRA pour la compétence '{skill}'.")
                     return None
 
-                # --- CORRECTION PRINCIPALE ICI ---
-                # On vérifie la présence de 'internal_url' et 'name'.
-                # 'internal_url' est préférable pour la communication de service à service dans Cloud Run.
                 if agent_data.get("internal_url") and agent_data.get("name"):
-                    # On stocke l'internal_url dans la clé 'url' du dictionnaire retourné,
-                    # car c'est ce que le reste du code attend probablement pour contacter l'agent.
                     agent_details = {"url": agent_data["internal_url"], "name": agent_data["name"]}
                     self.logger.info(f"[{self.execution_plan_id}] Détails pour '{skill}' obtenus du GRA: {agent_details}")
                 else:
-                    # Le message d'erreur est maintenant plus précis.
                     self.logger.error(f"[{self.execution_plan_id}] Données incomplètes du GRA pour '{skill}'. La réponse ne contient pas 'internal_url' ou 'name'. Réponse reçue: {agent_data}")
         
         except httpx.HTTPStatusError as e:
@@ -207,7 +199,6 @@ class ExecutionSupervisorLogic:
             "task_type": task_node.task_type.value,
             "assigned_skill": task_node.assigned_agent_type 
         }
-        # --- NEW: Pass the environment_id to the agent ---
         if self.plan_environment_id:
             input_payload["environment_id"] = self.plan_environment_id
             self.logger.info(f"[{self.execution_plan_id}] Passing environment_id '{self.plan_environment_id}' to task {task_node.id}")
@@ -413,7 +404,6 @@ class ExecutionSupervisorLogic:
                         if artifact_text_content and len(artifact_text_content) < 100: summary += f" Aperçu: {artifact_text_content[:50]}..."
                         self.task_graph.update_task_output(task_node.id, artifact_ref=gra_persisted_artifact_id, summary=summary)
                         self.task_graph.update_task_state(task_node.id, ExecutionTaskState.COMPLETED, "Exécution OK.")
-                                                # <<< AJOUT D'UN LOG DE DÉBOGAGE ICI >>>
                         self.logger.info(f"[{self.execution_plan_id}] APPEL update_task_output pour TÂCHE EXECUTABLE {task_node.id}: artifact_ref='{gra_persisted_artifact_id}', summary='{summary}'")
 
 
@@ -439,7 +429,6 @@ class ExecutionSupervisorLogic:
         self.logger.info(f"[{self.execution_plan_id}] Fin du cycle de traitement d'exécution.")
 
     async def run_full_execution(self):
-        # Create environment for this plan
         self.plan_environment_id = await self.environment_manager.create_isolated_environment(self.execution_plan_id)
         if not self.plan_environment_id:
             self.logger.error(f"[{self.execution_plan_id}] Failed to create dedicated environment. Aborting execution.")
@@ -490,7 +479,6 @@ class ExecutionSupervisorLogic:
                     self.task_graph.set_overall_status("TIMEOUT_EXECUTION")
                 break 
             await asyncio.sleep(5)         
-        # Clean up the environment after full execution completes (or fails)
         if self.plan_environment_id:
             self.environment_manager.destroy_environment(self.plan_environment_id)
             self.plan_environment_id = None
@@ -501,9 +489,7 @@ class ExecutionSupervisorLogic:
 
     async def continue_execution(self, max_cycles: int = 5):
         """Reprendre un plan existant pour traiter les tâches restantes."""
-        # When continuing, ensure the environment is recreated/attached
         if not self.plan_environment_id:
-            # Recreate or ensure environment exists based on the execution_plan_id
             self.plan_environment_id = await self.environment_manager.create_isolated_environment(self.execution_plan_id)
             if not self.plan_environment_id:
                 self.logger.error(f"[{self.execution_plan_id}] Failed to recreate/attach dedicated environment for continuation. Aborting.")
@@ -546,7 +532,6 @@ class ExecutionSupervisorLogic:
                 break
 
             await asyncio.sleep(5)
-        # Clean up environment after continuation completes
         if self.plan_environment_id:
             self.environment_manager.destroy_environment(self.plan_environment_id)
             self.plan_environment_id = None
@@ -600,7 +585,7 @@ class ExecutionSupervisorLogic:
 
     async def _add_and_resolve_decomposed_tasks(self, tasks_json_list: List[Dict], initial_dependency_id: str, existing_local_id_map: Optional[Dict[str,str]] = None):
         local_id_to_global_id_map = existing_local_id_map if existing_local_id_map is not None else {}
-        if not existing_local_id_map: # Si c'est le premier appel pour ce plan, initialiser la map partagée
+        if not existing_local_id_map:
             self._local_to_global_id_map_for_plan.clear()
             local_id_to_global_id_map = self._local_to_global_id_map_for_plan
 
@@ -614,10 +599,10 @@ class ExecutionSupervisorLogic:
                 if json_sub_tasks:
                     first_pass_create_nodes_recursive(json_sub_tasks, node_obj.id)
         
-        first_pass_create_nodes_recursive(tasks_json_list, None) # Le parent est initial_dependency_id pour les tâches de premier niveau de ce lot
+        first_pass_create_nodes_recursive(tasks_json_list, None)
 
         for global_id, (node_obj, task_json_original) in nodes_to_add_to_graph.items():
-            if node_obj.parent_id is None: # Tâche de premier niveau de ce lot
+            if node_obj.parent_id is None:
                  node_obj.dependencies.append(initial_dependency_id)
 
             local_deps = task_json_original.get("dependances", [])
@@ -629,13 +614,9 @@ class ExecutionSupervisorLogic:
                     else:
                         self.logger.warning(f"[{self.execution_plan_id}] Tentative d'auto-dépendance (lot) pour {global_id}. Ignorée.")
                 else:
-                    # Tenter de résoudre la dépendance par rapport à des tâches déjà existantes dans le graphe global
-                    # Ceci est une heuristique simple ; une résolution de dépendance plus complexe pourrait être nécessaire
-                    # si les ID locaux ne sont pas uniques ou si les dépendances croisent des lots de décomposition.
-                    # Pour l'instant, on logue si non trouvé dans la map locale du lot.
                     self.logger.warning(f"[{self.execution_plan_id}] Dépendance locale (lot) '{local_dep_id}' pour '{task_json_original.get('id')}' non trouvée dans la map actuelle. Si elle réfère à une tâche hors de ce lot, elle doit être déjà dans le graphe avec un ID global connu.")
             
-            node_obj.dependencies = list(set(node_obj.dependencies)) # Dédoublonnage
+            node_obj.dependencies = list(set(node_obj.dependencies))
             self.task_graph.add_task(node_obj)
             self.logger.info(f"[{self.execution_plan_id}] Tâche (lot) '{node_obj.objective}' (ID: {node_obj.id}) ajoutée/résolue avec parent '{node_obj.parent_id}' et dépendances: {node_obj.dependencies}.")
 
@@ -645,25 +626,19 @@ class ExecutionSupervisorLogic:
             local_id = f"generated_local_id_{uuid.uuid4().hex[:6]}"
             self.logger.warning(f"[{self.execution_plan_id}] Tâche JSON sans 'id' local, génération d'un ID local: {local_id}")
         
-        # Générer un ID global unique, préfixé pour éviter collisions et faciliter le débogage.
-        # Remplacer les points par des underscores pour éviter problèmes potentiels avec certains systèmes/DB.
         clean_local_id = local_id.replace(' ', '_').replace('.', '_')
         global_task_id = f"exec_task_{clean_local_id}_{uuid.uuid4().hex[:6]}"
         
         if local_id in local_id_map:
-            # Si l'ID local a déjà été mappé, cela signifie que l'agent de décomposition
-            # a potentiellement utilisé des ID locaux non uniques. On logue un avertissement
-            # mais on continue avec le nouvel ID global généré pour éviter les conflits d'ID globaux.
-            # Les dépendances qui référençaient l'ancien mapping de cet ID local pourraient être incorrectes.
             self.logger.warning(f"[{self.execution_plan_id}] L'ID local '{local_id}' a déjà été mappé à '{local_id_map[local_id]}'. Il est maintenant ré-mappé à '{global_task_id}'. Vérifiez l'unicité des ID locaux fournis par l'agent de décomposition.")
-        local_id_map[local_id] = global_task_id # Mettre à jour/ajouter le mapping
+        local_id_map[local_id] = global_task_id
 
         node_meta = {
             "local_id_from_agent": local_id,
             "local_instructions": task_data_dict.get("instructions_locales", []),
             "acceptance_criteria": task_data_dict.get("acceptance_criteria", [])
         }
-        if task_data_dict.get("nom"): # 'nom' est optionnel mais utile
+        if task_data_dict.get("nom"):
             node_meta["local_nom_from_agent"] = task_data_dict.get("nom")
         
         task_type_str = task_data_dict.get("type", "exploratory").lower()
@@ -678,10 +653,10 @@ class ExecutionSupervisorLogic:
             objective=task_data_dict.get("description", task_data_dict.get("nom", "Objectif non défini par l'agent")),
             task_type=task_type_enum,
             assigned_agent_type=task_data_dict.get("assigned_agent_type"),
-            dependencies=[], # Sera rempli plus tard par _add_and_resolve_decomposed_tasks
+            dependencies=[],
             parent_id=assigned_parent_id, 
             meta=node_meta,
-            input_data_refs=task_data_dict.get("input_data_refs", {}) # Transférer si fourni
+            input_data_refs=task_data_dict.get("input_data_refs", {})
         )
         return new_node, task_data_dict
 
@@ -697,8 +672,6 @@ class ExecutionSupervisorLogic:
             new_sub_tasks_dicts = exploration_result.get("new_sub_tasks", [])
             summary_from_artifact = exploration_result.get("summary", f"Exploration par {completed_task_node.id} terminée.")
 
-            # L'artifact_ref de completed_task_node (l'ID GRA) a déjà été mis à jour.
-            # On met à jour le résumé de la tâche sur la base du contenu de l'artefact.
             self.task_graph.update_task_output(task_id=completed_task_node.id, summary=summary_from_artifact)
 
             if not isinstance(new_sub_tasks_dicts, list):
@@ -713,12 +686,10 @@ class ExecutionSupervisorLogic:
 
             self.logger.info(f"[{self.execution_plan_id}] Tâche exploratoire {completed_task_node.id} a défini {len(new_sub_tasks_dicts)} nouvelle(s) sous-tâche(s).")
             
-            # Les nouvelles sous-tâches dépendront de la tâche exploratoire qui les a générées (initial_dependency_id).
-            # Le parent_id des tâches de premier niveau de ce lot sera completed_task_node.id.
             await self._add_and_resolve_decomposed_tasks(
                 tasks_json_list=new_sub_tasks_dicts, 
-                initial_dependency_id=completed_task_node.id, # Les nouvelles tâches dépendent de la tâche exploratoire mère
-                existing_local_id_map=self._local_to_global_id_map_for_plan # Utiliser la map du plan global
+                initial_dependency_id=completed_task_node.id,
+                existing_local_id_map=self._local_to_global_id_map_for_plan
             )
             
             self.task_graph.update_task_state(completed_task_node.id, ExecutionTaskState.COMPLETED, f"{summary_from_artifact} {len(new_sub_tasks_dicts)} nouvelles sous-tâches ajoutées.")

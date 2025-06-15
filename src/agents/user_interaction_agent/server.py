@@ -1,4 +1,3 @@
-# src/agents/user_interaction_agent/server.py
 import asyncio
 import logging
 import uvicorn
@@ -27,7 +26,6 @@ def get_user_interaction_agent_card() -> AgentCard:
     """
     Crée et retourne la "carte d'agent".
     """
-    # On utilise l'URL si elle existe, sinon on met une valeur temporaire.
     agent_url = os.environ.get("PUBLIC_URL", f"http://localhost_placeholder_for_{AGENT_NAME}:8080")
 
     capabilities = AgentCapabilities(streaming=False, push_notifications=False)
@@ -61,7 +59,6 @@ agent_executor = UserInteractionAgentExecutor()
 task_store = InMemoryTaskStore()
 request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 
-# MODIFIÉ : La fonction lifespan est maintenant résiliente
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
     logger.info(f"[{AGENT_NAME}] Démarrage du cycle de vie (lifespan)...")
@@ -84,7 +81,6 @@ async def lifespan(app_param: Starlette):
     
     logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
 
-# --- Création de l'application Starlette ---
 def create_app_instance() -> Starlette:
     agent_card = get_user_interaction_agent_card()
     a2a_app = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
@@ -97,17 +93,15 @@ def create_app_instance() -> Starlette:
         Route("/health", endpoint=health_check_endpoint, methods=["GET"])
     )
     
-    # Attacher le gestionnaire de cycle de vie
     app.router.lifespan_context = lifespan
     
     return app
 
 app = create_app_instance()
 
-# --- MODIFIÉ : Démarrage Uvicorn compatible Cloud Run ---
 if __name__ == "__main__":
     is_production = 'K_SERVICE' in os.environ
-    port = int(os.environ.get("PORT", 8080)) # Port par défaut 8080 pour les agents
+    port = int(os.environ.get("PORT", 8080))
     host = "0.0.0.0" if is_production else "localhost"
     
     logger.info(f"Démarrage du serveur Uvicorn pour {AGENT_NAME} sur {host}:{port}")

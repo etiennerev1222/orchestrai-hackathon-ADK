@@ -1,4 +1,3 @@
-# src/agents/evaluator/server.py
 
 import asyncio
 import logging
@@ -47,7 +46,6 @@ def get_evaluator_agent_card() -> AgentCard:
             "Assess the quality of this plan: [Plan Text]"
         ]
     )
-    # MODIFIÉ : On utilise l'URL si elle existe, sinon on met une valeur temporaire.
     agent_url = os.environ.get("PUBLIC_URL", f"http://localhost_placeholder_for_{AGENT_NAME}:8080")
     
     agent_card = AgentCard(
@@ -73,7 +71,6 @@ def create_app_instance() -> Starlette:
     a2a_server_app_instance = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
     app = a2a_server_app_instance.build()
     
-    # Ajouter la route de santé
     async def health_check_endpoint(request):
         """Endpoint simple pour la vérification de santé."""
         return JSONResponse({"status": "ok"})
@@ -82,12 +79,10 @@ def create_app_instance() -> Starlette:
         Route("/health", endpoint=health_check_endpoint, methods=["GET"])
     )
     
-    # Attacher le gestionnaire de cycle de vie
     app.router.lifespan_context = lifespan
     
     return app
 
-# MODIFIÉ : La fonction lifespan est maintenant résiliente
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
     logger.info(f"[{AGENT_NAME}] Démarrage du cycle de vie (lifespan)...")
@@ -112,10 +107,9 @@ async def lifespan(app_param: Starlette):
 
 app = create_app_instance()
 
-# MODIFIÉ : Démarrage Uvicorn compatible Cloud Run
 if __name__ == "__main__":
     is_production = 'K_SERVICE' in os.environ
-    port = int(os.environ.get("PORT", 8080)) # Port par défaut 8080 pour les agents
+    port = int(os.environ.get("PORT", 8080))
     host = "0.0.0.0" if is_production else "localhost"
     
     logger.info(f"Lancement du serveur Uvicorn pour {AGENT_NAME} sur {host}:{port}")

@@ -1,21 +1,14 @@
-# src/agents/user_interaction_agent/logic.py
 import logging
 import json
 from typing import Dict, Any, Tuple, List
 
 from src.shared.base_agent_logic import BaseAgentLogic
-from src.shared.llm_client import call_llm # Import du client LLM
+from src.shared.llm_client import call_llm
 
 logger = logging.getLogger(__name__)
 
 ACTION_CLARIFY_OBJECTIVE = "clarify_objective"
-# Plus tard, nous pourrions ajouter d'autres actions comme "process_user_response"
-# si nous voulons une distinction plus fine que de simplement repasser par "clarify_objective"
-# avec un historique de conversation enrichi. Pour l'instant, "clarify_objective" gérera les deux.
 
-# Le prompt système "figé"
-# Dans src/agents/user_interaction_agent/logic.py
-# Dans src/agents/user_interaction_agent/logic.py
 
 SYSTEM_PROMPT_LLM = """
 You are an expert project clarification assistant. Your primary role is to analyze a user's raw objective and any existing conversation history. Your goal is to ensure the objective is sufficiently detailed for a **high-level planning and decomposition phase (to be performed by a subsequent specialized planning team, TEAM 1)**. You do NOT need to extract every single detail as TEAM 1 will handle further refinement.
@@ -62,7 +55,6 @@ class UserInteractionAgentLogic(BaseAgentLogic):
         
         formatted_history = []
         for turn in history:
-            # S'assurer que les clés existent pour éviter les erreurs
             agent_q = turn.get("agent_question", "No question from agent this turn.")
             user_a = turn.get("user_answer", "No answer from user this turn.")
             formatted_history.append(f"Previously, Agent asked: {agent_q}\nUser responded: {user_a}")
@@ -99,10 +91,7 @@ Respond ONLY with the specified JSON object.
 
                 status_from_llm = llm_data.get("status")
                 
-                # Le result_payload sera maintenant directement la réponse du LLM,
-                # car elle contient tous les champs nécessaires pour le GlobalSupervisor et le Frontend.
                 result_payload = llm_data 
-                # On peut y ajouter des infos de l'agent si besoin, ex:
                 result_payload["original_input_text_this_turn"] = current_text_input
 
                 if status_from_llm == "clarified":
@@ -128,7 +117,6 @@ Respond ONLY with the specified JSON object.
                 return {"status": "error", "message": f"Erreur interne appel LLM: {str(e)}"}, "failed"
         
         else:
-            # ... (gestion action inconnue)
             logger.warning(f"Action inconnue ou non gérée reçue: {action}")
             error_payload = {"status": "error", "message": f"Action non supportée: {action}"}
             return error_payload, "failed"

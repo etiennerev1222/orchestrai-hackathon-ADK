@@ -1,4 +1,3 @@
-# my_simple_a2a_service/reformulator_server/main_server.py
 
 import logging
 import uvicorn
@@ -16,7 +15,6 @@ from starlette.responses import JSONResponse
 from src.shared.service_discovery import register_self_with_gra
 from .executor import ReformulatorAgentExecutor
 
-# --- Configuration de l'agent ---
 AGENT_NAME = "ReformulatorAgentServer"
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
@@ -36,7 +34,6 @@ def get_reformulator_agent_card() -> AgentCard:
         examples=["Reformulate: plan a meeting for tomorrow"]
     )
     
-    # On utilise l'URL si elle existe, sinon on met une valeur temporaire.
     agent_url = os.environ.get("PUBLIC_URL", f"http://localhost_placeholder_for_{AGENT_NAME}:8080")
      
     agent_card = AgentCard(
@@ -52,8 +49,6 @@ def get_reformulator_agent_card() -> AgentCard:
     logger.info(f"Agent Card créée: {agent_card.name}")
     return agent_card
 
-# --- Logique de démarrage et d'arrêt (Lifespan) ---
-# MODIFIÉ : La fonction lifespan est maintenant résiliente
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
     logger.info(f"[{AGENT_NAME}] Démarrage du cycle de vie (lifespan)...")
@@ -76,7 +71,6 @@ async def lifespan(app_param: Starlette):
     
     logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
 
-# --- Création de l'application Starlette ---
 def create_app_instance() -> Starlette:
     agent_executor = ReformulatorAgentExecutor()
     task_store = InMemoryTaskStore()
@@ -93,17 +87,15 @@ def create_app_instance() -> Starlette:
         Route("/health", endpoint=health_check_endpoint, methods=["GET"])
     )
     
-    # Attacher le gestionnaire de cycle de vie
     app.router.lifespan_context = lifespan
     
     return app
 
 app = create_app_instance()
 
-# --- MODIFIÉ : Démarrage Uvicorn compatible Cloud Run ---
 if __name__ == "__main__":
     is_production = 'K_SERVICE' in os.environ
-    port = int(os.environ.get("PORT", 8080)) # Port par défaut 8080 pour les agents
+    port = int(os.environ.get("PORT", 8080))
     host = "0.0.0.0" if is_production else "localhost"
     
     logger.info(f"Démarrage du serveur Uvicorn pour {AGENT_NAME} sur {host}:{port}")

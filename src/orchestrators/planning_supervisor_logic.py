@@ -1,4 +1,3 @@
-# src/orchestrators/planning_supervisor_logic.py
 import logging
 from typing import List, Dict, Any, Optional
 import uuid
@@ -15,7 +14,6 @@ logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# Les URLs en dur sont supprimées, nous utiliserons le GRA
 
 class PlanningSupervisorLogic:
     def __init__(self, max_revisions: int = 2):
@@ -96,19 +94,17 @@ class PlanningSupervisorLogic:
 
     
     async def _simulate_agent_call(self, task_node: TaskNode, input_data: Any) -> Dict[str, Any]:
-        # Ne simule plus que les agents de replanification
         agent_type = task_node.assigned_agent
         logger.info(f"SIMULATION: Appel à {agent_type} pour la tâche '{task_node.id}' avec l'entrée: '{input_data}'")
         await asyncio.sleep(0.1)
 
-        if agent_type in ["LogAgent", "SimpleReformulatorAgent", "AlternativeStrategyAgent"]: # Agents de replanification
+        if agent_type in ["LogAgent", "SimpleReformulatorAgent", "AlternativeStrategyAgent"]:
             return {"status": TaskState.COMPLETED, "artifact_content": f"Tâche {task_node.objective} simulée complétée pour {agent_type}.", "artifact_type": "text"}
 
         logger.warning(f"SIMULATION: Type d'agent inconnu ou non géré pour la simulation directe: {agent_type}")
         return {"status": TaskState.FAILED, "error_message": f"Agent simulé {agent_type} non implémenté."}
     async def _handle_task_completion(self, completed_task: TaskNode):
         logger.info(f"Gestion de la complétion pour la tâche '{completed_task.id}' (agent: {completed_task.assigned_agent}).")
-        # --- MOUCHARD E ---
         log_call_id = uuid.uuid4().hex[:6] 
         current_state_in_db = "Non vérifié"
         if self.task_graph:
@@ -123,12 +119,10 @@ class PlanningSupervisorLogic:
             await self._handle_evaluation_completion(completed_task)
         elif completed_task.assigned_agent == "ValidatorAgentServer":
            await self._handle_validation_completion(completed_task)
-        # Ajouter des handlers pour les agents de replanification (LogAgent etc.) s'ils doivent déclencher d'autres tâches
         elif completed_task.assigned_agent in ["LogAgent", "SimpleReformulatorAgent", "AlternativeStrategyAgent"]:
          logger.info(f"Tâche de replanification/log '{completed_task.id}' assignée à {completed_task.assigned_agent} complétée (simulation).")
 
 
-# Dans PlanningSupervisorLogic
 
     async def _handle_task_failure(self, failed_task: TaskNode, details: Optional[str] = None):
         logger.error(f"La tâche '{failed_task.id}' ({failed_task.objective}) assignée à {failed_task.assigned_agent} a échoué. Détails: {details}")
@@ -137,19 +131,17 @@ class PlanningSupervisorLogic:
             logger.error("TaskGraph non initialisé dans _handle_task_failure.")
             return
 
-        # Exemple simple de replanification (vous pouvez le rendre plus intelligent)
         if failed_task.assigned_agent in ["ReformulatorAgentServer", "EvaluatorAgentServer", "ValidatorAgentServer"]:
             logger.info(f"Tentative de replanification pour la branche de la tâche échouée '{failed_task.id}'.")
             
-            # --- CORRECTION : Créer des objets TaskNode ---
             new_subtasks_nodes: List[TaskNode] = []
             base_id_for_replan = failed_task.id.split('_')[-1][:4]
 
             analyze_task_data = {
                 "task_id": f"analyze_fail_{base_id_for_replan}_{uuid.uuid4().hex[:4]}",
-                "parent": failed_task.id, # Les tâches de replanification deviennent enfants de la tâche échouée
+                "parent": failed_task.id,
                 "objective": f"Analyser l'échec de : {failed_task.objective}",
-                "assigned_agent": "LogAgent" # Agent simulé pour l'instant
+                "assigned_agent": "LogAgent"
             }
             new_subtasks_nodes.append(TaskNode(**analyze_task_data))
 
@@ -157,23 +149,14 @@ class PlanningSupervisorLogic:
                 "task_id": f"retry_alt_{base_id_for_replan}_{uuid.uuid4().hex[:4]}",
                 "parent": failed_task.id,
                 "objective": f"Tenter une alternative pour : {failed_task.objective}",
-                "assigned_agent": "AlternativeStrategyAgent" # Agent simulé
+                "assigned_agent": "AlternativeStrategyAgent"
             }
             new_subtasks_nodes.append(TaskNode(**retry_task_data))
-            # --- FIN CORRECTION ---
 
             try:
-                # `replan_branch` attend une liste de TaskNode
                 self.task_graph.replan_branch(failed_task.id, new_subtasks_nodes)
                 logger.info(f"Branche de la tâche '{failed_task.id}' replanifiée avec {len(new_subtasks_nodes)} nouvelles sous-tâches.")
                 
-                # On marque la tâche échouée comme "FAILED" mais son traitement de l'échec est complété
-                # Ou, si la replanification la remplace, on peut la mettre à COMPLETED.
-                # Pour l'instant, laissons FAILED pour indiquer l'échec initial.
-                # L'état COMPLETED serait si la tâche elle-même a géré son échec et se considère "résolue".
-                # Ici, on remplace ses enfants, donc la tâche originale est "traitée" du point de vue de son échec.
-                # Pour que la logique de get_ready_tasks fonctionne sur les nouveaux enfants,
-                # failed_task doit être COMPLETED.
                 self.task_graph.update_state(failed_task.id, TaskState.COMPLETED, 
                                             details=f"Échec initial ({details}), remplacé par replanification. Nouveaux enfants : {[t.id for t in new_subtasks_nodes]}")
                 logger.info(f"Tâche '{failed_task.id}' marquée comme COMPLETED après replanification pour débloquer les enfants.")
@@ -220,7 +203,7 @@ class PlanningSupervisorLogic:
                 skill_to_find: str = ""
 
                 if task_node.assigned_agent == "ReformulatorAgentServer":
-                    skill_to_find = "reformulation" # Compétence clé
+                    skill_to_find = "reformulation"
                     if task_node.id.startswith("reformulate_rev"):
                         input_for_agent = task_node.objective
                         logger.info(f"Input pour Reformulator (révision) {task_node.id} est son propre objectif.")
@@ -241,10 +224,9 @@ class PlanningSupervisorLogic:
                     parent_node = self.task_graph.get_task(task_node.parent)
                     found_input = False
                     if parent_node:
-                        # Logique de recherche de l'artefact de reformulation le plus récent
-                        child_tasks_details = [] # Pour le log de débogage
+                        child_tasks_details = []
                         raw_child_tasks = [self.task_graph.get_task(child_id) for child_id in parent_node.children]
-                        for t_obj in raw_child_tasks: # Log de débogage
+                        for t_obj in raw_child_tasks:
                             if t_obj: child_tasks_details.append({"id": t_obj.id, "agent": t_obj.assigned_agent, "state": t_obj.state.value, "has_artifact": t_obj.artifact_ref is not None})
                         logger.info(f"Recherche artefact pour évaluateur. Parent '{parent_node.id}'. Enfants: {json.dumps(child_tasks_details)}")
 
@@ -281,14 +263,13 @@ class PlanningSupervisorLogic:
                     found_input = False
                     input_dict_for_validator: Optional[Dict[str, Any]] = None
                     if parent_node:
-                        # Logique de recherche de l'artefact d'évaluation le plus récent
                         child_tasks = [self.task_graph.get_task(child_id) for child_id in parent_node.children]
                         completed_evaluation_tasks = [
                             t for t in child_tasks if t and t.assigned_agent == "EvaluatorAgentServer" and \
                             t.state == TaskState.COMPLETED and isinstance(t.artifact_ref, dict)
                         ]
                         if completed_evaluation_tasks:
-                            def get_completion_time(task: TaskNode): # Fonction utilitaire locale
+                            def get_completion_time(task: TaskNode):
                                 for entry in reversed(task.history):
                                     if entry.get("to_state") == TaskState.COMPLETED.value: return entry.get("timestamp", "")
                                 return ""
@@ -313,11 +294,9 @@ class PlanningSupervisorLogic:
                         await self._handle_task_failure(self.task_graph.get_task(task_node.id), details)
                         continue
                 
-                # --- APPEL AU GRA POUR OBTENIR L'URL DE L'AGENT ---
                 if skill_to_find:
                     agent_target_url = await self._get_agent_url_from_gra(skill_to_find)
                 
-                # --- SECTION COMMUNE POUR L'APPEL A2A (version corrigée) ---
                 if not agent_target_url: 
                     details = f"URL agent pour '{skill_to_find}' non trouvée via GRA."
                     logger.critical(f"{details} Impossible de traiter {task_node.id}")
@@ -325,7 +304,7 @@ class PlanningSupervisorLogic:
                     await self._handle_task_failure(self.task_graph.get_task(task_node.id), details)
                     continue
                 
-                if not isinstance(input_for_agent, str): # Déjà fait pour Validator, mais bon pour les autres
+                if not isinstance(input_for_agent, str):
                     input_for_agent = str(input_for_agent) if input_for_agent is not None else ""
 
                 logger.info(f"Appel réel à {agent_target_url} pour {task_node.id} avec input: '{str(input_for_agent)[:200]}...'")
@@ -346,7 +325,6 @@ class PlanningSupervisorLogic:
                     if final_a2a_state == TaskState.COMPLETED:
                         details_message = f"Réponse agent {task_node.assigned_agent} reçue."
                         if a2a_task_result.artifacts and len(a2a_task_result.artifacts) > 0:
-                            # ... (logique d'extraction d'artefact comme dans votre dernière version complète) ...
                             first_artifact = a2a_task_result.artifacts[0]
                             artifact_text = None
                             if first_artifact.parts and len(first_artifact.parts) > 0:
@@ -367,9 +345,8 @@ class PlanningSupervisorLogic:
                                     details_message += " Artefact textuel reçu."
                             else: extracted_artifact_content = "[Artefact A2A vide]"
                         else: extracted_artifact_content = "[Aucun artefact A2A]"
-                    else: # Échec rapporté par l'agent A2A
-                        # ... (logique d'extraction du message d'erreur de l'agent A2A) ...
-                        details_message = "Échec rapporté par l'agent A2A." # Simplifié
+                    else:
+                        details_message = "Échec rapporté par l'agent A2A."
                 else:
                     details_message = "Réponse A2A invalide."
                     final_a2a_state = TaskState.FAILED
@@ -386,15 +363,11 @@ class PlanningSupervisorLogic:
                 else:
                     logger.error(f"CRITICAL: Impossible de récupérer {task_node.id} après update_state.")
             
-            else: # Agents de replanification simulés
-                # ... (votre logique de simulation) ...
-                pass # Omis pour la clarté
+            else:
+                pass
 
         logger.info(f"[MOUCHARD_CYCLE_END - {current_cycle_log_id}] Fin du traitement des tâches prêtes.")
-        # ... (log de l'état du graphe, si désiré) ...
 
-        # ... (log de l'état du graphe) ...
-# src/orchestrators/planning_supervisor_logic.py
     async def _handle_evaluation_completion(self, completed_evaluation_task: TaskNode):
         logger.info(f"La tâche d'évaluation '{completed_evaluation_task.id}' est complétée.")
         evaluation_output = completed_evaluation_task.artifact_ref
@@ -406,19 +379,17 @@ class PlanningSupervisorLogic:
 
         plan_root_node = self.task_graph.get_task(plan_root_id)
         
-        # --- CORRECTION 1: Message de log ---
         if not plan_root_id or not plan_root_node:
-            # Utilisation de completed_evaluation_task.id ici
             logger.warning(f"Parent (plan racine) '{plan_root_id}' introuvable pour la tâche d'évaluation '{completed_evaluation_task.id}'. Arrêt du traitement de cette branche.")
             return
 
         evaluation_is_positive = False
         evaluation_notes = "Évaluation invalide ou incomplète."
-        feasibility_score = "N/A" # Initialisation pour le log si le score n'est pas trouvé
+        feasibility_score = "N/A"
 
         if isinstance(evaluation_output, dict):
             evaluation_notes = evaluation_output.get("evaluation_notes", evaluation_notes)
-            feasibility_score = evaluation_output.get("feasibility_score") # Récupère le score
+            feasibility_score = evaluation_output.get("feasibility_score")
             if isinstance(feasibility_score, (int, float)) and feasibility_score >= 6:
                 evaluation_is_positive = True
             else:
@@ -427,62 +398,51 @@ class PlanningSupervisorLogic:
         if evaluation_is_positive:
             logger.info(f"L'évaluation est positive (Score: {feasibility_score}). Création de la tâche de validation.")
             
-            # --- CORRECTION 2: Création d'un objet TaskNode ---
             validation_task = TaskNode(
-                task_id=f"validate_{uuid.uuid4().hex[:12]}", # Utilisation de uuid plus court pour la lisibilité
+                task_id=f"validate_{uuid.uuid4().hex[:12]}",
                 parent=plan_root_id,
                 objective="Valider le plan évalué",
                 assigned_agent="ValidatorAgentServer"
             )
-            self.task_graph.add_task(validation_task) # On passe l'objet TaskNode
-            # --- FIN CORRECTION 2 ---
+            self.task_graph.add_task(validation_task)
             
             logger.info(f"Nouvelle tâche de validation '{validation_task.id}' ajoutée au plan '{plan_root_id}'.")
         else:
             logger.warning(f"L'évaluation n'est pas positive: '{evaluation_notes}'.")
-            # S'assurer que get_task retourne bien un objet utilisable par _handle_task_failure
             failed_parent_task = self.task_graph.get_task(plan_root_id)
             if failed_parent_task:
                  self.task_graph.update_state(plan_root_id, TaskState.FAILED, f"Évaluation non concluante: {evaluation_notes}")
                  await self._handle_task_failure(failed_parent_task, f"Évaluation non concluante: {evaluation_notes}")
             else:
                 logger.error(f"Impossible de récupérer la tâche parente {plan_root_id} pour la marquer comme échouée après évaluation.")
-# Dans la classe PlanningSupervisorLogic, dans src/orchestrators/planning_supervisor_logic.py
 
     async def _handle_reformulation_completion(self, completed_reformulation_task: TaskNode):
-        # --- MOUCHARD F ---
         log_call_id = uuid.uuid4().hex[:6]
         logger.info(f"[MOUCHARD_F - HANDLE_REFORM_COMPLETION_ENTER - Appel ID: {log_call_id}] Entrée pour tâche de reformulation: {completed_reformulation_task.id} (ID objet: {id(completed_reformulation_task)})")
 
         logger.info(f"La tâche de reformulation '{completed_reformulation_task.id}' est complétée.")
-        plan_root_id = completed_reformulation_task.parent # C'est l'ID du plan racine
+        plan_root_id = completed_reformulation_task.parent
         
         if not self.task_graph:
             logger.error("TaskGraph non initialisé dans _handle_reformulation_completion.")
             return
         
-        # --- CORRECTION DE LA VÉRIFICATION ---
-        # 1. On récupère le nœud parent (le plan racine) en utilisant son ID.
         plan_root_node = self.task_graph.get_task(plan_root_id) 
 
-        # 2. On vérifie si plan_root_id est valide ET si plan_root_node a bien été trouvé.
         if not plan_root_id or not plan_root_node:
             logger.warning(f"Parent (plan racine) '{plan_root_id}' introuvable pour la tâche de reformulation '{completed_reformulation_task.id}'. Arrêt du traitement de cette branche.")
             return
-        # --- FIN DE LA CORRECTION ---
 
-        # Si on arrive ici, plan_root_node existe.
-        # La suite de la logique pour créer la tâche d'évaluation est correcte.
         evaluation_task = TaskNode(
             task_id=f"evaluate_{uuid.uuid4().hex[:12]}",
-            parent=plan_root_id, # On utilise l'ID du parent
+            parent=plan_root_id,
             objective="Évaluer l'objectif reformulé",
             assigned_agent="EvaluatorAgentServer",
         )
         self.task_graph.add_task(evaluation_task)
         logger.info(f"Nouvelle tâche d'évaluation '{evaluation_task.id}' ajoutée au plan '{plan_root_id}'.")
 
-    async def _handle_validation_completion(self, completed_validation_task: TaskNode): # <-- CORRECTION ICI
+    async def _handle_validation_completion(self, completed_validation_task: TaskNode):
         logger.info(f"La tâche de validation '{completed_validation_task.id}' est complétée.")
         validation_output = completed_validation_task.artifact_ref
         logger.info(f"Résultat de la validation (artefact du TaskNode): {validation_output}")
@@ -508,7 +468,7 @@ class PlanningSupervisorLogic:
                 return
 
             plan_root_node.meta["revision_count"] = current_revision_count + 1
-            self.task_graph.add_task(plan_root_node) # Sauvegarde la mise à jour du compteur
+            self.task_graph.add_task(plan_root_node)
 
             rejected_plan_text = validation_output[0].get("evaluated_plan", "")
             new_objective = (f"La version précédente du plan a été rejetée. Commentaires: '{comments}'. "

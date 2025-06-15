@@ -1,7 +1,6 @@
-# src/agents/reformulator/logic.py
 import logging
 from src.shared.base_agent_logic import BaseAgentLogic
-from src.shared.llm_client import call_llm # <-- Importer le client LLM
+from src.shared.llm_client import call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +42,3 @@ class ReformulatorAgentLogic(BaseAgentLogic):
             logger.error(f"Échec de la reformulation par le LLM: {e}")
             return f"[ERREUR DE REFORMULATION] L'objectif initial était: '{objective_text}'"
         
-# Le bloc if __name__ == "__main__": pour tester isolément peut rester,
-# mais il faudra ajuster l'instanciation et l'appel de méthode si vous le décommentez.
-# Exemple:
-# if __name__ == "__main__":
-#     import asyncio
-#     async def test_reformulator_logic():
-#         logic = ReformulatorAgentLogic()
-#         test_objective = "tester cette nouvelle logique"
-#         result = await logic.process(test_objective, "test-ctx-reformulator")
-#         print(f"Test: Entrée='{test_objective}', Sortie='{result}'")
-#     asyncio.run(test_reformulator_logic())
