@@ -248,12 +248,14 @@ function AgentStatusBar({ agents, graHealth, stats }) {
             </div>
           </div>
           <div className="agent-timestamp">{new Date(a.timestamp).toLocaleString()}</div>
-          {statsMap[a.name] && (
-            <div className="agent-metrics">
-              <span className="metric-success">{statsMap[a.name].tasks_completed || 0}</span>
-              <span className="metric-fail">{statsMap[a.name].tasks_failed || 0}</span>
+          <div className="agent-metrics">
+            <div className="metric-tile success">
+              {statsMap[a.name]?.tasks_completed ?? 0}
             </div>
-          )}
+            <div className="metric-tile fail">
+              {statsMap[a.name]?.tasks_failed ?? 0}
+            </div>
+          </div>
         </div>
       ))}
     </div>
@@ -263,14 +265,29 @@ function AgentStatusBar({ agents, graHealth, stats }) {
 function PlanInfo({ plan, flowRunning, hasFailures }) {
   if (!plan) return null;
   return (
-    <div className="plan-info">
-      <div><strong>Plan ID:</strong> {plan.global_plan_id}</div>
-      <div><strong>Objectif brut:</strong> {plan.raw_objective}</div>
+    <div className="plan-cards">
+      <div className="plan-card">
+        <strong>Plan ID</strong>
+        <div>{plan.global_plan_id}</div>
+      </div>
+      <div className="plan-card">
+        <strong>Objectif brut</strong>
+        <div>{plan.raw_objective}</div>
+      </div>
       {plan.clarified_objective && (
-        <div><strong>Objectif clarifié:</strong> {plan.clarified_objective}</div>
+        <div className="plan-card">
+          <strong>Objectif clarifié</strong>
+          <div>{plan.clarified_objective}</div>
+        </div>
       )}
-      <div><strong>État actuel:</strong> {plan.current_supervisor_state}</div>
-      <div><strong>Flux en cours:</strong> {flowRunning ? '🟢 Oui' : '🏁 Terminé'}</div>
+      <div className="plan-card important">
+        <strong>État actuel</strong>
+        <div>{plan.current_supervisor_state}</div>
+      </div>
+      <div className="plan-card important">
+        <strong>Flux en cours</strong>
+        <div>{flowRunning ? '🟢 Oui' : '🏁 Terminé'}</div>
+      </div>
       {hasFailures && (
         <div className="plan-info-failure">❌ Certaines tâches sont en échec</div>
       )}
@@ -281,20 +298,18 @@ function PlanInfo({ plan, flowRunning, hasFailures }) {
 function PlanStats({ team1Counts, team2Counts }) {
   if (!team1Counts && !team2Counts) return null;
 
-  const renderTable = counts => (
-    <table className="plan-stats-table">
-      <tbody>
-        {Object.entries(counts).map(([state, count]) => {
-          const isFailed = state === 'failed' || state === 'unable_to_complete';
-          return (
-            <tr key={state} className={isFailed ? 'failed-state' : ''}>
-              <td>{state}</td>
-              <td>{count}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+  const renderTiles = counts => (
+    <div className="stats-tiles">
+      {Object.entries(counts).map(([state, count]) => {
+        const failed = state === 'failed' || state === 'unable_to_complete';
+        return (
+          <div key={state} className={`stat-tile ${failed ? 'failed' : ''}`}>
+            <div>{state}</div>
+            <div>{count}</div>
+          </div>
+        );
+      })}
+    </div>
   );
 
   return (
@@ -303,13 +318,13 @@ function PlanStats({ team1Counts, team2Counts }) {
       {team1Counts && (
         <div>
           <strong>TEAM 1</strong>
-          {renderTable(team1Counts)}
+          {renderTiles(team1Counts)}
         </div>
       )}
       {team2Counts && (
         <div>
           <strong>TEAM 2</strong>
-          {renderTable(team2Counts)}
+          {renderTiles(team2Counts)}
         </div>
       )}
     </details>
@@ -427,7 +442,7 @@ function App() {
   React.useEffect(() => {
     fetch(`${BACKEND_API_URL}/v1/stats/agents`)
       .then(res => res.json())
-      .then(data => setAgentsStats(data.stats || []))
+      .then(data => setAgentsStats(data.stats || data || []))
       .catch(err => console.error('Erreur chargement statistiques agents', err));
   }, []);
 

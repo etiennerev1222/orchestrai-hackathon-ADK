@@ -147,22 +147,24 @@ input {
 .agent-metrics {
   margin-top: 0.25rem;
   display: flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
-.metric-success,
-.metric-fail {
-  font-size: 0.8rem;
-  padding: 0.1rem 0.3rem;
-  border-radius: 4px;
+.metric-tile {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  text-align: center;
+  min-width: 70px;
 }
 
-.metric-success {
+.metric-tile.success {
   background: var(--success-bg);
   color: var(--success-text);
 }
 
-.metric-fail {
+.metric-tile.fail {
   background: var(--error-bg);
   color: var(--error-text);
 }
@@ -203,16 +205,32 @@ input {
   margin-bottom: 0.25rem;
 }
 
-.plan-info {
-  border: 1px solid var(--border);
-  padding: 0.5rem;
+.plan-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-bottom: 1rem;
+}
+
+.plan-card {
   background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  min-width: 160px;
+  flex: 1;
+}
+
+.plan-card.important {
+  background: var(--primary);
+  color: var(--text);
+  font-weight: bold;
 }
 
 .plan-info-failure {
   color: var(--error-text);
   font-weight: bold;
+  margin-top: 0.5rem;
 }
 
 .plan-stats {
@@ -228,17 +246,23 @@ input {
   font-weight: bold;
 }
 
-.plan-stats-table {
-  border-collapse: collapse;
-  margin-bottom: 0.5rem;
+.stats-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
-.plan-stats-table td {
+.stat-tile {
+  background: var(--card-bg);
   border: 1px solid var(--border);
-  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  padding: 0.5rem;
+  min-width: 120px;
+  text-align: center;
 }
 
-.plan-stats-table .failed-state td {
+.stat-tile.failed {
   background: var(--error-bg);
   color: var(--error-text);
   font-weight: bold;
