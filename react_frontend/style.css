@@ -376,3 +376,35 @@ input {
     transform: rotate(360deg);
   }
 }
+
+.file-browser {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  padding: 0.5rem;
+  background: var(--card-bg);
+}
+.file-browser table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.file-browser th,
+.file-browser td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.file-browser .clickable-row {
+  cursor: pointer;
+}
+.file-browser .path-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.file-browser .file-actions button {
+  margin-left: 0.5rem;
+}
+.error-message {
+  color: var(--error-text);
+  font-weight: bold;
+}
