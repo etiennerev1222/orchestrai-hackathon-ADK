@@ -37,6 +37,8 @@ function Graph({
   const wrapperRef = React.useRef(null);
   const containerRef = React.useRef(null);
   const networkRef = React.useRef(null);
+  const popupRef = React.useRef(null);
+  const [popupPos, setPopupPos] = React.useState({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = React.useState(false);
 
   const toggleFullscreen = () => {
@@ -89,8 +91,8 @@ function Graph({
       const ev = params.event?.srcEvent || {};
       const rect = wrapperRef.current.getBoundingClientRect();
       const coords = {
-        x: (ev.pageX || 0) - rect.left,
-        y: (ev.pageY || 0) - rect.top
+        x: (ev.clientX || 0) - rect.left,
+        y: (ev.clientY || 0) - rect.top
       };
       if (params.nodes.length && onNodeClick) {
         onNodeClick({ id: params.nodes[0], x: coords.x, y: coords.y });
@@ -103,6 +105,24 @@ function Graph({
     network.fit();
     return () => network.destroy();
   }, [nodes, edges]);
+
+  React.useLayoutEffect(() => {
+    if (!popup || popup.target !== id) return;
+    if (!popupRef.current || !wrapperRef.current) return;
+    const wrapperRect = wrapperRef.current.getBoundingClientRect();
+    const popupRect = popupRef.current.getBoundingClientRect();
+    let x = popup.x + 10;
+    let y = popup.y + 10;
+    if (x + popupRect.width > wrapperRect.width) {
+      x = wrapperRect.width - popupRect.width - 10;
+    }
+    if (y + popupRect.height > wrapperRect.height) {
+      y = wrapperRect.height - popupRect.height - 10;
+    }
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    setPopupPos({ x, y });
+  }, [popup, id]);
 
   return (
     <div className="graph-wrapper" ref={wrapperRef}>
@@ -125,8 +145,9 @@ function Graph({
       </button>
       {popup && popup.target === id && (
         <div
+          ref={popupRef}
           className="artifact-popup"
-          style={{ left: popup.x, top: popup.y, position: 'absolute' }}
+          style={{ left: popupPos.x, top: popupPos.y, position: 'absolute' }}
           onClick={closePopup}
         >
           <span className="artifact-popup-close">&times;</span>
