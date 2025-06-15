@@ -220,6 +220,34 @@ input {
   padding: 0.75rem;
   min-width: 160px;
   flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.card-header {
+  font-weight: bold;
+  min-width: 140px;
+}
+
+.stat-card .card-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.stat-pill {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.stat-pill.failed {
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-weight: bold;
 }
 
 .plan-card.important {

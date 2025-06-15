@@ -262,32 +262,52 @@ function AgentStatusBar({ agents, graHealth, stats }) {
   );
 }
 
-function PlanInfo({ plan, flowRunning, hasFailures }) {
+function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) {
   if (!plan) return null;
+  const renderStats = (title, counts) => {
+    if (!counts) return null;
+    return (
+      <div className="plan-card stat-card">
+        <div className="card-header">{title}</div>
+        <div className="card-content">
+          {Object.entries(counts).map(([state, count]) => {
+            const failed = state === 'failed' || state === 'unable_to_complete';
+            return (
+              <span key={state} className={`stat-pill ${failed ? 'failed' : ''}`}>
+                {state}: {count}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
   return (
     <div className="plan-cards">
       <div className="plan-card">
-        <strong>Plan ID</strong>
-        <div>{plan.global_plan_id}</div>
+        <div className="card-header">Plan ID</div>
+        <div className="card-content">{plan.global_plan_id}</div>
       </div>
       <div className="plan-card">
-        <strong>Objectif brut</strong>
-        <div>{plan.raw_objective}</div>
+        <div className="card-header">Objectif brut</div>
+        <div className="card-content">{plan.raw_objective}</div>
       </div>
       {plan.clarified_objective && (
         <div className="plan-card">
-          <strong>Objectif clarifié</strong>
-          <div>{plan.clarified_objective}</div>
+          <div className="card-header">Objectif clarifié</div>
+          <div className="card-content">{plan.clarified_objective}</div>
         </div>
       )}
       <div className="plan-card important">
-        <strong>État actuel</strong>
-        <div>{plan.current_supervisor_state}</div>
+        <div className="card-header">État actuel</div>
+        <div className="card-content">{plan.current_supervisor_state}</div>
       </div>
       <div className="plan-card important">
-        <strong>Flux en cours</strong>
-        <div>{flowRunning ? '🟢 Oui' : '🏁 Terminé'}</div>
+        <div className="card-header">Flux en cours</div>
+        <div className="card-content">{flowRunning ? '🟢 Oui' : '🏁 Terminé'}</div>
       </div>
+      {renderStats('Statistiques TEAM 1', team1Counts)}
+      {renderStats('Statistiques TEAM 2', team2Counts)}
       {hasFailures && (
         <div className="plan-info-failure">❌ Certaines tâches sont en échec</div>
       )}
@@ -739,6 +759,8 @@ function App() {
           plan={planDetails}
           flowRunning={planDetails && !FINISHED_STATES.includes(planDetails.current_supervisor_state)}
           hasFailures={hasFailures}
+          team1Counts={team1Counts}
+          team2Counts={team2Counts}
         />
         {planDetails?.team2_execution_plan_id &&
           planDetails.current_supervisor_state !== 'TEAM2_EXECUTION_COMPLETED' && (
@@ -748,7 +770,6 @@ function App() {
               </button>
             </div>
           )}
-        <PlanStats team1Counts={team1Counts} team2Counts={team2Counts} />
         {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
           <ClarificationSection plan={planDetails} />
         )}
