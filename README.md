@@ -1,4 +1,4 @@
-# OrchestrAI – De l’idée à l’action par collaboration d’agents LLM  
+# OrchestrAI – From Idea to Action via LLM Agent Collaboration
 *OrchestrAI – From Idea to Action with LLM-Driven Agent Collaboration*
 
 ---
@@ -9,90 +9,88 @@
 
 ## ✨ Pitch
 
-> **Français :** > OrchestrAI transforme tout objectif flou en plan d’action détaillé, puis en livrables concrets, grâce à une équipe d’agents IA spécialisés orchestrés dynamiquement. Clarification, planification, exécution : chaque étape est automatisée, supervisée, récupérable, et documentée, tout en intégrant l’utilisateur pour garantir pertinence et qualité.
-
-> **English:** > OrchestrAI turns any vague user goal into a structured plan and concrete deliverables, thanks to a dynamically orchestrated team of specialized AI agents. Clarification, planning, execution: every step is automated, supervised, recoverable, and logged, keeping the user in the loop for quality and relevance.
+OrchestrAI turns any vague user goal into a detailed action plan and concrete deliverables thanks to a dynamically orchestrated team of specialized AI agents. Clarification, planning and execution are fully automated, supervised, recoverable and logged while keeping the user in the loop for relevance and quality.
 
 ---
 
 ## 🚀 Why OrchestrAI Stands Out
 
-- **Human-in-the-loop automation**: L’utilisateur reste impliqué à chaque étape clé.
+- **Human-in-the-loop automation**: The user remains involved at every key step.
 - **Dynamic agent discovery**: Agents are registered and assigned in real time via the GRA registry.
-- **Error resilience & incremental execution**: Plans and tasks can be retried, extended, or patched without losing previous progress.
-- **Composable & extensible**: Add new agents/skills anytime—just register with the GRA and they’re orchestrated automatically.
+- **Error resilience & incremental execution**: Plans and tasks can be retried, extended or patched without losing previous progress.
+- **Composable & extensible**: Add new agents or skills anytime—just register with the GRA and they are orchestrated automatically.
 - **A2A protocol & Google ADK compliant**: Ensures interoperability and future-proofing.
-- **Full audit trail**: Every decision, correction, and outcome is persisted in Firestore for transparency.
+- **Full audit trail**: Every decision, correction and outcome is persisted in Firestore for transparency.
 - **Isolated dev environments**: Generated code runs in Kubernetes pods managed by the `EnvironmentManager` for safety (see `docs/environment_manager.md`).
 
 ---
 
-## 🏗️ Table des Matières
+## 🏗️ Table of Contents
 
-1. [Architecture Fonctionnelle](#architecture-fonctionnelle)
-2. [Architecture Technique](#architecture-technique)
-3. [Principaux Concepts](#principaux-concepts)
-4. [Installation et Prérequis](#installation-et-prérequis)
-5. [Utilisation](#utilisation)
-6. [Structure du Projet](#structure-du-projet)
-7. [Déploiement Cloud / Firebase](#déploiement-cloud--firebase)
-8. [Comment Ajouter Son Agent](#comment-ajouter-son-agent)
+1. [Functional Architecture](#functional-architecture)
+2. [Technical Architecture](#technical-architecture)
+3. [Key Concepts](#key-concepts)
+4. [Installation & Prerequisites](#installation--prerequisites)
+5. [Usage](#usage)
+6. [Project Structure](#project-structure)
+7. [Cloud / Firebase Deployment](#cloud--firebase-deployment)
+8. [How to Add Your Agent](#how-to-add-your-agent)
 9. [Roadmap & Perspectives](#roadmap--perspectives)
 
 ---
 
-## 🧭 Architecture Fonctionnelle
+## 🧭 Functional Architecture
 
-L'architecture fonctionnelle décrit le flux de traitement depuis l'idée de l'utilisateur jusqu'à l'exécution par les équipes d'agents.
+The functional architecture describes the flow from the user's idea all the way to execution by the agent teams.
 
-**Visualisez ce schéma sur [mermaidchart.com](https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit)**
+**View the diagram on [mermaidchart.com](https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit)**
 
 ```mermaid
 graph TD
     subgraph "Phase 1: Clarification"
-        A[Utilisateur] -->|Objectif Initial| B(API Gateway / GRA)
+        A[User] -->|Initial Goal| B(API Gateway / GRA)
         B --> C{Global Supervisor}
-        C --o|Demande clarification| D[User Interaction Agent]
-        D --o|Affiche à l'utilisateur| E[Interface UI]
-        E --o|Réponse| C
+        C --o|Clarification Request| D[User Interaction Agent]
+        D --o|Display to User| E[Interface UI]
+        E --o|Response| C
     end
-    C -->|Objectif Clarifié| F{Planning Supervisor}
-    subgraph "Phase 2: Planification (TEAM 1)"
-        F -->|Génère plan| G[Reformulator Agent]
-        G -->|Évalue plan| H[Evaluator Agent]
-        H -->|Valide plan| I[Validator Agent]
-        I -- "Si plan rejeté" --> F
+    C -->|Clarified Goal| F{Planning Supervisor}
+    subgraph "Phase 2: Planning (TEAM 1)"
+        F -->|Generate Plan| G[Reformulator Agent]
+        G -->|Evaluate Plan| H[Evaluator Agent]
+        H -->|Validate Plan| I[Validator Agent]
+        I -- "If Plan Rejected" --> F
     end
-    I -- "Plan Validé" --> J{Execution Supervisor}
-    subgraph "Phase 3: Exécution (TEAM 2)"
-        J -->|Décomposer plan| K[Decomposition Agent]
+    I -- "Validated Plan" --> J{Execution Supervisor}
+    subgraph "Phase 3: Execution (TEAM 2)"
+        J -->|Split Plan| K[Decomposition Agent]
         K -->|Execution Task Graph| J
-        J -- "Orchestre tâches" --> L((Pool d'Agents d'Exécution))
+        J -- "Coordinate Tasks" --> L((Execution Agents Pool))
         subgraph L
             direction LR
             L1[Development Agent]
             L2[Research Agent]
             L3[Testing Agent]
         end
-        L -- "Artefacts" --> J
+        L -- "Artifacts" --> J
     end
-    J -->|Résultats Finaux| M[Output]
+    J -->|Final Results| M[Output]
 ```
 
-## Architecture Technique
+## Technical Architecture
 
-L'architecture technique a été mise à jour pour refléter l'utilisation de **Vertex AI** comme plateforme centrale pour les modèles Gemini.
+The technical architecture reflects the use of **Vertex AI** as the central platform for the Gemini models.
 
 ```mermaid
 graph LR
     %% --- FRONTENDS ---
     subgraph "Frontends"
-        User[(Utilisateur)]
+        User[(User)]
         ReactUI["React (Firebase Hosting)"]
         User --> ReactUI
     end
 
-    %% --- BACKEND sur Cloud Run ---
+    %% --- BACKEND on Cloud Run ---
     subgraph "Cloud Run Services"
         GRA[fa:fa-server GRA / API Gateway]
         GlobalSupervisor[fa:fa-brain Global Supervisor]
@@ -119,7 +117,7 @@ graph LR
         end
     end
 
-    %% --- SERVICES PARTAGES ---
+    %% --- SHARED SERVICES ---
     subgraph "Shared Services"
         Firestore[(fa:fa-database Firestore)]
         VertexAI["fa:fa-brain Vertex AI\n(Gemini Models)"]
@@ -127,10 +125,10 @@ graph LR
 
     %% --- FLOW & INTERACTIONS ---
     ReactUI -- "REST API" --> GRA
-    GRA -- "Déclenche" --> GlobalSupervisor
-    GlobalSupervisor -- "Initie TEAM 1" --> PlanningSupervisor
-    GlobalSupervisor -- "Initie TEAM 2" --> ExecutionSupervisor
-    
+    GRA -- "Triggers" --> GlobalSupervisor
+    GlobalSupervisor -- "Start TEAM 1" --> PlanningSupervisor
+    GlobalSupervisor -- "Start TEAM 2" --> ExecutionSupervisor
+
     %% Agent Communications
     GlobalSupervisor <--> |"A2A"| UserInteractionAgent
     PlanningSupervisor <--> |"A2A"| Reformulator
@@ -142,7 +140,7 @@ graph LR
     ExecutionSupervisor <--> |"A2A"| TestingAgent
 
     %% Database Connections
-    GRA -- "R/W: Registre Agents" --> Firestore
+    GRA -- "R/W: Agent Registry" --> Firestore
     GlobalSupervisor -- "R/W: global_plans" --> Firestore
     PlanningSupervisor -- "R/W: task_graphs" --> Firestore
     ExecutionSupervisor -- "R/W: execution_task_graphs" --> Firestore
@@ -158,39 +156,39 @@ graph LR
     TestingAgent -- "API Call" --> VertexAI
 ```
 
-* **Langage et Frameworks Backend** :
+* **Backend Language & Frameworks**:
     * Python 3.11
-    * Agents et GRA : Serveurs ASGI (Uvicorn), SDK A2A (`A2AStarletteApplication`), FastAPI pour le GRA.
-* **Logique Métier des Agents** : Modèles de langage Gemini **via la plateforme Google Cloud Vertex AI** (gérée par `src/shared/llm_client.py`).
-* **Base de Données (Google Cloud Firestore)** :
-    * `global_plans`, `task_graphs`, `execution_task_graphs`, `agents` (registre).
-* **Communication Inter-Services** : Protocole A2A (via `src/clients/a2a_api_client.py`).
-* **Front-End** : React, déployé sur Firebase Hosting.
-* **Gestion des Tâches Asynchrones** : `asyncio` utilisé extensivement.
-* **Environment Manager** : création et gestion de pods Kubernetes isolés pour l'exécution du code produit.
+    * Agents and the GRA run as ASGI servers (Uvicorn) using the A2A SDK (`A2AStarletteApplication`) and FastAPI for the GRA.
+* **Agent Business Logic**: Gemini language models via **Google Cloud Vertex AI** (handled in `src/shared/llm_client.py`).
+* **Database (Google Cloud Firestore)**:
+    * `global_plans`, `task_graphs`, `execution_task_graphs`, `agents` (registry).
+* **Inter-Service Communication**: A2A protocol (via `src/clients/a2a_api_client.py`).
+* **Front End**: React served from Firebase Hosting.
+* **Asynchronous Task Handling**: Extensive use of `asyncio`.
+* **Environment Manager**: Creates and manages isolated Kubernetes pods to run the generated code.
 
-## Prérequis
+## Installation & Prerequisites
 
-* **Python 3.11**.
-* **Compte Google Cloud** avec un projet créé.
-* **API Activées** : Sur votre projet GCP, assurez-vous que les API suivantes sont activées : **Cloud Run, Artifact Registry, Vertex AI, Cloud Firestore, Firebase, Cloud Build, IAM**.
-* **Authentification :**
-    * **Pour le développement local :** Avoir un fichier de clé de compte de service JSON et définir la variable d'environnement `GOOGLE_APPLICATION_CREDENTIALS` pour pointer vers ce fichier.
-    * **Pour le déploiement sur Cloud Run :** Aucune clé n'est nécessaire. L'authentification se fait automatiquement via l'identité du compte de service attaché aux services Cloud Run.
-* Bibliothèques Python listées dans `requirements_py311.txt`.
+* **Python 3.11**
+* **Google Cloud account** with a project created
+* **Enabled APIs**: ensure **Cloud Run, Artifact Registry, Vertex AI, Cloud Firestore, Firebase, Cloud Build, IAM** are enabled on your project
+* **Authentication**
+    * **Local development**: have a service account key JSON file and set `GOOGLE_APPLICATION_CREDENTIALS` to its path
+    * **Cloud Run deployment**: no key required, authentication happens automatically through the service account attached to the Cloud Run services
+* Python libraries listed in `requirements_py311.txt`
 
-## Installation
+### Installation
 
-1.  Clonez le dépôt.
-2.  Créez un environnement virtuel (avec Conda ou venv) en **Python 3.11**.
-3.  Installez les dépendances :
+1. Clone the repository.
+2. Create a virtual environment (Conda or venv) with **Python 3.11**.
+3. Install dependencies:
     ```bash
     pip install -r requirements_py311.txt
     ```
-    Le fichier contient notamment les paquets suivants :
+    This file includes packages such as:
     ```plaintext
     firebase-admin
-    google-cloud-aiplatform  # Paquet pour Vertex AI
+    google-cloud-aiplatform  # Vertex AI client
     httpx
     uvicorn[standard]
     fastapi
@@ -198,74 +196,74 @@ graph LR
     streamlit
     ...
     ```
-4.  Configurez votre fichier de credentials pour le développement local.
+4. Configure your credentials file for local development.
 
-## Utilisation (Développement Local)
+## Usage (Local Development)
 
-Le script `deployment.sh` peut générer un fichier `docker-compose.yml` pour lancer tous les services localement.
+The `deployment.sh` script can generate a `docker-compose.yml` file to launch all services locally.
 
-1.  **Générez la configuration locale :**
+1. **Generate the local configuration:**
     ```bash
     ./deployment.sh configure
     ```
-2.  **Lancez tous les services avec Docker Compose :**
+2. **Start all services with Docker Compose:**
     ```bash
     cd docker_build
     docker-compose up --build
     ```
-    Cela construira les images et démarrera les 9 conteneurs.
+    This builds the images and starts the nine containers.
 
-3.  **Accédez au Front-End :** Le front-end React est servi par le service `user_interaction_agent` et est accessible sur le port défini dans le `docker-compose.yml`.
+3. **Access the Front End:** the React front end is served by the `user_interaction_agent` service and is available on the port defined in `docker-compose.yml`.
 
-## Déploiement sur Google Cloud Run et Firebase
+## Cloud / Firebase Deployment
 
-Le script `deployment.sh` automatise entièrement le déploiement.
+The `deployment.sh` script automates the entire deployment process.
 
-**Prérequis pour le déploiement :**
-1.  Avoir installé et configuré le SDK `gcloud`.
-2.  Être authentifié :
+**Deployment prerequisites:**
+1. Install and configure the `gcloud` SDK.
+2. Authenticate:
     ```bash
     gcloud auth login
-    gcloud config set project VOTRE_PROJECT_ID
+    gcloud config set project YOUR_PROJECT_ID
     gcloud auth configure-docker europe-west1-docker.pkg.dev
     ```
-3.  Avoir activé toutes les API requises sur le projet (voir section Prérequis).
+3. Enable all required APIs on the project (see Prerequisites section).
 
-**Commandes de déploiement :**
+**Deployment commands:**
 ```bash
-# Pour tout configurer, builder, pousser et déployer en une seule fois :
+# Configure, build, push and deploy everything in one go:
 ./deployment.sh all
 
-# Pour déployer uniquement le front-end après une modification :
+# Deploy only the front end after a change:
 ./deployment.sh deploy_frontend
 
-# Pour déployer rapidement un seul agent après une modification de son code :
-# (Assurez-vous d'avoir build et push l'image de l'agent au préalable)
+# Quickly deploy a single agent after modifying its code
+# (make sure the agent image has been built and pushed first)
 ./deployment.sh deploy-one user_interaction_agent
 ```
-Le script gère automatiquement l'injection des bonnes variables d'environnement (`GCP_PROJECT_ID`, `GCP_REGION`, URLs des services) dans les conteneurs déployés. L'authentification via clé API n'est plus nécessaire.
+The script automatically injects the correct environment variables (`GCP_PROJECT_ID`, `GCP_REGION`, service URLs) into the deployed containers. API key authentication is no longer required.
 
-## Structure du Projet
+## Project Structure
 ```Markdown
 orchestrai-hackathon-ADK/
 ├── src/
 │   ├── agents/
-│   │   ├── ... (8 agents spécialisés)
+│   │   ├── ... (8 specialized agents)
 │   ├── clients/
 │   ├── orchestrators/
 │   ├── services/
 │   │   ├── gra/
 │   │   └── environment_manager/
 │   └── shared/
-├── react_frontend/                   # Interface React légère
-├── deployment.sh                     # Script de déploiement Cloud Run
-└── requirements_py311.txt            # Fichier de dépendances pour Python 3.11
+├── react_frontend/                   # Lightweight React interface
+├── deployment.sh                     # Cloud Run deployment script
+└── requirements_py311.txt            # Dependency list for Python 3.11
 ```
 
-## Pistes d'Évolution Futures
+## Future Enhancements
 
-* Logique de replanification plus sophistiquée dans `ExecutionSupervisorLogic`.
-* Gestion plus fine des erreurs et mécanismes de reessai.
-* Sécurisation des API au-delà de l'authentification IAM de Cloud Run.
-* Collecter et afficher des statistiques de performance par agent.
-* Créer et documenter des outils spécialisés pour les agents (ex: accès à des bases de données spécifiques, etc.).
+* More advanced re-planning logic in `ExecutionSupervisorLogic`.
+* Finer-grained error handling and retry mechanisms.
+* API hardening beyond Cloud Run IAM authentication.
+* Collect and display performance statistics per agent.
+* Create and document specialized tools for agents (e.g., access to specific databases, etc.).
