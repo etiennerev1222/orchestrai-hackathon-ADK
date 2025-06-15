@@ -10,19 +10,59 @@ const FINISHED_STATES = [
   'FAILED_AGENT_ERROR'
 ];
 
-function formatArtifact(data) {
-  if (!data) return '';
+function parseMaybeJson(data) {
+  if (!data) return data;
   if (typeof data === 'string') {
     try {
-      const obj = JSON.parse(data);
-      return JSON.stringify(obj, null, 2);
+      return JSON.parse(data);
     } catch {
       return data;
     }
   }
-  if (typeof data === 'object') return JSON.stringify(data, null, 2);
-  return String(data);
+  return data;
 }
+
+function FormattedContent({ data, open }) {
+  const value = parseMaybeJson(data);
+  if (value === null || value === undefined) return <span>{String(value)}</span>;
+  if (typeof value === 'string') {
+    if (value.length > 80 || value.includes('\n')) return <pre>{value}</pre>;
+    return <span>{value}</span>;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return <span>{String(value)}</span>;
+  }
+  if (Array.isArray(value)) {
+    return (
+      <details className="json-viewer" open={open}>
+        <summary>Array[{value.length}]</summary>
+        <div style={{ paddingLeft: '1rem' }}>
+          {value.map((v, i) => (
+            <div key={i}>
+              <FormattedContent data={v} />
+            </div>
+          ))}
+        </div>
+      </details>
+    );
+  }
+  if (typeof value === 'object') {
+    return (
+      <details className="json-viewer" open={open}>
+        <summary>Object</summary>
+        <div style={{ paddingLeft: '1rem' }}>
+          {Object.entries(value).map(([k, v]) => (
+            <div key={k} style={{ marginBottom: '0.25rem' }}>
+              <strong>{k}:</strong> <FormattedContent data={v} />
+            </div>
+          ))}
+        </div>
+      </details>
+    );
+  }
+  return <span>{String(value)}</span>;
+}
+
 
 function Graph({
   nodes,
@@ -151,7 +191,7 @@ function Graph({
           onClick={closePopup}
         >
           <span className="artifact-popup-close">&times;</span>
-          <pre>{popup.content}</pre>
+          <FormattedContent data={popup.content} open />
         </div>
       )}
     </div>
@@ -285,7 +325,7 @@ function FinalArtifactsHistory({ nodes }) {
           .then(r => r.json())
           .then(d => ({
             task: n.objective || n.id,
-            content: formatArtifact(d.content),
+            content: parseMaybeJson(d.content),
             updated: n.updated_at || ''
           }))
           .catch(() => null)
@@ -307,7 +347,7 @@ function FinalArtifactsHistory({ nodes }) {
           {it.updated && (
             <div className="msg-date">{new Date(it.updated).toLocaleString()}</div>
           )}
-          <pre>{it.content}</pre>
+          <FormattedContent data={it.content} open />
         </div>
       ))}
     </div>
@@ -517,13 +557,13 @@ function App() {
       setPopup({ x: coords.x, y: coords.y, content, target: isTeam1 ? 'team1' : 'team2' });
 
     if (isTeam1) {
-      display(formatArtifact(nodeInfo.artifact_ref));
+      display(parseMaybeJson(nodeInfo.artifact_ref));
     } else {
       const artifact = nodeInfo.output_artifact_ref;
       if (artifact) {
         fetch(`${BACKEND_API_URL}/artifacts/${artifact}`)
           .then(r => r.json())
-          .then(d => display(formatArtifact(d.content)));
+          .then(d => display(parseMaybeJson(d.content)));
       }
     }
   }
