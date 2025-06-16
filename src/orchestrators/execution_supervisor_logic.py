@@ -537,6 +537,28 @@ class ExecutionSupervisorLogic:
             self.plan_environment_id = None
             self.logger.info(f"[{self.execution_plan_id}] Environment '{self.execution_plan_id}' cleaned up after continuation.")
 
+    async def retry_failed_tasks(self, max_cycles: int = 5):
+        """Relance uniquement les tâches actuellement en échec."""
+        snapshot = self.task_graph.as_dict()
+        nodes = snapshot.get("nodes", {})
+        failed_tasks = [
+            nid
+            for nid, ndata in nodes.items()
+            if ExecutionTaskState(ndata.get("state", ExecutionTaskState.PENDING))
+            == ExecutionTaskState.FAILED
+        ]
+
+        if not failed_tasks:
+            self.logger.info(f"[{self.execution_plan_id}] Aucune tâche en échec à relancer.")
+        else:
+            for task_id in failed_tasks:
+                self.logger.info(f"[{self.execution_plan_id}] Reset état FAILED -> PENDING pour la tâche {task_id}.")
+                self.task_graph.update_task_state(task_id, ExecutionTaskState.PENDING, "Relance demandée.")
+
+            self.task_graph.set_overall_status("RETRYING_FAILED_TASKS")
+
+        await self.continue_execution(max_cycles=max_cycles)
+
 
     async def _get_all_available_execution_skills_from_gra(self) -> List[str]:
         self.logger.info(f"[{self.execution_plan_id}] Récupération des compétences d'exécution disponibles depuis le GRA.")
