@@ -598,7 +598,7 @@ function App() {
   const [stateFilter, setStateFilter] = React.useState('');
   const [graHealth, setGraHealth] = React.useState(null);
   const [initialLoading, setInitialLoading] = React.useState(true);
-  const [activeEnvironmentId, setActiveEnvironmentId] = React.useState('test-env-12345');
+  const [activeEnvironmentId, setActiveEnvironmentId] = React.useState('');
 
   const uniqueStates = React.useMemo(
     () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
@@ -668,6 +668,11 @@ function App() {
       .then(res => res.json())
       .then(plan => {
         setPlanDetails(plan);
+        if (plan.team2_execution_plan_id) {
+          setActiveEnvironmentId(plan.team2_execution_plan_id);
+        } else {
+          setActiveEnvironmentId('');
+        }
         if (plan.team1_plan_id) {
           fetch(`${BACKEND_API_URL}/plans/${plan.team1_plan_id}`)
             .then(r => r.json())
