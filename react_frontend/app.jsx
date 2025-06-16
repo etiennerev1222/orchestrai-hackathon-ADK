@@ -435,15 +435,12 @@ function FileBrowser({ environmentId, planId }) {
       setIsLoading(false);
     }
   }, [environmentId]);
-
   React.useEffect(() => {
-    fetchFiles(currentPath);
-  }, [fetchFiles, currentPath]);
-
-  React.useEffect(() => {
+    // Ce useEffect gère le changement d'environmentId.
+    // Il réinitialise le chemin et lance le fetch.
     setCurrentPath('.');
     fetchFiles('.');
-  }, [environmentId, planId]);
+  }, [environmentId, planId]); // planId est gardé pour forcer le refresh si on resélectionne le même plan
 
   const handleDirectoryClick = name => {
     const newPath = currentPath === '.' ? name : `${currentPath}/${name}`;
@@ -502,6 +499,14 @@ function FileBrowser({ environmentId, planId }) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
 
+  if (!environmentId) {
+      return (
+        <div className="file-browser">
+            <h3>Explorateur de Fichiers</h3>
+            <p>Sélectionnez un plan pour voir ses fichiers.</p>
+        </div>
+      )
+  }
   return (
     <div className="file-browser">
       <h3>Explorateur de Fichiers (ID: {environmentId})</h3>
@@ -598,7 +603,7 @@ function App() {
   const [stateFilter, setStateFilter] = React.useState('');
   const [graHealth, setGraHealth] = React.useState(null);
   const [initialLoading, setInitialLoading] = React.useState(true);
-  const [activeEnvironmentId, setActiveEnvironmentId] = React.useState('test-env-12345');
+  const [activeEnvironmentId, setActiveEnvironmentId] = React.useState(null);
 
   const uniqueStates = React.useMemo(
     () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
