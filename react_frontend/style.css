@@ -328,6 +328,13 @@ input {
 .messages-history {
   margin-top: 1rem;
 }
+.artifact-section {
+  margin-bottom: 1rem;
+}
+.artifact-section h5 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+}
 .message-item {
   border: 1px solid var(--border);
   padding: 0.5rem;
