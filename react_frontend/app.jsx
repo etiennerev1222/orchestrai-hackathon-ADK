@@ -880,17 +880,23 @@ function App() {
     const display = content =>
       setPopup({ x: coords.x, y: coords.y, content, target: isTeam1 ? 'team1' : 'team2' });
 
-    if (isTeam1) {
+  if (isTeam1) {
       display(parseMaybeJson(nodeInfo.artifact_ref));
-    } else {
+  } else {
       const artifact = nodeInfo.output_artifact_ref;
       if (artifact) {
         fetch(`${BACKEND_API_URL}/artifacts/${artifact}`)
           .then(r => r.json())
-          .then(d => display(parseMaybeJson(d.content)));
+          .then(d => display(parseMaybeJson(d.content)))
+          .catch(() => {
+            if (nodeInfo.state === 'failed')
+              display(nodeInfo.result_summary || 'Échec sans détail');
+          });
+      } else if (nodeInfo.state === 'failed') {
+        display(nodeInfo.result_summary || 'Échec sans détail');
       }
-    }
   }
+}
 
   function ClarificationSection({ plan }) {
     const [answer, setAnswer] = React.useState('');
