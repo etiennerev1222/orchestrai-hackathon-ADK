@@ -10,6 +10,13 @@ const FINISHED_STATES = [
   'FAILED_AGENT_ERROR'
 ];
 
+const TYPE_COLORS = {
+  executable: '#007bff',
+  exploratory: '#ff9800',
+  container: '#888888',
+  decomposition: '#9c27b0'
+};
+
 function parseMaybeJson(data) {
   if (!data) return data;
   if (typeof data === 'string') {
@@ -20,6 +27,15 @@ function parseMaybeJson(data) {
     }
   }
   return data;
+}
+
+function toPastel(hex) {
+  if (!hex || hex[0] !== '#') return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const mix = (c) => Math.round((c + 255) / 2);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
 function FormattedContent({ data, open }) {
@@ -753,25 +769,18 @@ function App() {
     const edges = [];
     if (!nodesObj) return { nodes, edges };
 
-    const typeBorderColors = {
-      executable: '#007bff',
-      exploratory: '#ff9800',
-      container: '#888888',
-      decomposition: '#9c27b0'
-    };
-
     Object.entries(nodesObj).forEach(([id, info]) => {
-      let bgColor = '#d3d3d3';
+      const typeColor = TYPE_COLORS[info.task_type] || '#000000';
+      const bgColor = toPastel(typeColor);
+      let borderColor = '#cccccc';
       const state = info.state;
-      if (state === 'completed') bgColor = '#d4edda';
-      else if (state === 'failed' || state === 'unable_to_complete') bgColor = '#f8d7da';
-      else if (state === 'working') bgColor = '#fff3cd';
+      if (state === 'completed') borderColor = '#28a745';
+      else if (state === 'failed' || state === 'unable_to_complete') borderColor = '#dc3545';
 
       const nodeData = { id, label: (info.objective || id).slice(0, 35) };
       if (isTeam1) {
         nodeData.color = bgColor;
       } else {
-        const borderColor = typeBorderColors[info.task_type] || '#000000';
         nodeData.color = { background: bgColor, border: borderColor };
         nodeData.borderWidth = info.sub_task_ids && info.sub_task_ids.length > 0 ? 3 : 1;
       }
@@ -796,6 +805,28 @@ function App() {
       counts[state] = (counts[state] || 0) + 1;
     });
     return counts;
+  }
+
+  function Team2Legend() {
+    const typeEntries = Object.entries(TYPE_COLORS);
+    return (
+      <div className="graph-legend">
+        {typeEntries.map(([type, color]) => (
+          <div key={type} className="legend-item">
+            <span className="legend-color" style={{ background: toPastel(color) }}></span>
+            {type}
+          </div>
+        ))}
+        <div className="legend-item">
+          <span className="legend-border" style={{ borderColor: '#28a745' }}></span>
+          terminée
+        </div>
+        <div className="legend-item">
+          <span className="legend-border" style={{ borderColor: '#dc3545' }}></span>
+          échec
+        </div>
+      </div>
+    );
   }
 
   function submitNewPlan() {
@@ -1034,6 +1065,7 @@ function App() {
         {team2Graph && (
           <div>
             <h4>Graphe Exécution Team 2</h4>
+            <Team2Legend />
             <Graph
               id="team2"
               nodes={team2Graph.nodes}
