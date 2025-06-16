@@ -33,9 +33,10 @@ OrchestrAI turns any vague user goal into a detailed action plan and concrete de
 4. [Installation & Prerequisites](#installation--prerequisites)
 5. [Usage](#usage)
 6. [Project Structure](#project-structure)
-7. [Cloud / Firebase Deployment](#cloud--firebase-deployment)
-8. [How to Add Your Agent](#how-to-add-your-agent)
-9. [Roadmap & Perspectives](#roadmap--perspectives)
+7. [Utility Scripts](#utility-scripts)
+8. [Cloud / Firebase Deployment](#cloud--firebase-deployment)
+9. [How to Add Your Agent](#how-to-add-your-agent)
+10. [Roadmap & Perspectives](#roadmap--perspectives)
 
 ---
 
@@ -259,6 +260,33 @@ orchestrai-hackathon-ADK/
 ├── deployment.sh                     # Cloud Run deployment script
 └── requirements_py311.txt            # Dependency list for Python 3.11
 ```
+
+## Utility Scripts
+
+Several helper scripts are provided for deployment and maintenance tasks.
+
+### Shell Scripts
+
+- `build_and_deploy.sh` – generate `requirements.txt`, build the Docker images and push them.
+- `create_gke_cluster.sh` – create a GKE cluster and configure `kubectl`.
+- `create_vpc_connector.sh` – create a VPC connector for Cloud Run.
+- `deployment.sh` – build and deploy all agents and the GRA registry.
+- `run_gra_docker.sh` – start the GRA container locally with credentials.
+- `setup_ssh_key_github.sh` – configure an SSH key for GitHub and update the remote.
+- `test_droit.sh` – grant persistent volume claim permissions on Kubernetes.
+- `scripts/deploy_test.sh` – deploy agents using an existing GKE cluster and connector.
+- `scripts/grant_agent_permissions.sh` – allow inter-service Cloud Run invocations.
+- `scripts/grant_gke_permissions_to_cloudrun_sa.sh` – give the Cloud Run service account access to GKE.
+- `scripts/grant_gclou_kubernet.sh` – example script to set up GCP and Kubernetes roles.
+- `tests/test_development_agent_curl.sh` – send a test request to the development agent.
+
+### Python Scripts
+
+- `scripts/cleanup_firestore_plans.py` – remove unfinished plans from Firestore.
+- `src/run_orchestrator.py` – trigger a planning sequence from the command line.
+- `src/tests/k8s_iam_test_server.py` – FastAPI server to test GKE IAM authentication.
+- `react_frontend/secure_server.py` – run the React front end with HTTPS.
+- `init_projet.py.initial` – example project scaffolding utility.
 
 ## Future Enhancements
 
