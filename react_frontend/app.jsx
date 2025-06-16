@@ -209,7 +209,6 @@ function Graph({
 }
 
 function AgentStatusBar({ agents, graHealth, stats }) {
-  if (!agents?.length && !graHealth) return null;
   const statsMap = React.useMemo(() => {
     const map = {};
     (stats || []).forEach(s => {
@@ -217,6 +216,7 @@ function AgentStatusBar({ agents, graHealth, stats }) {
     });
     return map;
   }, [stats]);
+  if (!agents?.length && !graHealth) return null;
   const graCard = (
     <div
       key="gra"
@@ -394,8 +394,6 @@ function FinalArtifactsHistory({ nodes }) {
     });
   }, [nodes]);
 
-  if (!items.length) return null;
-
   const grouped = React.useMemo(() => {
     const sections = { task_def: [], plan: [], result: [], other: [] };
     items.forEach(it => {
@@ -403,6 +401,8 @@ function FinalArtifactsHistory({ nodes }) {
     });
     return sections;
   }, [items]);
+
+  if (!items.length) return null;
 
   const typeLabels = {
     task_def: 'Définition de tâches',
