@@ -428,3 +428,31 @@ input {
   color: var(--error-text);
   font-weight: bold;
 }
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.legend-color,
+.legend-border {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.legend-border {
+  background: transparent;
+  border-width: 3px;
+}
