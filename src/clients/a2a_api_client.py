@@ -1,3 +1,4 @@
+# src/clients/a2a_api_client.py
 
 import asyncio
 import httpx
@@ -5,6 +6,12 @@ import logging
 from uuid import uuid4
 from typing import Any, Dict, Optional
 
+# Imports pour l'authentification Google
+import google.auth
+from google.oauth2 import id_token
+from google.auth.transport.requests import Request as GoogleAuthRequest
+
+# Imports de votre librairie A2A
 from a2a.client import A2AClient
 from a2a.types import (
     SendMessageRequest,
@@ -17,12 +24,38 @@ from a2a.types import (
     TaskState,
     Artifact,
 )
-
 from a2a.client import A2AClientHTTPError, A2AClientJSONError
 
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO)
+
+
+# --- CLASSE D'AUTHENTIFICATION ---
+class GoogleIDTokenAuth(httpx.Auth):
+    """
+    Classe d'authentification pour httpx qui injecte un Google ID Token.
+    """
+    def __init__(self):
+        try:
+            self._creds, _ = google.auth.default()
+            self._auth_request = GoogleAuthRequest()
+        except google.auth.exceptions.DefaultCredentialsError:
+            self._creds = None
+            logger.warning("Auth: Impossible d'obtenir les credentials Google. Les requêtes ne seront pas authentifiées. (Normal en local)")
+
+    def auth_flow(self, request: httpx.Request):
+        if not self._creds:
+            yield request
+            return
+        try:
+            audience = f"{request.url.scheme}://{request.url.host}"
+            token = id_token.fetch_id_token(self._auth_request, audience)
+            request.headers["Authorization"] = f"Bearer {token}"
+            logger.debug(f"Jeton d'authentification ajouté pour l'audience : {audience}")
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du jeton d'authentification Google : {e}", exc_info=True)
+        yield request
 
 
 def _create_agent_input_message(
@@ -31,7 +64,7 @@ def _create_agent_input_message(
     task_id: Optional[str] = None,
 ) -> Message:
     """
-    Crée un objet Message A2A à partir d'une chaîne de caractères.
+    Crée un objet Message A2A à partir d'une chaîne de caractères. (Inchangé)
     """
     return Message(
         messageId=str(uuid4()),
@@ -42,12 +75,6 @@ def _create_agent_input_message(
         contextId=context_id,
         taskId=task_id,
     )
-
-import httpx
-import logging
-from typing import Optional, Dict, Any
-
-logger = logging.getLogger(__name__)
     
 
 async def call_a2a_agent(
@@ -59,20 +86,15 @@ async def call_a2a_agent(
 ) -> Optional[Task]:
     """
     Appelle un agent A2A, lui envoie un message texte, et attend sa complétion.
-
-    Args:
-        agent_url: L'URL de base de l'agent serveur A2A.
-        input_text: Le texte à envoyer à l'agent.
-        initial_context_id: L'ID de contexte à utiliser pour le message (optionnel).
-        max_retries: Nombre maximum de tentatives pour sonder l'état de la tâche.
-        retry_delay: Délai en secondes entre les tentatives de sondage.
-
-    Returns:
-        L'objet Task final (avec état completed, failed, etc.) ou None si erreur majeure.
+    Gère maintenant l'authentification de service-à-service.
     """
     logger.info(f"Appel à l'agent A2A à l'URL: {agent_url} avec l'entrée: '{input_text}'")
 
-    async with httpx.AsyncClient(timeout=30.0,http2=False) as http_client:
+    async with httpx.AsyncClient(
+        auth=GoogleIDTokenAuth(), 
+        timeout=30.0,
+        http2=False
+    ) as http_client:
         try:
             a2a_client = await A2AClient.get_client_from_agent_card_url(
                 httpx_client=http_client,
@@ -101,18 +123,13 @@ async def call_a2a_agent(
                 error_content = send_response.model_dump_json(indent=2) if hasattr(send_response, 'model_dump_json') else str(send_response)
                 logger.error(f"Réponse inattendue de send_message à {agent_url}: {error_content}")
                 return None
-        except A2AClientHTTPError as e:
-            logger.error(f"Erreur HTTP lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
+        except (A2AClientHTTPError, A2AClientJSONError, httpx.RequestError) as e:
+            logger.error(f"Erreur réseau ou JSON lors de l'envoi du message à {agent_url}: {e}", exc_info=True)
             return None
-        except A2AClientJSONError as e:
-            logger.error(f"Erreur de parsing JSON lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Erreur inattendue lors de l'envoi du message à {agent_url}: {e}", exc_info=True)
             return None
-        except httpx.RequestError as e:
-            logger.error(f"Erreur de requête lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
-            return None
-        except  Exception as e:
-            logger.error(f"Erreur lors de l'envoi du message à l'agent {agent_url}: {e}", exc_info=True)
-            return None
+
 
         if not task_id or not context_id_for_task:
             logger.error(f"Aucun task_id ou context_id valide retourné par send_message pour l'agent {agent_url}.")
@@ -131,9 +148,10 @@ async def call_a2a_agent(
                 if hasattr(get_task_response, 'root') and hasattr(get_task_response.root, 'result') and isinstance(get_task_response.root.result, Task):
                     current_task = get_task_response.root.result
                     logger.info(f"Agent {agent_url} - Tâche {task_id} - Essai {attempt + 1} - Statut: {current_task.status.state}")
-                    if current_task.status.state in [
-                        TaskState.submitted, TaskState.working, TaskState.completed, TaskState.failed,TaskState.input_required,TaskState.canceled, TaskState.rejected, TaskState.auth_required
-                    ]:
+                    
+                    # --- CORRECTION DE LA CONDITION DE SORTIE DE BOUCLE ---
+                    # On ne vérifie que les états 'en cours' valides.
+                    if current_task.status.state not in [TaskState.submitted, TaskState.working]:
                         final_task_result = current_task
                         break
                 else:
@@ -142,7 +160,7 @@ async def call_a2a_agent(
 
             except Exception as e:
                 logger.error(f"Erreur lors de la récupération de la tâche {task_id} de l'agent {agent_url} (essai {attempt + 1}): {e}", exc_info=True)
-
+        
         if final_task_result:
             logger.info(f"Résultat final obtenu pour la tâche {task_id} de l'agent {agent_url}: Statut={final_task_result.status.state}")
         else:

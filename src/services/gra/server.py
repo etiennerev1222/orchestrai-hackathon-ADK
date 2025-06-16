@@ -21,6 +21,9 @@ from src.services.environment_manager.environment_manager import EnvironmentMana
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
 
 
+import google.auth
+from google.oauth2 import id_token
+from google.auth.transport.requests import Request as GoogleAuthRequest
 
 
 logger = logging.getLogger(__name__)
@@ -121,6 +124,31 @@ class AllAgentTasksStatsResponse(BaseModel):
     stats: List[AllAgentTaskStats]
     last_updated: str
 
+# --- Classe d'authentification pour httpx ---
+class GoogleIDTokenAuth(httpx.Auth):
+    """
+    Classe d'authentification pour httpx qui injecte un Google ID Token.
+    """
+    def __init__(self):
+        try:
+            self._creds, _ = google.auth.default()
+            self._auth_request = GoogleAuthRequest()
+        except google.auth.exceptions.DefaultCredentialsError:
+            self._creds = None
+            logger.warning("Auth: Impossible d'obtenir les credentials Google. Les requêtes ne seront pas authentifiées.")
+
+    def auth_flow(self, request: httpx.Request):
+        if not self._creds:
+            yield request
+            return
+        try:
+            audience = f"{request.url.scheme}://{request.url.host}"
+            token = id_token.fetch_id_token(self._auth_request, audience)
+            request.headers["Authorization"] = f"Bearer {token}"
+            logger.debug(f"Jeton d'authentification ajouté pour l'audience : {audience}")
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du jeton d'authentification Google : {e}", exc_info=True)
+        yield request
 
 # --- Fonction utilitaire pour remplacer l'import de Werkzeug ---
 import re
@@ -272,6 +300,7 @@ async def create_global_plan(plan_request: GlobalPlanCreateRequest):
             raw_objective=plan_request.objective,
             user_id=plan_request.user_id
         )
+        
         return GlobalPlanResponse(**result)
     except ConnectionError as e:
         logger.error(f"[GRA API] Erreur de connexion lors de la création du plan: {e}", exc_info=True)
@@ -500,39 +529,45 @@ async def get_plan_details_endpoint(plan_id: str):
 @app.get("/agents_status")
 async def get_agents_status_endpoint():
     """Récupère la liste des agents enregistrés et leur statut de santé."""
+    if not db:
+        raise HTTPException(status_code=503, detail="Base de données non disponible.")
+
     agents_list: List[Dict[str, Any]] = []
     try:
-        docs = await asyncio.to_thread(lambda: list(db.collection("service_registry").stream()))
-        
-        agents_list = [doc.to_dict() for doc in docs if doc.id != 'gra_instance_config']
+        # Utilisation de votre logique pour récupérer les agents depuis Firestore
+        docs_stream = db.collection("service_registry").stream()
+        agents_list = [doc.to_dict() for doc in docs_stream if doc.id != 'gra_instance_config']
         
     except Exception as e:
-        logger.error(f"[GRA] Erreur lors de la récupération du statut des agents: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[GRA] Erreur lors de la récupération de la liste des agents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur lors de la lecture du registre des services.")
 
-    async with httpx.AsyncClient() as client:
-        async def check(agent_data: Dict[str, Any]) -> bool:
+    # Utilisation du client httpx authentifié
+    async with httpx.AsyncClient(auth=GoogleIDTokenAuth(), http2=False) as client:
+        async def check(agent_data: Dict[str, Any]) -> dict:
             url_to_check = agent_data.get("internal_url")
-            
+            agent_name = agent_data.get("name", "inconnu")
+            health_status = "⚠️ Offline"
+
             if not url_to_check:
-                logger.warning(f"Agent {agent_data.get('name')} n'a pas d'internal_url pour le health check.")
-                return False
-            try:
-                health_url = url_to_check.rstrip("/") + "/health"
-                res = await client.get(health_url, timeout=2.0)
-                return res.status_code == 200
-            except Exception as e:
-                logger.warning(f"Health check a échoué pour {agent_data.get('name')} à {health_url}: {e}")
-                return False
+                logger.warning(f"Agent {agent_name} n'a pas d'internal_url pour le health check.")
+            else:
+                try:
+                    health_url = url_to_check.rstrip("/") + "/health"
+                    res = await client.get(health_url, timeout=5.0)
+                    if res.status_code == 200:
+                        health_status = "✅ Online"
+                except Exception as e:
+                    logger.warning(f"Health check a échoué pour {agent_name} à {health_url}: {e}")
 
+            # Retourne un dictionnaire complet avec le statut de santé
+            return {**agent_data, "health_status": health_status}
+
+        # On lance tous les checks en parallèle et on récupère les dictionnaires mis à jour
         results = await asyncio.gather(*(check(agent) for agent in agents_list))
-
-    for agent, ok in zip(agents_list, results):
-        agent["health_status"] = "✅ Online" if ok else "⚠️ Offline"
-
-    logger.info(f"[GRA] Statut de {len(agents_list)} agents récupéré avec santé.")
-    return agents_list
-
+    
+    logger.info(f"[GRA] Statut de {len(results)} agents récupéré avec santé.")
+    return results
 
 
 @app.post("/v1/global_plans/{global_plan_id}/accept_and_plan", response_model=GlobalPlanResponse)

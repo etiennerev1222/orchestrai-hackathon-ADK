@@ -12,7 +12,7 @@ import google.auth
 from typing import Optional, Dict, Any , List 
 import json
 from src.shared.firebase_init import db
-
+import re
 from google.oauth2 import service_account
 import google.auth
 
@@ -70,15 +70,42 @@ class EnvironmentManager:
         self.namespace = os.environ.get("KUBERNETES_NAMESPACE", "default")
         self.environments = {}
         logger.info(f"EnvironmentManager initialized for Kubernetes namespace: {self.namespace}.")
+    @staticmethod
+    def extract_global_plan_id(plan_id: str) -> str:
+        """
+        Extrait la partie gplan_<id> d'un plan_id quel que soit son préfixe (team1_, team2_, exec_, etc.)
+        """
+        import re
+        match = re.search(r'gplan_[a-f0-9]+', plan_id)
+        if not match:
+            raise ValueError(f"Cannot extract global_plan_id from plan_id: {plan_id}")
+        return match.group(0)
+
+    async def _ensure_pod_running(self, pod_name: str):
+        try:
+            pod = await asyncio.to_thread(self.v1.read_namespaced_pod, pod_name, self.namespace)
+            if pod.status.phase != 'Running':
+                raise RuntimeError(f"Pod '{pod_name}' is not in Running state: {pod.status.phase}")
+        except client.ApiException as e:
+            if e.status == 404:
+                raise RuntimeError(f"Pod '{pod_name}' does not exist (404).")
+            else:
+                raise
 
     async def _load_existing_environment_details(self, environment_id: str):
         """Tente de charger les détails d'un environnement depuis Firestore et K8s API."""
+        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+
         if environment_id in self.environments:
             return
 
         pod_name = f"dev-env-{environment_id}"
         pvc_name = f"dev-env-pvc-{environment_id}"
 
+        self.environments[environment_id] = {
+            'pod_name': pod_name,
+            'pvc_name': pvc_name
+        }
         try:
             env_doc_ref = db.collection(K8S_ENVIRONMENTS_COLLECTION).document(environment_id)
             env_doc = await asyncio.to_thread(env_doc_ref.get)
@@ -112,12 +139,22 @@ class EnvironmentManager:
 
         except Exception as e:
             logger.error(f"Error during initial Firestore/K8s lookup for environment '{environment_id}': {e}", exc_info=True)
+    def _make_safe_k8s_name(self, base: str) -> str:
+        safe = base.lower()
+        safe = re.sub(r'[^a-z0-9.-]', '-', safe)
+        safe = re.sub(r'^[^a-z0-9]+', '', safe)
+        safe = re.sub(r'[^a-z0-9]+$', '', safe)
+        return safe
+    
 
     async def create_isolated_environment(self, environment_id: str, base_image: str = "python:3.9-slim-buster") -> str:
-        pod_name = f"dev-env-{environment_id}"
-        pvc_name = f"dev-env-pvc-{environment_id}"
-        volume_name = f"dev-env-vol-{environment_id}"
+        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+        safe_env_id = self._make_safe_k8s_name(environment_id)
 
+        pod_name = f"dev-env-{safe_env_id}"
+        pvc_name = f"dev-env-pvc-{safe_env_id}"
+        volume_name = f"dev-env-vol-{safe_env_id}"
+        
         await self._load_existing_environment_details(environment_id)
         if environment_id in self.environments:
             logger.info(f"Environment '{environment_id}' already active in manager and running. Reusing.")
@@ -286,15 +323,24 @@ class EnvironmentManager:
             return None
 
     async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:
+        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
         if environment_id not in self.environments:
             await self._load_existing_environment_details(environment_id)
             if environment_id not in self.environments:
                 logger.error(f"Attempted to execute command in non-existent environment: '{environment_id}' and could not discover it.")
-                return {"stdout": "", "stderr": f"Environment '{environment_id}' not found.", "exit_code": 1}
+                #return {"stdout": "", "stderr": f"Environment '{environment_id}' not found.", "exit_code": 1}
         
         pod_name = self.environments[environment_id]['pod_name']
         container_name = "developer-sandbox"
-
+        try:
+            await self._ensure_pod_running(pod_name)
+        except RuntimeError as e:
+            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
+            await self.create_isolated_environment(environment_id)
+            await self._load_existing_environment_details(environment_id)
+            pod_name = self.environments[environment_id]['pod_name']
+            await self._ensure_pod_running(pod_name)
+    
         try:
             logger.info(f"Executing command '{command}' in Pod '{pod_name}' (container '{container_name}') at workdir '{workdir}')")
             
@@ -343,14 +389,19 @@ class EnvironmentManager:
             return {"stdout": "", "stderr": f"Internal Error: {e}", "exit_code": 1}
 
     async def write_file_to_environment(self, environment_id: str, file_path: str, content: str) -> None:
-        if environment_id not in self.environments:
-            await self._load_existing_environment_details(environment_id)
-            if environment_id not in self.environments:
-                raise ValueError(f"Environment '{environment_id}' not found for writing file and could not discover it.")
-        
+        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+       
         pod_name = self.environments[environment_id]['pod_name']
         container_name = "developer-sandbox"
-
+        try:
+            await self._ensure_pod_running(pod_name)
+        except RuntimeError as e:
+            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
+            await self.create_isolated_environment(environment_id)
+            await self._load_existing_environment_details(environment_id)
+            pod_name = self.environments[environment_id]['pod_name']
+            await self._ensure_pod_running(pod_name)        
+        
         dir_name = os.path.dirname(file_path)
         if dir_name and dir_name != "/":
             cmd_result = await self.execute_command_in_environment(environment_id, f"mkdir -p {dir_name}")
@@ -397,13 +448,28 @@ class EnvironmentManager:
             raise
 
     async def read_file_from_environment(self, environment_id: str, file_path: str) -> str:
-        if environment_id not in self.environments:
-            await self._load_existing_environment_details(environment_id)
-            if environment_id not in self.environments:
-                raise ValueError(f"Environment '{environment_id}' not found for reading file and could not discover it.")
-        
+        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
         pod_name = self.environments[environment_id]['pod_name']
         container_name = "developer-sandbox"
+        try:
+            await self._ensure_pod_running(pod_name)
+        except RuntimeError as e:
+            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
+            await self.create_isolated_environment(environment_id)
+            await self._load_existing_environment_details(environment_id)
+            pod_name = self.environments[environment_id]['pod_name']
+            await self._ensure_pod_running(pod_name)        
+
+        try:
+            pod = await asyncio.to_thread(self.v1.read_namespaced_pod, pod_name, self.namespace)
+            if pod.status.phase != 'Running':
+                raise RuntimeError(f"Pod '{pod_name}' is not in Running state (current state: {pod.status.phase}).")
+        except client.ApiException as e:
+            if e.status == 404:
+                raise RuntimeError(f"Pod '{pod_name}' does not exist.")
+            else:
+                raise
+
 
         exec_command = ["/bin/bash", "-c", f"tar -cf - {file_path}"]
         
@@ -471,13 +537,29 @@ class EnvironmentManager:
         Liste les fichiers et répertoires dans un chemin donné à l'intérieur d'un pod.
         Retourne une liste d'objets avec des détails sur chaque entrée.
         """
-        if environment_id not in self.environments:
-            await self._load_existing_environment_details(environment_id)
-            if environment_id not in self.environments:
-                raise ValueError(f"Environment '{environment_id}' not found for listing files.")
-
+        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
         pod_name = self.environments[environment_id]['pod_name']
         container_name = "developer-sandbox"
+        try:
+            await self._ensure_pod_running(pod_name)
+        except RuntimeError as e:
+            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
+            await self.create_isolated_environment(environment_id)
+            await self._load_existing_environment_details(environment_id)
+            pod_name = self.environments[environment_id]['pod_name']
+            await self._ensure_pod_running(pod_name)        
+
+
+        try:
+            pod = await asyncio.to_thread(self.v1.read_namespaced_pod, pod_name, self.namespace)
+            if pod.status.phase != 'Running':
+                raise RuntimeError(f"Pod '{pod_name}' is not in Running state (current state: {pod.status.phase}).")
+        except client.ApiException as e:
+            if e.status == 404:
+                raise RuntimeError(f"Pod '{pod_name}' does not exist.")
+            else:
+                raise
+
 
         # Utilise 'find' pour obtenir des détails structurés et gère les noms de fichiers complexes.
         # -maxdepth 1 pour ne pas lister récursivement.
@@ -494,11 +576,14 @@ class EnvironmentManager:
 
         try:
             # Réutilise la logique de `execute_command_in_pod`
-            stdout, stderr, exit_code = await self.execute_command_in_pod(
+            result = await self.execute_command_in_environment(
                 environment_id,
                 command,
-                container_name=container_name
+                workdir=f"/workspace/{path.lstrip('/')}"
             )
+            stdout = result["stdout"]
+            stderr = result["stderr"]
+            exit_code = result["exit_code"]            
 
             if exit_code != 0:
                 logger.error(f"Error listing files in '{pod_name}' at path '{path}'. Exit code: {exit_code}, Stderr: {stderr}")
@@ -543,9 +628,11 @@ class EnvironmentManager:
             raise
  
     async def destroy_environment(self, environment_id: str) -> None:
-        pod_name = f"dev-env-{environment_id}"
-        pvc_name = f"dev-env-pvc-{environment_id}"
-
+        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+        safe_env_id = self._make_safe_k8s_name(environment_id)
+        pod_name = f"dev-env-{safe_env_id}"
+        pvc_name = f"dev-env-pvc-{safe_env_id}"
+        
         try:
             try:
                 await asyncio.to_thread(self.v1.delete_namespaced_pod, name=pod_name, namespace=self.namespace, body=client.V1DeleteOptions())
