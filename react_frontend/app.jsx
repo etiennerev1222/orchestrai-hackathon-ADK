@@ -668,6 +668,17 @@ function App() {
     return () => clearInterval(id);
   }, [autoRefresh, selectedPlanId]);
 
+  React.useEffect(() => {
+    // Met à jour automatiquement l'environmentId lorsque les détails du plan
+    // sont chargés ou changent. Le FileBrowser utilise cet ID pour se
+    // synchroniser avec l'environnement créé pour TEAM 2.
+    if (planDetails && planDetails.team2_execution_plan_id) {
+      setActiveEnvironmentId(planDetails.team2_execution_plan_id);
+    } else {
+      setActiveEnvironmentId(null);
+    }
+  }, [planDetails?.team2_execution_plan_id]);
+
   function refreshPlanDetails(planId) {
     fetch(`${BACKEND_API_URL}/v1/global_plans/${planId}`)
       .then(res => res.json())
