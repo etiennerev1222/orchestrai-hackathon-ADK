@@ -603,6 +603,7 @@ function App() {
   const [stateFilter, setStateFilter] = React.useState('');
   const [graHealth, setGraHealth] = React.useState(null);
   const [initialLoading, setInitialLoading] = React.useState(true);
+  const [planSubmitting, setPlanSubmitting] = React.useState(false);
   const [activeEnvironmentId, setActiveEnvironmentId] = React.useState(null);
 
   const uniqueStates = React.useMemo(
@@ -764,6 +765,7 @@ function App() {
 
   function submitNewPlan() {
     if (!newObjective) return;
+    setPlanSubmitting(true);
     fetch(`${BACKEND_API_URL}/v1/global_plans`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -776,7 +778,8 @@ function App() {
           .then(res => res.json())
           .then(data => setPlans(data));
       })
-      .catch(err => console.error('Erreur soumission plan', err));
+      .catch(err => console.error('Erreur soumission plan', err))
+      .finally(() => setPlanSubmitting(false));
   }
 
   function resumeExecution(planId) {
@@ -892,7 +895,7 @@ function App() {
 
   return (
     <div className="app">
-      {initialLoading && (
+      {(initialLoading || planSubmitting) && (
         <div className="loading-overlay">
           <div className="spinner"></div>
         </div>
@@ -900,7 +903,7 @@ function App() {
       <div className="sidebar">
         <h3>Nouveau Plan</h3>
         <textarea value={newObjective} onChange={e => setNewObjective(e.target.value)} rows="4" style={{ width: '100%' }} />
-        <button onClick={submitNewPlan} style={{ width: '100%', marginTop: '0.5rem' }}>Lancer Planification</button>
+        <button onClick={submitNewPlan} disabled={planSubmitting} style={{ width: '100%', marginTop: '0.5rem' }}>Lancer Planification</button>
         <hr />
         <h3>Plans Existants</h3>
         <div style={{ marginBottom: '0.5rem' }}>
