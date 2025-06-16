@@ -354,6 +354,16 @@ function PlanStats({ team1Counts, team2Counts }) {
 function FinalArtifactsHistory({ nodes }) {
   const [items, setItems] = React.useState([]);
 
+  function detectArtifactType(content) {
+    const obj = typeof content === 'string' ? parseMaybeJson(content) : content;
+    if (obj && typeof obj === 'object') {
+      if (obj.global_context && Array.isArray(obj.tasks)) return 'task_def';
+      if (obj.evaluated_plan || obj.evaluation_notes) return 'plan';
+      if (obj.summary || obj.test_status !== undefined) return 'result';
+    }
+    return 'other';
+  }
+
   React.useEffect(() => {
     if (!nodes || Object.keys(nodes).length === 0) {
       setItems([]);
@@ -376,24 +386,49 @@ function FinalArtifactsHistory({ nodes }) {
           .catch(() => null)
       )
     ).then(list => {
-      const arr = list.filter(Boolean).sort((a, b) => new Date(a.updated) - new Date(b.updated));
+      const arr = list
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.updated) - new Date(b.updated))
+        .map(it => ({ ...it, type: detectArtifactType(it.content) }));
       setItems(arr);
     });
   }, [nodes]);
 
   if (!items.length) return null;
 
+  const grouped = React.useMemo(() => {
+    const sections = { task_def: [], plan: [], result: [], other: [] };
+    items.forEach(it => {
+      sections[it.type].push(it);
+    });
+    return sections;
+  }, [items]);
+
+  const typeLabels = {
+    task_def: 'Définition de tâches',
+    plan: 'Plan',
+    result: 'Résultats',
+    other: 'Autres'
+  };
+
   return (
     <div className="messages-history">
       <h4>Historique des livrables finaux</h4>
-      {items.map((it, idx) => (
-        <div key={idx} className="message-item">
-          <div><strong>Tâche:</strong> {it.task}</div>
-          {it.updated && (
-            <div className="msg-date">{new Date(it.updated).toLocaleString()}</div>
-          )}
-          <FormattedContent data={it.content} open />
-        </div>
+      {Object.entries(grouped).map(([type, list]) => (
+        list.length ? (
+          <div key={type} className="artifact-section">
+            <h5>{typeLabels[type]}</h5>
+            {list.map((it, idx) => (
+              <div key={idx} className="message-item">
+                <div><strong>Tâche:</strong> {it.task}</div>
+                {it.updated && (
+                  <div className="msg-date">{new Date(it.updated).toLocaleString()}</div>
+                )}
+                <FormattedContent data={it.content} open />
+              </div>
+            ))}
+          </div>
+        ) : null
       ))}
     </div>
   );
