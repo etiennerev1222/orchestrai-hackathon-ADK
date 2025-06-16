@@ -170,7 +170,8 @@ function deploy_gcp() {
       --allow-unauthenticated \
       --port=8000 \
       --set-env-vars="${COMMON_AGENT_ENV_VARS}" \
-      --project=${GCP_PROJECT_ID}
+      --project=${GCP_PROJECT_ID} \
+      --vpc-connector="${CONNECTOR_NAME}" \
     
     local GRA_CLOUD_RUN_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
     if [ -z "$GRA_CLOUD_RUN_URL" ]; then

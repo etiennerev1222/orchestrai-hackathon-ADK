@@ -19,6 +19,9 @@ from src.shared.execution_task_graph_management import ExecutionTaskGraph
 
 from a2a.types import Task, TaskState, TextPart
 
+from src.services.environment_manager.environment_manager import EnvironmentManager
+
+
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -58,6 +61,15 @@ class GlobalSupervisorLogic:
             logger.info("[GlobalSupervisor] Client Firestore obtenu.")
         except Exception as e:
             logger.critical(f"[GlobalSupervisor] Échec de l'initialisation de Firestore: {e}.", exc_info=True)
+        # Instancier le manager d'environnement
+        try:
+            self.environment_manager = EnvironmentManager()
+            logging.info("GlobalSupervisorLogic: EnvironmentManager initialized.")
+        except Exception as e:
+            self.environment_manager = None
+            logging.error(f"GlobalSupervisorLogic: Failed to initialize EnvironmentManager: {e}", exc_info=True)
+
+
 
     async def _ensure_gra_url(self):
         if not self._gra_base_url:
@@ -133,6 +145,9 @@ class GlobalSupervisorLogic:
             logger.error(f"[GlobalSupervisor] Erreur chargement plan '{global_plan_id}' depuis Firestore: {e}", exc_info=True)
             return None
     async def start_new_global_plan(self, raw_objective: str, user_id: Optional[str] = "default_user") -> Dict[str, Any]:
+        if self.environment_manager is None:
+            raise RuntimeError("EnvironmentManager is not available. Cannot start a new plan.")
+
         global_plan_id = f"gplan_{uuid.uuid4().hex[:12]}"
         logger.info(f"[GlobalSupervisor] Démarrage nouveau plan global '{global_plan_id}' pour objectif: '{raw_objective}'")
         plan_data = {

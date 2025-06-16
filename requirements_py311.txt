@@ -111,3 +111,4 @@ kubernetes>=29.0.0
 httpx
 google-auth
 google-auth-oauthlib
+python-multipart

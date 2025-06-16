@@ -17,7 +17,7 @@ from typing_extensions import override
 logger = logging.getLogger(__name__)
 
 class TestingAgentExecutor(BaseAgentExecutor):
-    def __init__(self):
+    def __init__(self, environment_manager=None):
         specific_agent_logic = TestingAgentLogic()
         super().__init__(
             agent_logic=specific_agent_logic,
