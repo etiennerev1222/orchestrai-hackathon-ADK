@@ -779,7 +779,11 @@ function App() {
 
       const nodeData = { id, label: (info.objective || id).slice(0, 35) };
       if (isTeam1) {
-        nodeData.color = bgColor;
+        let team1Color = '#d3d3d3';
+        if (state === 'completed') team1Color = '#d4edda';
+        else if (state === 'failed' || state === 'unable_to_complete') team1Color = '#f8d7da';
+        else if (state === 'working') team1Color = '#fff3cd';
+        nodeData.color = team1Color;
       } else {
         nodeData.color = { background: bgColor, border: borderColor };
         nodeData.borderWidth = info.sub_task_ids && info.sub_task_ids.length > 0 ? 3 : 1;
