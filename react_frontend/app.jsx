@@ -983,8 +983,8 @@ function App() {
           <ClarificationSection plan={planDetails} />
         )}
         {team1Graph && (
-          <div>
-            <h4>Graphe Team 1</h4>
+          <details className="graph-section" open>
+            <summary>Graphe Team 1</summary>
             <Graph
               id="team1"
               nodes={team1Graph.nodes}
@@ -994,7 +994,7 @@ function App() {
               popup={popup}
               closePopup={() => setPopup(null)}
             />
-          </div>
+          </details>
         )}
         {team2Graph && (
           <div>
