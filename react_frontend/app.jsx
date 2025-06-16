@@ -399,7 +399,7 @@ function FinalArtifactsHistory({ nodes }) {
   );
 }
 
-function FileBrowser({ environmentId }) {
+function FileBrowser({ environmentId, planId }) {
   const [files, setFiles] = React.useState([]);
   const [currentPath, setCurrentPath] = React.useState('.');
   const [isLoading, setIsLoading] = React.useState(false);
@@ -439,6 +439,11 @@ function FileBrowser({ environmentId }) {
   React.useEffect(() => {
     fetchFiles(currentPath);
   }, [fetchFiles, currentPath]);
+
+  React.useEffect(() => {
+    setCurrentPath('.');
+    fetchFiles('.');
+  }, [environmentId, planId]);
 
   const handleDirectoryClick = name => {
     const newPath = currentPath === '.' ? name : `${currentPath}/${name}`;
@@ -989,7 +994,7 @@ function App() {
         )}
         {team2NodesMap && <FinalArtifactsHistory nodes={team2NodesMap} />}
         {activeEnvironmentId && (
-          <FileBrowser environmentId={activeEnvironmentId} />
+          <FileBrowser key={selectedPlanId} planId={selectedPlanId} environmentId={activeEnvironmentId} />
         )}
       </div>
     </div>
