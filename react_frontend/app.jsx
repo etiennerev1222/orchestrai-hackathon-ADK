@@ -858,6 +858,16 @@ function App() {
       .catch(err => console.error('Erreur reprise execution', err));
   }
 
+  function retryFailedTasks(planId) {
+    if (!planId) return;
+    fetch(`${BACKEND_API_URL}/v1/global_plans/${planId}/retry_failed_tasks`, {
+      method: 'POST'
+    })
+      .then(r => r.json())
+      .then(() => refreshPlanDetails(planId))
+      .catch(err => console.error('Erreur relance taches echouees', err));
+  }
+
 
   function showArtifactForNode(nodeId, isTeam1, coords) {
     const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
@@ -1043,6 +1053,11 @@ function App() {
               <button onClick={() => resumeExecution(planDetails.global_plan_id)}>
                 Reprendre l'exécution TEAM 2
               </button>
+              {hasFailures && (
+                <button style={{ marginLeft: '1rem' }} onClick={() => retryFailedTasks(planDetails.global_plan_id)}>
+                  Relancer les tâches échouées
+                </button>
+              )}
             </div>
           )}
         {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (

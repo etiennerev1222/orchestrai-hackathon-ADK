@@ -576,6 +576,24 @@ async def resume_team2_execution_endpoint(global_plan_id: str = Path(..., descri
         logger.error(f"[GRA API] Erreur reprise TEAM 2 pour plan '{global_plan_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
 
+
+@app.post("/v1/global_plans/{global_plan_id}/retry_failed_tasks", response_model=GlobalPlanResponse)
+async def retry_team2_failed_tasks_endpoint(global_plan_id: str = Path(..., description="ID du plan global")):
+    """Relance les tâches TEAM 2 en échec pour un plan global."""
+    logger.info(f"[GRA API] Requête de relance des tâches TEAM 2 échouées pour plan '{global_plan_id}'.")
+    try:
+        supervisor = GlobalSupervisorLogic()
+        result = await supervisor.retry_team2_failed_tasks(global_plan_id)
+        return GlobalPlanResponse(**result)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Plan global '{global_plan_id}' non trouvé.")
+    except Exception as e:
+        logger.error(
+            f"[GRA API] Erreur relance tâches TEAM 2 échouées pour plan '{global_plan_id}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Erreur interne du serveur: {str(e)}")
+
 @app.get("/v1/stats/team1_agent_tasks_count", response_model=Team1AgentTasksCountResponse)
 async def get_team1_agent_tasks_count_stats():
     """
