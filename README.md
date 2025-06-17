@@ -358,3 +358,10 @@ Several helper scripts are provided for deployment and maintenance tasks.
 * API hardening beyond Cloud Run IAM authentication.
 * Collect and display performance statistics per agent.
 * Create and document specialized tools for agents (e.g., access to specific databases, etc.).
+
+## Bugs & Improvements
+
+* Integrate an external validation loop into **Team 2** so tasks can be realigned when needed.
+* Stabilize communication between the agents and the resource manager.
+* Add processing status indicators (e.g., *In Progress*, *IDLE*) to the agent monitoring dashboard.
+* Stabilize the file manager component.
