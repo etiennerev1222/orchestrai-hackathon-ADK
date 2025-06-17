@@ -288,6 +288,103 @@ Several helper scripts are provided for deployment and maintenance tasks.
 - `react_frontend/secure_server.py` – run the React front end with HTTPS.
 - `init_projet.py.initial` – example project scaffolding utility.
 
+## Step 3.1: Pod Execution Permissions with Workload Identity
+
+OrchestrAI uses **GKE Workload Identity** to securely map Kubernetes service
+accounts (KSAs) to Google Cloud service accounts (GSAs). This allows code running
+in isolated pods to access Firestore and other Google services while still
+enforcing Kubernetes RBAC rules.
+
+### IAM configuration
+
+1. Create the Kubernetes service account:
+
+   ```bash
+   kubectl create serviceaccount orchestrai-sa --namespace default
+   ```
+
+2. Create the Google service account (if needed):
+
+   ```bash
+   gcloud iam service-accounts create orchestrai-gra-firestore \
+     --display-name "OrchestrAI GRA Firestore Access"
+   ```
+
+3. Allow the KSA to act as the GSA using Workload Identity. First find your
+   Workload Identity pool:
+
+   ```bash
+   gcloud container clusters describe YOUR_CLUSTER_NAME --zone YOUR_CLUSTER_ZONE \
+     --format="value(workloadIdentityConfig.workloadPool)"
+   ```
+
+   It should look like `YOUR_PROJECT_ID.svc.id.goog`.
+
+   Then bind the identity:
+
+   ```bash
+   gcloud iam service-accounts add-iam-policy-binding \
+     orchestrai-gra-firestore@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+     --role roles/iam.workloadIdentityUser \
+     --member "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[default/orchestrai-sa]"
+   ```
+
+4. Annotate the KSA so pods use the GSA:
+
+   ```bash
+   kubectl annotate serviceaccount orchestrai-sa \
+     iam.gke.io/gcp-service-account=orchestrai-gra-firestore@YOUR_PROJECT_ID.iam.gserviceaccount.com
+   ```
+
+### RBAC for pod exec
+
+Create the following role and binding:
+
+```yaml
+# orchestrai-pod-exec-role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orchestrai-pod-exec-role
+  namespace: default
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: orchestrai-pod-exec-rolebinding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: orchestrai-pod-exec-role
+subjects:
+- kind: ServiceAccount
+  name: orchestrai-sa
+  namespace: default
+```
+
+Apply it with:
+
+```bash
+kubectl apply -f orchestrai-pod-exec-role.yaml
+```
+
+If you require cluster-wide permissions, create a `ClusterRole` and
+`ClusterRoleBinding` instead.
+
+### Notes for contributors
+
+Pods launched by the `EnvironmentManager` automatically use `orchestrai-sa`. They
+inherit the permissions above, letting generated code interact with Google
+services while keeping pod execution secure.
+
 ## Future Enhancements
 
 * More advanced re-planning logic in `ExecutionSupervisorLogic`.
