@@ -842,11 +842,15 @@ function App() {
       body: JSON.stringify({ objective: newObjective, user_id: 'react_frontend' })
     })
       .then(r => r.json())
-      .then(() => {
+      .then(data => {
+        const newId = data.global_plan_id;
         setNewObjective('');
         return fetch(`${BACKEND_API_URL}/v1/global_plans_summary`)
           .then(res => res.json())
-          .then(data => setPlans(data));
+          .then(plansData => {
+            setPlans(plansData);
+            if (newId) setSelectedPlanId(newId);
+          });
       })
       .catch(err => console.error('Erreur soumission plan', err))
       .finally(() => setPlanSubmitting(false));
