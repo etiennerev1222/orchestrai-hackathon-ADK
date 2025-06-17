@@ -47,37 +47,47 @@ The functional architecture describes the flow from the user's idea all the way 
 **View the diagram on [mermaidchart.com](https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit)**
 
 ```mermaid
-graph TD
-    subgraph "Phase 1: Clarification"
-        A[User] -->|Initial Goal| B(API Gateway / GRA)
-        B --> C{Global Supervisor}
-        C --o|Clarification Request| D[User Interaction Agent]
-        D --o|Display to User| E[Interface UI]
-        E --o|Response| C
-    end
-    C -->|Clarified Goal| F{Planning Supervisor}
-    subgraph "Phase 2: Planning (TEAM 1)"
-        F -->|Generate Plan| G[Reformulator Agent]
-        G -->|Evaluate Plan| H[Evaluator Agent]
-        H -->|Validate Plan| I[Validator Agent]
-        I -- "If Plan Rejected" --> F
-    end
-    I -- "Validated Plan" --> J{Execution Supervisor}
-    subgraph "Phase 3: Execution (TEAM 2)"
-        J -->|Split Plan| K[Decomposition Agent]
-        K -->|Execution Task Graph| J
-        J -- "Coordinate Tasks" --> L((Execution Agents Pool))
-        subgraph L
-            direction LR
-            L1[Development Agent]
-            L2[Research Agent]
-            L3[Testing Agent]
-        end
-        L -- "Artifacts" --> J
-    end
-    J -->|Final Results| M[Output]
-```
 
+subgraph "Infrastructure & Services"
+  direction LR
+  B_GRA[GRA - Service Discovery]
+end
+
+subgraph "Phase 1: Clarification"
+  A[User] -->|Initial Goal| B(API Gateway)
+  B --> C{Global Supervisor}
+  C -.->|Finds Agent| B_GRA
+  C --o|Clarification Request| D[User Interaction Agent]
+  D --o|Display to User| E[Interface UI]
+  E --o|Response| C
+end
+
+C -->|Clarified Goal| F{Planning Supervisor}
+subgraph "Phase 2: Planning (TEAM 1)"
+  F -.->|Finds Agents| B_GRA
+  F -->|Generate Plan| G[Reformulator Agent]
+  G -->|Evaluate Plan| H[Evaluator Agent]
+  H -->|Validate Plan| I[Validator Agent]
+  I -- "If Plan Rejected" --> F
+end
+
+I -- "Validated Plan" --> J{Execution Supervisor}
+subgraph "Phase 3: Execution (TEAM 2)"
+  J -.->|Finds Agents| B_GRA
+  J -->|Split Plan| K[Decomposition Agent]
+  K -->|Execution Task Graph| J
+  J -- "Coordinate Tasks" --> L((Execution Agents Pool))
+  subgraph L
+    direction LR
+    L1[Development Agent]
+    L2[Research Agent]
+    L3[Testing Agent]
+  end
+  L -- "Results & Artifacts" --> J
+end
+
+J -->|Final Results| M[Output]
+```
 ## Technical Architecture
 
 The technical architecture reflects the use of **Vertex AI** as the central platform for the Gemini models.
@@ -126,10 +136,9 @@ graph LR
 
     %% --- FLOW & INTERACTIONS ---
     ReactUI -- "REST API" --> GRA
-    GRA -- "Triggers" --> GlobalSupervisor
-    GlobalSupervisor -- "Start TEAM 1" --> PlanningSupervisor
-    GlobalSupervisor -- "Start TEAM 2" --> ExecutionSupervisor
-
+    GRA -- "Forwards to" --> GlobalSupervisor
+    GlobalSupervisor -- "Hands off to" --> PlanningSupervisor
+    PlanningSupervisor -- "Triggers on Validated Plan" --> ExecutionSupervisor
     %% Agent Communications
     GlobalSupervisor <--> |"A2A"| UserInteractionAgent
     PlanningSupervisor <--> |"A2A"| Reformulator
@@ -168,36 +177,90 @@ graph LR
 * **Asynchronous Task Handling**: Extensive use of `asyncio`.
 * **Environment Manager**: Creates and manages isolated Kubernetes pods to run the generated code.
 
-## Installation & Prerequisites
+## ⚙️ Installation & Prerequisites
 
-* **Python 3.11**
-* **Google Cloud account** with a project created
-* **Enabled APIs**: ensure **Cloud Run, Artifact Registry, Vertex AI, Cloud Firestore, Firebase, Cloud Build, IAM** are enabled on your project
-* **Authentication**
-    * **Local development**: have a service account key JSON file and set `GOOGLE_APPLICATION_CREDENTIALS` to its path
-    * **Cloud Run deployment**: no key required, authentication happens automatically through the service account attached to the Cloud Run services
-* Python libraries listed in `requirements_py311.txt`
+This guide covers everything you need to set up the environment and deploy OrchestrAI, both locally and on Google Cloud.
 
-### Installation
+### Step 1: Local Environment Setup
 
-1. Clone the repository.
-2. Create a virtual environment (Conda or venv) with **Python 3.11**.
-3. Install dependencies:
-    ```bash
-    pip install -r requirements_py311.txt
-    ```
-    This file includes packages such as:
-    ```plaintext
-    firebase-admin
-    google-cloud-aiplatform  # Vertex AI client
-    httpx
-    uvicorn[standard]
-    fastapi
-    a2a-sdk
-    streamlit
-    ...
-    ```
-4. Configure your credentials file for local development.
+1. **Clone the repository:**
+```bash
+git clone [URL_de_votre_dépôt]
+cd orchestrai-hackathon-ADK
+```
+
+2. **Install Core Tools:** Make sure you have the following CLI tools installed on your machine:
+* Python 3.11
+* Google Cloud SDK (`gcloud`)
+* Firebase CLI (`firebase`)
+* Docker
+
+3. **Create a Virtual Environment:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+4. **Install Python Dependencies:**
+```bash
+pip install -r requirements_py311.txt
+```
+
+### Step 2: Initial Google Cloud Project Setup
+
+1. **Create or select a GCP Project:** Ensure the project is linked to a valid billing account.
+
+2. **Set your Project with gcloud:**
+```bash
+gcloud config set project YOUR_PROJECT_ID
+```
+
+3. **Enable Required APIs:**
+```bash
+gcloud services enable \
+    iam.googleapis.com \
+    cloudrun.googleapis.com \
+    artifactregistry.googleapis.com \
+    cloudbuild.googleapis.com \
+    aiplatform.googleapis.com \
+    firestore.googleapis.com \
+    firebase.googleapis.com \
+    container.googleapis.com \
+    vpcaccess.googleapis.com
+```
+
+### Step 3: Provisioning Core Infrastructure & Permissions
+
+1. **Create VPC Connector & GKE Cluster:**
+```bash
+./create_vpc_connector.sh
+./create_gke_cluster.sh
+```
+
+2. **Set Up IAM Permissions:**
+```bash
+./scripts/grant_agent_permissions.sh
+./scripts/grant_gke_permissions_to_cloudrun_sa.sh
+./scripts/grant_gclou_kubernet.sh
+```
+
+### Step 4: Authentication
+
+1. **For Cloud Deployment (Recommended):**
+```bash
+gcloud auth login
+gcloud auth configure-docker europe-west1-docker.pkg.dev
+```
+
+2. **For Local Development & Testing:**
+* Create a Service Account in the GCP Console with appropriate roles (e.g., Editor).
+* Generate and download a JSON key for this service account.
+* Set the following environment variable in your shell:
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/service-account-key.json"
+```
+
+You are now fully set up to use the deployment scripts described in the **Usage** and **Cloud Deployment** sections.
 
 ## Usage (Local Development)
 
