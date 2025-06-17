@@ -721,6 +721,12 @@ function App() {
   }, [autoRefresh, selectedPlanId]);
 
   React.useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(() => refreshAgentStats(), 5000);
+    return () => clearInterval(id);
+  }, [autoRefresh]);
+
+  React.useEffect(() => {
     // Met à jour automatiquement l'environmentId lorsque les détails du plan
     // sont chargés ou changent. Le FileBrowser utilise cet ID pour se
     // synchroniser avec l'environnement créé pour TEAM 2.
@@ -762,6 +768,13 @@ function App() {
         }
       })
       .catch(err => console.error('Error loading plan details', err));
+  }
+
+  function refreshAgentStats() {
+    fetch(`${BACKEND_API_URL}/v1/stats/agents`)
+      .then(r => r.json())
+      .then(d => setAgentsStats(d.stats || d || []))
+      .catch(err => console.error('Error refreshing agent stats', err));
   }
 
   function parseTaskGraph(nodesObj, isTeam1) {
@@ -1032,13 +1045,6 @@ function App() {
           </select>
         </details>
         <hr />
-        <h3>Environment ID</h3>
-        <input
-          type="text"
-          value={activeEnvironmentId}
-          onChange={e => setActiveEnvironmentId(e.target.value)}
-          style={{ width: '100%' }}
-        />
       </div>
       <div className="content">
         <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentsStats} />
