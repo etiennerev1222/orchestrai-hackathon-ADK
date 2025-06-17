@@ -1045,13 +1045,6 @@ function App() {
           </select>
         </details>
         <hr />
-        <h3>Environment ID</h3>
-        <input
-          type="text"
-          value={activeEnvironmentId}
-          onChange={e => setActiveEnvironmentId(e.target.value)}
-          style={{ width: '100%' }}
-        />
       </div>
       <div className="content">
         <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentsStats} />
