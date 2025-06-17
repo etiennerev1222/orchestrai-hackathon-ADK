@@ -28,8 +28,8 @@ The interface fetches data from `http://localhost:8000` by default (backend API)
 
 The interface adopts a modern look inspired by Streamlit with the `Inter` font and dark colours.
 
-The dashboard now exposes a **Reprendre l'exécution** button when a plan TEAM 2 is incomplete. Clicking it calls the `/v1/global_plans/<id>/resume_execution` API to continue pending tasks.
-When failures occur, a **Relancer les tâches échouées** button appears to reset failed tasks via `/v1/global_plans/<id>/retry_failed_tasks`.
+The dashboard now exposes a **Resume execution** button when a TEAM&nbsp;2 plan is incomplete. Clicking it calls the `/v1/global_plans/<id>/resume_execution` API to continue pending tasks.
+When failures occur, a **Retry failed tasks** button appears to reset failed tasks via `/v1/global_plans/<id>/retry_failed_tasks`.
 When you start a new plan from the sidebar, it is now automatically selected so its details refresh immediately.
 
 ## Node Colours
