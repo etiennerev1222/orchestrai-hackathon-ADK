@@ -312,6 +312,19 @@ input {
   margin: 0;
 }
 
+.existing-plans {
+  border: 1px solid var(--border);
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  background: var(--card-bg);
+}
+
+.existing-plans summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
 .graph-section {
   border: 1px solid var(--border);
   padding: 0.5rem;

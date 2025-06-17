@@ -1,6 +1,6 @@
 // react_frontend/app.jsx
 
-// La constante lit maintenant la variable globale définie dans config.js
+// This constant now reads the global variable defined in config.js
 const BACKEND_API_URL = window.CONFIG.BACKEND_API_URL || 'http://localhost:8080';
 const FINISHED_STATES = [
   'TEAM2_EXECUTION_COMPLETED',
@@ -203,11 +203,11 @@ function Graph({
       />
       {allowFullscreen && (
         <button className="fullscreen-button" onClick={toggleFullscreen}>
-          {isFullscreen ? 'Quitter plein écran' : 'Plein écran'}
+          {isFullscreen ? 'Exit full screen' : 'Full screen'}
         </button>
       )}
       <button className="fit-button" onClick={() => networkRef.current?.fit()}>
-        Recentrer
+        Recenter
       </button>
       {popup && popup.target === id && (
         <div
@@ -305,27 +305,27 @@ function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) 
         <div className="card-content">{plan.global_plan_id}</div>
       </div>
       <div className="plan-card">
-        <div className="card-header">Objectif brut</div>
+        <div className="card-header">Raw Objective</div>
         <div className="card-content">{plan.raw_objective}</div>
       </div>
       {plan.clarified_objective && (
         <div className="plan-card">
-          <div className="card-header">Objectif clarifié</div>
+          <div className="card-header">Clarified Objective</div>
           <div className="card-content">{plan.clarified_objective}</div>
         </div>
       )}
       <div className="plan-card important">
-        <div className="card-header">État actuel</div>
+        <div className="card-header">Current State</div>
         <div className="card-content">{plan.current_supervisor_state}</div>
       </div>
       <div className="plan-card important">
-        <div className="card-header">Flux en cours</div>
-        <div className="card-content">{flowRunning ? '🟢 Oui' : '🏁 Terminé'}</div>
+        <div className="card-header">Flow Running</div>
+        <div className="card-content">{flowRunning ? '🟢 Yes' : '🏁 Finished'}</div>
       </div>
-      {renderStats('Statistiques TEAM 1', team1Counts)}
-      {renderStats('Statistiques TEAM 2', team2Counts)}
+      {renderStats('TEAM 1 Stats', team1Counts)}
+      {renderStats('TEAM 2 Stats', team2Counts)}
       {hasFailures && (
-        <div className="plan-info-failure">❌ Certaines tâches sont en échec</div>
+        <div className="plan-info-failure">❌ Some tasks have failed</div>
       )}
     </div>
   );
@@ -350,7 +350,7 @@ function PlanStats({ team1Counts, team2Counts }) {
 
   return (
     <details className="plan-stats">
-      <summary>📊 Statistiques du plan</summary>
+      <summary>📊 Plan statistics</summary>
       {team1Counts && (
         <div>
           <strong>TEAM 1</strong>
@@ -421,22 +421,22 @@ function FinalArtifactsHistory({ nodes }) {
   if (!items.length) return null;
 
   const typeLabels = {
-    task_def: 'Définition de tâches',
+    task_def: 'Task definitions',
     plan: 'Plan',
-    result: 'Résultats',
-    other: 'Autres'
+    result: 'Results',
+    other: 'Others'
   };
 
   return (
     <div className="messages-history">
-      <h4>Historique des livrables finaux</h4>
+      <h4>Final artifacts history</h4>
       {Object.entries(grouped).map(([type, list]) => (
         list.length ? (
           <div key={type} className="artifact-section">
             <h5>{typeLabels[type]}</h5>
             {list.map((it, idx) => (
               <div key={idx} className="message-item">
-                <div><strong>Tâche:</strong> {it.task}</div>
+                <div><strong>Task:</strong> {it.task}</div>
                 {it.updated && (
                   <div className="msg-date">{new Date(it.updated).toLocaleString()}</div>
                 )}
@@ -469,7 +469,7 @@ function FileBrowser({ environmentId, planId }) {
       );
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.detail || `Erreur ${response.status}`);
+        throw new Error(errData.detail || `Error ${response.status}`);
       }
       const data = await response.json();
       data.sort((a, b) => {
@@ -480,7 +480,7 @@ function FileBrowser({ environmentId, planId }) {
       setFiles(data);
       setCurrentPath(path);
     } catch (err) {
-      console.error('Erreur lors de la récupération des fichiers:', err);
+      console.error('Error fetching files:', err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -530,11 +530,11 @@ function FileBrowser({ environmentId, planId }) {
       );
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.detail || 'Échec du téléversement');
+        throw new Error(errData.detail || 'Upload failed');
       }
       fetchFiles(currentPath);
     } catch (err) {
-      console.error('Erreur de téléversement:', err);
+      console.error('Upload error:', err);
       setError(err.message);
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -553,16 +553,16 @@ function FileBrowser({ environmentId, planId }) {
   if (!environmentId) {
       return (
         <div className="file-browser">
-            <h3>Explorateur de Fichiers</h3>
-            <p>Sélectionnez un plan pour voir ses fichiers.</p>
+            <h3>File Explorer</h3>
+            <p>Select a plan to view its files.</p>
         </div>
       )
   }
   return (
     <div className="file-browser">
-      <h3>Explorateur de Fichiers (ID: {environmentId})</h3>
+      <h3>File Explorer (ID: {environmentId})</h3>
       <div className="path-bar">
-        <span>Chemin: /workspace/{currentPath}</span>
+        <span>Path: /workspace/{currentPath}</span>
         <div className="file-actions">
           <input
             type="file"
@@ -575,23 +575,23 @@ function FileBrowser({ environmentId, planId }) {
               fileInputRef.current && fileInputRef.current.click()
             }
           >
-            Téléverser un fichier
+            Upload file
           </button>
           <button onClick={() => fetchFiles(currentPath)} disabled={isLoading}>
-            Rafraîchir
+            Refresh
           </button>
         </div>
       </div>
 
-      {isLoading && <p>Chargement...</p>}
-      {error && <p className="error-message">Erreur: {error}</p>}
+      {isLoading && <p>Loading...</p>}
+      {error && <p className="error-message">Error: {error}</p>}
 
       <table>
         <thead>
           <tr>
             <th>Type</th>
-            <th>Nom</th>
-            <th>Taille</th>
+            <th>Name</th>
+            <th>Size</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -623,7 +623,7 @@ function FileBrowser({ environmentId, planId }) {
                       handleDownload(file.name);
                     }}
                   >
-                    Télécharger
+                    Download
                   </button>
                 )}
               </td>
@@ -701,7 +701,7 @@ function App() {
         setAgentsStats(statsData.stats || statsData || []);
         setGraHealth(healthRes.ok ? 'online' : 'offline');
       } catch (err) {
-        console.error('Erreur chargement initial', err);
+        console.error('Initial load error', err);
       } finally {
         setInitialLoading(false);
       }
@@ -761,7 +761,7 @@ function App() {
           setTeam2Counts(null);
         }
       })
-      .catch(err => console.error('Erreur chargement details plan', err));
+      .catch(err => console.error('Error loading plan details', err));
   }
 
   function parseTaskGraph(nodesObj, isTeam1) {
@@ -823,11 +823,11 @@ function App() {
         ))}
         <div className="legend-item">
           <span className="legend-border" style={{ borderColor: '#28a745' }}></span>
-          terminée
+          completed
         </div>
         <div className="legend-item">
           <span className="legend-border" style={{ borderColor: '#dc3545' }}></span>
-          échec
+          failed
         </div>
       </div>
     );
@@ -852,7 +852,7 @@ function App() {
             if (newId) setSelectedPlanId(newId);
           });
       })
-      .catch(err => console.error('Erreur soumission plan', err))
+      .catch(err => console.error('Plan submission error', err))
       .finally(() => setPlanSubmitting(false));
   }
 
@@ -863,7 +863,7 @@ function App() {
     })
       .then(r => r.json())
       .then(() => refreshPlanDetails(planId))
-      .catch(err => console.error('Erreur reprise execution', err));
+      .catch(err => console.error('Error resuming execution', err));
   }
 
   function retryFailedTasks(planId) {
@@ -873,7 +873,7 @@ function App() {
     })
       .then(r => r.json())
       .then(() => refreshPlanDetails(planId))
-      .catch(err => console.error('Erreur relance taches echouees', err));
+      .catch(err => console.error('Error retrying failed tasks', err));
   }
 
 
@@ -894,10 +894,10 @@ function App() {
           .then(d => display(parseMaybeJson(d.content)))
           .catch(() => {
             if (nodeInfo.state === 'failed')
-              display(nodeInfo.result_summary || 'Échec sans détail');
+              display(nodeInfo.result_summary || 'Failure without details');
           });
       } else if (nodeInfo.state === 'failed') {
-        display(nodeInfo.result_summary || 'Échec sans détail');
+        display(nodeInfo.result_summary || 'Failure without details');
       }
   }
 }
@@ -922,7 +922,7 @@ function App() {
           setAnswer('');
           refreshPlanDetails(plan.global_plan_id);
         })
-        .catch(err => console.error('Erreur envoi clarification', err));
+        .catch(err => console.error('Error sending clarification', err));
     };
 
     const forceTeam1 = () => {
@@ -933,17 +933,17 @@ function App() {
       })
         .then(r => r.json())
         .then(() => refreshPlanDetails(plan.global_plan_id))
-        .catch(err => console.error('Erreur acceptation objectif', err));
+        .catch(err => console.error('Error accepting objective', err));
     };
 
     return (
       <div className="clarification-block">
-        <h4>Clarification en cours</h4>
+        <h4>Clarification in progress</h4>
         <div className="chat-history">
           {history.map((h, idx) => (
             <div key={idx} className="chat-item">
               <div><strong>Agent:</strong> {h.agent_question}</div>
-              <div><strong>Vous:</strong> {h.user_answer}</div>
+              <div><strong>You:</strong> {h.user_answer}</div>
             </div>
           ))}
           {lastQuestion && (
@@ -954,7 +954,7 @@ function App() {
         </div>
         {enrichedObjective && (
           <div style={{ marginBottom: '0.5rem' }}>
-            <div>Objectif proposé&nbsp;:</div>
+            <div>Suggested objective&nbsp;:</div>
             <textarea value={enrichedObjective} readOnly rows="3" style={{ width: '100%' }} />
           </div>
         )}
@@ -962,12 +962,12 @@ function App() {
           value={answer}
           onChange={e => setAnswer(e.target.value)}
           rows="3"
-          placeholder="Votre réponse..."
+          placeholder="Your answer..."
           style={{ width: '100%' }}
         />
         <div style={{ marginTop: '0.5rem' }}>
-          <button onClick={submitAnswer}>Envoyer</button>
-          <button onClick={forceTeam1} style={{ marginLeft: '0.5rem' }}>Forcer TEAM 1</button>
+          <button onClick={submitAnswer}>Send</button>
+          <button onClick={forceTeam1} style={{ marginLeft: '0.5rem' }}>Force TEAM 1</button>
         </div>
       </div>
     );
@@ -991,44 +991,46 @@ function App() {
         </div>
       )}
       <div className="sidebar">
-        <h3>Nouveau Plan</h3>
+        <h3>New Plan</h3>
         <textarea value={newObjective} onChange={e => setNewObjective(e.target.value)} rows="4" style={{ width: '100%' }} />
-        <button onClick={submitNewPlan} disabled={planSubmitting} style={{ width: '100%', marginTop: '0.5rem' }}>Lancer Planification</button>
+        <button onClick={submitNewPlan} disabled={planSubmitting} style={{ width: '100%', marginTop: '0.5rem' }}>Launch planning</button>
         <hr />
-        <h3>Plans Existants</h3>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Filtrer&nbsp;
+        <details className="existing-plans">
+          <summary>Existing Plans</summary>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Filter&nbsp;
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                <option value="inprogress">In progress</option>
+                <option value="finished">Finished</option>
+              </select>
+            </label>
             <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+              value={stateFilter}
+              onChange={e => setStateFilter(e.target.value)}
             >
-              <option value="all">Tous</option>
-              <option value="inprogress">En cours</option>
-              <option value="finished">Terminés</option>
+              <option value="">State: All</option>
+              {uniqueStates.map(s => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
             </select>
-          </label>
-          <select
-            style={{ marginLeft: '0.5rem' }}
-            value={stateFilter}
-            onChange={e => setStateFilter(e.target.value)}
-          >
-            <option value="">État: Tous</option>
-            {uniqueStates.map(s => (
-              <option key={s} value={s}>
-                {s}
+          </div>
+          <select size="10" style={{ width: '100%' }} value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)}>
+            <option value="">-- Select --</option>
+            {filteredPlans.map(p => (
+              <option key={p.global_plan_id} value={p.global_plan_id}>
+                {p.global_plan_id} | {p.raw_objective.slice(0, 30)}...
               </option>
             ))}
           </select>
-        </div>
-        <select size="10" style={{ width: '100%' }} value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)}>
-          <option value="">-- Sélectionnez --</option>
-          {filteredPlans.map(p => (
-            <option key={p.global_plan_id} value={p.global_plan_id}>
-              {p.global_plan_id} | {p.raw_objective.slice(0, 30)}...
-            </option>
-          ))}
-        </select>
+        </details>
         <hr />
         <h3>Environment ID</h3>
         <input
@@ -1042,7 +1044,7 @@ function App() {
         <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentsStats} />
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)} disabled={!selectedPlanId}>
-            Rafraîchir le plan
+            Refresh plan
           </button>
           <label style={{ marginLeft: '1rem' }}>
             <input
@@ -1065,11 +1067,11 @@ function App() {
           planDetails.current_supervisor_state !== 'TEAM2_EXECUTION_COMPLETED' && (
             <div style={{ marginBottom: '0.5rem' }}>
               <button onClick={() => resumeExecution(planDetails.global_plan_id)}>
-                Reprendre l'exécution TEAM 2
+                Resume TEAM 2 execution
               </button>
               {hasFailures && (
                 <button style={{ marginLeft: '1rem' }} onClick={() => retryFailedTasks(planDetails.global_plan_id)}>
-                  Relancer les tâches échouées
+                  Retry failed tasks
                 </button>
               )}
             </div>
@@ -1079,7 +1081,7 @@ function App() {
         )}
         {team1Graph && (
           <details className="graph-section" open>
-            <summary>Graphe Team 1</summary>
+            <summary>Team 1 graph</summary>
             <Graph
               id="team1"
               nodes={team1Graph.nodes}
@@ -1093,7 +1095,7 @@ function App() {
         )}
         {team2Graph && (
           <div>
-            <h4>Graphe Exécution Team 2</h4>
+            <h4>Team 2 execution graph</h4>
             <Team2Legend />
             <Graph
               id="team2"
