@@ -21,6 +21,17 @@ body {
   color: var(--text);
 }
 
+.app-header {
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
 .sidebar {
   width: 300px;
   float: left;
