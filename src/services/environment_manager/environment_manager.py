@@ -389,7 +389,11 @@ class EnvironmentManager:
 
         # Vérifie présence dans le cache
         if environment_id not in self.environments:
-            raise RuntimeError(f"Unknown environment_id: {environment_id}. Ensure it is created before use.")
+            await self._load_existing_environment_details(environment_id)
+        if environment_id not in self.environments:
+            raise RuntimeError(
+                f"Unknown environment_id: {environment_id}. Ensure it is created before use."
+            )
 
         pod_name = self.environments[environment_id]['pod_name']
 
