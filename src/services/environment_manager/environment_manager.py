@@ -29,50 +29,51 @@ class EnvironmentManager:
     def __init__(self):
         self.api_client = None
         gke_cluster_endpoint = os.environ.get("GKE_CLUSTER_ENDPOINT")
-
         configuration = client.Configuration()
 
         if gke_cluster_endpoint:
             logger.info(f"GKE_CLUSTER_ENDPOINT found: {gke_cluster_endpoint}. Configuring Kubernetes client for remote GKE cluster.")
-
             configuration.host = f"https://{gke_cluster_endpoint}"
 
-            configuration.verify_ssl = True
-            configuration.ssl_ca_cert = os.environ.get("GKE_SSL_CA_CERT")
-            if configuration.ssl_ca_cert:
+            # SSL
+            ssl_ca_cert = os.environ.get("GKE_SSL_CA_CERT")
+            if ssl_ca_cert:
+                configuration.ssl_ca_cert = ssl_ca_cert
+                configuration.verify_ssl = True
                 logger.info("SSL verification ENABLED with provided CA certificate.")
             else:
                 configuration.verify_ssl = False
-                logger.warning("EnvironmentManager: SSL verification is DISABLED because GKE_SSL_CA_CERT is not set. DO NOT USE IN PRODUCTION.")
+                logger.warning("SSL verification is DISABLED because GKE_SSL_CA_CERT is not set. ⚠️ Not recommended for production.")
 
-            credentials, project_id = google.auth.default(scopes=GKE_SCOPES)
+            # Auth via ADC
+            credentials, _ = google.auth.default(scopes=GKE_SCOPES)
             if credentials:
                 try:
                     credentials.refresh(Request())
-                    configuration.api_key = {"authorization": "Bearer " + credentials.token}
-                    logger.info("Kubernetes client authentication configured with ADC token and correct scopes.")
+                    configuration.api_key = {"authorization": f"Bearer {credentials.token}"}
+                    logger.info("Kubernetes client authentication configured with refreshed ADC token.")
                 except Exception as e:
                     logger.error(f"Failed to refresh ADC token: {e}")
                     raise Exception(f"ADC token refresh failed: {e}")
             else:
-                raise Exception("ADC credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS environment variable.")            
+                raise Exception("ADC credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS env var or use gcloud auth.")
 
         else:
+            # Fallback local config
             try:
                 config.load_kube_config()
                 logger.info("Kubernetes config loaded from local kube_config.")
-            except config.ConfigException:
-                raise Exception("Neither GKE_CLUSTER_ENDPOINT nor local kube_config found.")
+            except config.ConfigException as e:
+                raise Exception(f"Kubernetes config load failed: {e}")
 
         client.Configuration.set_default(configuration)
         self.api_client = client.ApiClient(configuration)
-
         self.v1 = client.CoreV1Api(self.api_client)
         self.apps_v1 = client.AppsV1Api(self.api_client)
-
         self.namespace = os.environ.get("KUBERNETES_NAMESPACE", "default")
         self.environments = {}
         logger.info(f"EnvironmentManager initialized for Kubernetes namespace: {self.namespace}.")
+
 
     @staticmethod
     def normalize_environment_id(plan_id: str) -> str:
