@@ -577,7 +577,11 @@ function FileBrowser({ environmentId, planId }) {
           >
             Upload file
           </button>
-          <button onClick={() => fetchFiles(currentPath)} disabled={isLoading}>
+          <button
+            onClick={() => fetchFiles(currentPath)}
+            disabled={isLoading}
+            title="Reload the file list"
+          >
             Refresh
           </button>
         </div>
@@ -998,15 +1002,30 @@ function App() {
 
   return (
     <div className="app">
+      <header className="app-header">
+        <h1>OrchestrAI Dashboard</h1>
+      </header>
       {(initialLoading || planSubmitting) && (
         <div className="loading-overlay">
           <div className="spinner"></div>
         </div>
       )}
       <div className="sidebar">
-        <h3>New Plan</h3>
-        <textarea value={newObjective} onChange={e => setNewObjective(e.target.value)} rows="4" style={{ width: '100%' }} />
-        <button onClick={submitNewPlan} disabled={planSubmitting} style={{ width: '100%', marginTop: '0.5rem' }}>Launch planning</button>
+        <h3 title="Enter a new objective to create a plan">New Plan</h3>
+        <textarea
+          value={newObjective}
+          onChange={e => setNewObjective(e.target.value)}
+          rows="4"
+          style={{ width: '100%' }}
+        />
+        <button
+          onClick={submitNewPlan}
+          disabled={planSubmitting}
+          style={{ width: '100%', marginTop: '0.5rem' }}
+          title="Start planning for the entered objective"
+        >
+          Launch planning
+        </button>
         <hr />
         <details className="existing-plans">
           <summary>Existing Plans</summary>
@@ -1049,7 +1068,11 @@ function App() {
       <div className="content">
         <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentsStats} />
         <div style={{ marginBottom: '0.5rem' }}>
-          <button onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)} disabled={!selectedPlanId}>
+          <button
+            onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)}
+            disabled={!selectedPlanId}
+            title="Reload details of the selected plan"
+          >
             Refresh plan
           </button>
           <label style={{ marginLeft: '1rem' }}>
