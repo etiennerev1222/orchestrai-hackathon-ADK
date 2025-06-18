@@ -128,6 +128,62 @@ function push_images() {
 }
 
 # ==============================================================================
+# FONCTION : CONSTRUCTION D'UNE IMAGE DOCKER UNIQUE
+# ==============================================================================
+function build_single_image() {
+    local AGENT_NAME_TO_BUILD=$1
+
+    if [ -z "$AGENT_NAME_TO_BUILD" ]; then
+        echo "Erreur : Vous devez spécifier le nom de l'agent à construire."
+        echo "Usage: ./deployment.sh build-one <nom_de_l_agent>"
+        exit 1
+    fi
+
+    if ! [[ " ${AGENTS[@]} " =~ " ${AGENT_NAME_TO_BUILD} " ]]; then
+        echo "Erreur : Le nom d'agent '${AGENT_NAME_TO_BUILD}' n'est pas valide."
+        exit 1
+    fi
+
+    if [ ! -d "$BUILD_DIR" ]; then
+        echo "Le dossier de build '$BUILD_DIR' n'existe pas. Lancez d'abord './deployment.sh configure'."
+        exit 1
+    fi
+
+    cd "$BUILD_DIR"
+    echo "    -> Lancement de 'docker compose build ${AGENT_NAME_TO_BUILD}'..."
+    docker compose build "${AGENT_NAME_TO_BUILD}"
+    cd "$ROOT_DIR"
+}
+
+# ==============================================================================
+# FONCTION : PUSH D'UNE IMAGE UNIQUE VERS LE REGISTRE GCP
+# ==============================================================================
+function push_single_image() {
+    local AGENT_NAME_TO_PUSH=$1
+
+    if [ -z "$AGENT_NAME_TO_PUSH" ]; then
+        echo "Erreur : Vous devez spécifier le nom de l'agent à pousser."
+        echo "Usage: ./deployment.sh push-one <nom_de_l_agent>"
+        exit 1
+    fi
+
+    if ! [[ " ${AGENTS[@]} " =~ " ${AGENT_NAME_TO_PUSH} " ]]; then
+        echo "Erreur : Le nom d'agent '${AGENT_NAME_TO_PUSH}' n'est pas valide."
+        exit 1
+    fi
+
+    if [ ! -d "$BUILD_DIR" ]; then
+        echo "Le dossier de build '$BUILD_DIR' n'existe pas. Lancez d'abord './deployment.sh configure'."
+        exit 1
+    fi
+
+    cd "$BUILD_DIR"
+    echo "    -> Lancement de 'docker compose push ${AGENT_NAME_TO_PUSH}'..."
+    docker compose push "${AGENT_NAME_TO_PUSH}"
+    cd "$ROOT_DIR"
+}
+
+# ==============================================================================
 # FONCTION UTILITAIRE : Récupérer l'endpoint GKE
 # ==============================================================================
 function get_gke_cluster_endpoint() {
@@ -307,6 +363,12 @@ case "$1" in
     push) push_images ;;
     deploy) deploy_gcp ;;
     deploy-one)
+        deploy_single_agent "$2"
+        ;;
+    all_single_agent)
+        configure
+        build_single_image "$2"
+        push_single_image "$2"
         deploy_single_agent "$2"
         ;;
     deploy_frontend) deploy_frontend ;;

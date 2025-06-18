@@ -304,6 +304,9 @@ The `deployment.sh` script automates the entire deployment process.
 # Quickly deploy a single agent after modifying its code
 # (make sure the agent image has been built and pushed first)
 ./deployment.sh deploy-one user_interaction_agent
+
+# Rebuild, push and deploy just one agent in a single command
+./deployment.sh all_single_agent user_interaction_agent
 ```
 The script automatically injects the correct environment variables (`GCP_PROJECT_ID`, `GCP_REGION`, service URLs) into the deployed containers. API key authentication is no longer required.
 
