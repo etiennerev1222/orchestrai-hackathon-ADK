@@ -660,6 +660,7 @@ function App() {
   const [initialLoading, setInitialLoading] = React.useState(true);
   const [planSubmitting, setPlanSubmitting] = React.useState(false);
   const [activeEnvironmentId, setActiveEnvironmentId] = React.useState(null);
+  const [showFileBrowser, setShowFileBrowser] = React.useState(false);
 
   const uniqueStates = React.useMemo(
     () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
@@ -1083,6 +1084,14 @@ function App() {
             />
             Auto-refresh
           </label>
+          <label style={{ marginLeft: '1rem' }} title="Toggle the file explorer">
+            <input
+              type="checkbox"
+              checked={showFileBrowser}
+              onChange={e => setShowFileBrowser(e.target.checked)}
+            />
+            Show file explorer
+          </label>
         </div>
         
         <PlanInfo
@@ -1139,8 +1148,12 @@ function App() {
           </div>
         )}
         {team2NodesMap && <FinalArtifactsHistory nodes={team2NodesMap} />}
-        {activeEnvironmentId && (
-          <FileBrowser key={selectedPlanId} planId={selectedPlanId} environmentId={activeEnvironmentId} />
+        {activeEnvironmentId && showFileBrowser && (
+          <FileBrowser
+            key={selectedPlanId}
+            planId={selectedPlanId}
+            environmentId={activeEnvironmentId}
+          />
         )}
       </div>
     </div>
