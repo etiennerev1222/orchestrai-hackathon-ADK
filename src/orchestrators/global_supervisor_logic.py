@@ -168,7 +168,7 @@ class GlobalSupervisorLogic:
             logger.error("[GlobalSupervisor] Impossible de créer un environnement isolé, EnvironmentManager non disponible.")
             await self._save_global_plan_state(global_plan_id, {"current_supervisor_state": GlobalPlanState.FAILED_AGENT_ERROR, "error_message": "EnvironmentManager not available"})
             return {"status": "error", "message": "EnvironmentManager not available", "global_plan_id": global_plan_id}
-        self.plan_environment_id = await self.environment_manager.create_isolated_environment(global_plan_id)
+        self.plan_environment_id = await self.environment_manager.get_environment_or_fallback(global_plan_id)
         plan_data["environment_id"] = self.plan_environment_id
         if self.plan_environment_id:
             await self._save_global_plan_state(global_plan_id, {"environment_id": self.plan_environment_id})
