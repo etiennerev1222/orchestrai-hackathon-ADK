@@ -51,6 +51,8 @@ class GlobalSupervisorLogic:
         self._gra_base_url: Optional[str] = None
         self.db = None
         logger.info("GlobalSupervisorLogic initialisé.")
+        self.plan_environment_id = None
+    
         
         try:
             if not firebase_admin._apps:
@@ -145,8 +147,6 @@ class GlobalSupervisorLogic:
             logger.error(f"[GlobalSupervisor] Erreur chargement plan '{global_plan_id}' depuis Firestore: {e}", exc_info=True)
             return None
     async def start_new_global_plan(self, raw_objective: str, user_id: Optional[str] = "default_user") -> Dict[str, Any]:
-        if self.environment_manager is None:
-            raise RuntimeError("EnvironmentManager is not available. Cannot start a new plan.")
 
         global_plan_id = f"gplan_{uuid.uuid4().hex[:12]}"
         logger.info(f"[GlobalSupervisor] Démarrage nouveau plan global '{global_plan_id}' pour objectif: '{raw_objective}'")
@@ -157,7 +157,29 @@ class GlobalSupervisorLogic:
             "conversation_history": [], "clarification_attempts": 0,
             "team1_plan_id": None, "created_at": datetime.now(timezone.utc).isoformat()
         }
+        
         await self._save_global_plan_state(global_plan_id, plan_data)
+        logger.info(f"[GlobalSupervisor] Plan global '{global_plan_id}' créé ,création de l'environnement isolé pour l'exécution.") 
+        if not self.environment_manager:
+            # créer un environnement isolé par défaut si le manager n'est pas initialisé
+            logger.warning("[GlobalSupervisor] EnvironmentManager non initialisé, création d'un environnement isolé par défaut.")
+            self.environment_manager = EnvironmentManager()
+        if not self.environment_manager:
+            logger.error("[GlobalSupervisor] Impossible de créer un environnement isolé, EnvironmentManager non disponible.")
+            await self._save_global_plan_state(global_plan_id, {"current_supervisor_state": GlobalPlanState.FAILED_AGENT_ERROR, "error_message": "EnvironmentManager not available"})
+            return {"status": "error", "message": "EnvironmentManager not available", "global_plan_id": global_plan_id}
+        self.plan_environment_id = await self.environment_manager.create_isolated_environment(global_plan_id)
+        plan_data["environment_id"] = self.plan_environment_id
+        if self.plan_environment_id:
+            await self._save_global_plan_state(global_plan_id, {"environment_id": self.plan_environment_id})
+        if not self.plan_environment_id:
+            logger.error(f"[GlobalSupervisor] Échec de la création de l'environnement pour plan '{global_plan_id}'.")
+            await self._save_global_plan_state(global_plan_id, {
+                "current_supervisor_state": GlobalPlanState.FAILED_ENVIRONMENT_CREATION,
+                "error_message": "Environment creation failed"
+            })
+            return {"status": "error", "message": "Environment creation failed", "global_plan_id": global_plan_id}
+        logger.info(f"[GlobalSupervisor] Environnement isolé '{self.plan_environment_id}' créé et prêt pour plan global '{global_plan_id}'.")
         return await self._trigger_clarification_step(global_plan_id, raw_objective, [])
 
     async def _trigger_clarification_step(self, global_plan_id: str, text_for_clarification: str, conversation_history: List[Dict[str,str]]) -> Dict[str, Any]:
@@ -439,9 +461,13 @@ class GlobalSupervisorLogic:
                              "current_supervisor_state": "TEAM2_EXECUTION_INITIATING",
                              "team2_status": "PENDING_INITIALIZATION"
                         })
+                        if not self.plan_environment_id:
+                            self.plan_environment_id = await self.environment_manager.create_isolated_environment(global_plan_id)
+
                         execution_supervisor = ExecutionSupervisorLogic(
                             global_plan_id=global_plan_id,
-                            team1_plan_final_text=team1_final_plan_text
+                            team1_plan_final_text=team1_final_plan_text,
+                            plan_environment_id=self.plan_environment_id
                         )
                         asyncio.create_task(self._run_and_monitor_team2_execution(execution_supervisor, global_plan_id))
                     else:
@@ -577,6 +603,8 @@ class GlobalSupervisorLogic:
             global_plan_id=global_plan_id,
             team1_plan_final_text=team1_text,
             execution_plan_id=exec_plan_id,
+            plan_environment_id=self.plan_environment_id
+
         )
 
         await exec_supervisor.continue_execution()
@@ -596,68 +624,6 @@ class GlobalSupervisorLogic:
 
         return {
             "status": "team2_execution_resumed",
-            "message": final_exec_status,
-            "global_plan_id": global_plan_id,
-            "current_supervisor_state": new_state,
-        }
-
-    async def retry_team2_failed_tasks(self, global_plan_id: str) -> Dict[str, Any]:
-        """Relance uniquement les tâches TEAM 2 en échec pour un plan global."""
-        current_plan = await self._load_global_plan_state(global_plan_id)
-        if not current_plan:
-            return {
-                "status": "error",
-                "message": f"Plan global '{global_plan_id}' non trouvé.",
-                "global_plan_id": global_plan_id,
-            }
-
-        exec_plan_id = current_plan.get("team2_execution_plan_id")
-        if not exec_plan_id:
-            return {
-                "status": "error",
-                "message": "Aucune exécution TEAM 2 associée à ce plan.",
-                "global_plan_id": global_plan_id,
-            }
-
-        team1_plan_id = current_plan.get("team1_plan_id")
-        if not team1_plan_id:
-            return {
-                "status": "error",
-                "message": "team1_plan_id manquant pour relance TEAM 2.",
-                "global_plan_id": global_plan_id,
-            }
-
-        team1_text = self._get_final_plan_text_from_team1(team1_plan_id)
-        if not team1_text:
-            return {
-                "status": "error",
-                "message": "Impossible de récupérer le plan TEAM 1 final.",
-                "global_plan_id": global_plan_id,
-            }
-
-        exec_supervisor = ExecutionSupervisorLogic(
-            global_plan_id=global_plan_id,
-            team1_plan_final_text=team1_text,
-            execution_plan_id=exec_plan_id,
-        )
-
-        await exec_supervisor.retry_failed_tasks()
-
-        final_exec_status = exec_supervisor.task_graph.as_dict().get("overall_status", "UNKNOWN")
-
-        new_state = (
-            "TEAM2_EXECUTION_COMPLETED"
-            if final_exec_status.startswith("EXECUTION_COMPLETED")
-            else current_plan.get("current_supervisor_state", "TEAM2_EXECUTION_IN_PROGRESS")
-        )
-
-        await self._save_global_plan_state(global_plan_id, {
-            "current_supervisor_state": new_state,
-            "team2_status": final_exec_status,
-        })
-
-        return {
-            "status": "team2_failed_tasks_retried",
             "message": final_exec_status,
             "global_plan_id": global_plan_id,
             "current_supervisor_state": new_state,

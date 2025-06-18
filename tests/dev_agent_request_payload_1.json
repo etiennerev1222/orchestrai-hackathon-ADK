@@ -8,7 +8,7 @@
       "role": "user",
       "parts": [
         {
-          "text": "{\n  \"action\": \"execute_command\",\n  \"command\": \"python /app/sum_numbers.py\",\n  \"workdir\": \"/app\",\n  \"environment_id\": \"my-test-env-001\",\n  \"current_state\": \"Code written to /app/sum_numbers.py.\",\n  \"last_action_result\": {\"action_taken\": \"generate_code_and_write_file\", \"status\": \"success\"}\n}"
+          "text": "{\n  \"action\": \"execute_command\",\n  \"command\": \"python /app/sum_numbers.py\",\n  \"workdir\": \"/app\",\n  \"environment_id\": \"exec_gplan_7b4f27cf1556\",\n  \"current_state\": \"Code written to /app/sum_numbers.py.\",\n  \"last_action_result\": {\"action_taken\": \"generate_code_and_write_file\", \"status\": \"success\"}\n}"
         }
       ]
     },

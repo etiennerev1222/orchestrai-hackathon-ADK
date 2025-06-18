@@ -51,7 +51,7 @@ class ResearchAgentLogic(BaseAgentLogic):
         system_prompt = (
             "Tu es un assistant de recherche et d'analyse IA expert. Ta mission est d'exécuter des tâches exploratoires ou d'analyse. "
             "Tu dois fournir un résumé de tes découvertes ou de ton analyse. "
-            "Si la nature de la tâche exploratoire ('exploratory') implique la définition de nouvelles sous-tâches pour atteindre l'objectif initial, "
+            "Si la nature de la tâche exploratoire ('exploratory') implique la définition de nouvelles sous-tâches executable par des agents LLM pour atteindre l'objectif initial, "
             "tu DOIS les proposer. Pour les tâches non exploratoires, tu ne génères généralement pas de nouvelles sous-tâches.\n"
             "Ta réponse DOIT être un objet JSON unique avec DEUX clés racine OBLIGATOIRES : 'summary' (string) et 'new_sub_tasks' (array of task objects).\n"
             "La clé 'new_sub_tasks' doit être une liste vide [] si aucune nouvelle sous-tâche n'est nécessaire ou si la tâche n'est pas de type 'exploratory' et ne justifie pas de décomposition.\n"
@@ -63,7 +63,7 @@ class ResearchAgentLogic(BaseAgentLogic):
             "- 'dependances': une liste vide [], car ces sous-tâches dépendront implicitement de la tâche exploratoire parente (gérée par le superviseur).\n"
             "- 'instructions_locales': liste de strings.\n"
             "- 'acceptance_criteria': liste de strings.\n"
-            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences disponibles : [{skills_string_for_prompt}]. Choisis la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
+            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences d'agent LLM disponibles : [{skills_string_for_prompt}]. Choisis la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
             "- 'sous_taches': une liste vide [], car la décomposition s'arrête à ce niveau pour les tâches que tu génères.\n"
             "Fournis UNIQUEMENT l'objet JSON, sans texte ou explication en dehors."
         )

@@ -11,7 +11,7 @@ AGENT_URL="https://development-agent-434296769439.europe-west1.run.app/" # Assur
 
 # --- Nom du fichier payload JSON ---
 PAYLOAD_FILE="tests/dev_agent_request_payload.json"
-PAYLOAD_FILE="tests/dev_agent_request_payload_1.json"
+#PAYLOAD_FILE="tests/dev_agent_request_payload_1.json"
 # --- Récupération du jeton d'identité ---
 echo "--- Récupération du jeton d'identité Google Cloud ---"
 ID_TOKEN=$(gcloud auth print-identity-token)

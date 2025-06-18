@@ -22,6 +22,19 @@ logger = logging.getLogger(__name__)
 
 K8S_ENVIRONMENTS_COLLECTION = "kubernetes_environments"
 
+def normalize_environment_id(self, plan_id: str) -> str:
+    return f"exec-{self.extract_global_plan_id(plan_id)}"
+
+# Ajoute ce helper pour générer les noms K8s en un seul point
+def generate_k8s_names(self, environment_id: str) -> dict:
+    safe_env_id = self._make_safe_k8s_name(environment_id)
+    return {
+        "pod_name": f"dev-env-{safe_env_id}",
+        "pvc_name": f"dev-env-pvc-{safe_env_id}",
+        "volume_name": f"dev-env-vol-{safe_env_id}"
+    }
+
+
 class EnvironmentManager:
     def __init__(self):
         self.api_client = None
@@ -75,10 +88,13 @@ class EnvironmentManager:
         """
         Extrait la partie gplan_<id> d'un plan_id quel que soit son préfixe (team1_, team2_, exec_, etc.)
         """
+        if plan_id =='N/A':
+            return "default"
         import re
         match = re.search(r'gplan_[a-f0-9]+', plan_id)
         if not match:
-            raise ValueError(f"Cannot extract global_plan_id from plan_id: {plan_id}")
+          return "default"  # Valeur par défaut si aucun match trouvé
+          # raise ValueError(f"Cannot extract global_plan_id from plan_id: {plan_id}")
         return match.group(0)
 
     async def _ensure_pod_running(self, pod_name: str):
@@ -94,13 +110,13 @@ class EnvironmentManager:
 
     async def _load_existing_environment_details(self, environment_id: str):
         """Tente de charger les détails d'un environnement depuis Firestore et K8s API."""
-        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+        environment_id = f"exec-{self.extract_global_plan_id(plan_id=environment_id)}"
 
         if environment_id in self.environments:
             return
-
-        pod_name = f"dev-env-{environment_id}"
-        pvc_name = f"dev-env-pvc-{environment_id}"
+        names = self.generate_k8s_names(environment_id)
+        pod_name = names["pod_name"]
+        pvc_name = names["pvc_name"]
 
         self.environments[environment_id] = {
             'pod_name': pod_name,
@@ -147,21 +163,38 @@ class EnvironmentManager:
         return safe
     
 
+    def generate_k8s_names(self, environment_id: str) -> dict:
+        safe_env_id = self._make_safe_k8s_name(environment_id)
+        return {
+            "pod_name": f"dev-env-{safe_env_id}",
+            "pvc_name": f"dev-env-pvc-{safe_env_id}",
+            "volume_name": f"dev-env-vol-{safe_env_id}"
+        }
+
+   
+
     async def create_isolated_environment(self, environment_id: str, base_image: str = "python:3.9-slim-buster") -> str:
-        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+        environment_id = f"exec-{self.extract_global_plan_id(plan_id=environment_id)}"
         safe_env_id = self._make_safe_k8s_name(environment_id)
 
-        pod_name = f"dev-env-{safe_env_id}"
-        pvc_name = f"dev-env-pvc-{safe_env_id}"
-        volume_name = f"dev-env-vol-{safe_env_id}"
-        
+        names = self.generate_k8s_names(environment_id)
+        pod_name = names["pod_name"]
+        pvc_name = names["pvc_name"]
+        volume_name = names.get("volume_name")
+        logger.info(f"Creating isolated environment '{environment_id}' with Pod: {pod_name}, PVC: {pvc_name}, Volume: {volume_name}")
         await self._load_existing_environment_details(environment_id)
         if environment_id in self.environments:
-            logger.info(f"Environment '{environment_id}' already active in manager and running. Reusing.")
-            return environment_id
+            pod_name = self.environments[environment_id]['pod_name']
+            try:
+                await self._ensure_pod_running(pod_name)
+                logger.info(f"Environment '{environment_id}' already active in manager and pod '{pod_name}' is running. Reusing.")
+                return environment_id
+            except RuntimeError:
+                logger.warning(f"Environment '{environment_id}' found in manager but pod '{pod_name}' missing or not running. Recreating environment.")
 
         try:
             try:
+                logger.info(f"Checking Volume '{volume_name}' for environment '{environment_id}'...")
                 await asyncio.to_thread(self.v1.read_namespaced_persistent_volume_claim, name=pvc_name, namespace=self.namespace)
                 logger.info(f"PVC '{pvc_name}' already exists, reusing.")
             except client.ApiException as e:
@@ -188,6 +221,7 @@ class EnvironmentManager:
                     "labels": {"app": "dev-environment", "environment_id": environment_id}
                 },
                 "spec": {
+                    "serviceAccountName": "orchestrai-sa",
                     "volumes": [
                         {
                             "name": volume_name,
@@ -322,25 +356,35 @@ class EnvironmentManager:
             logger.error(f"Unexpected error creating environment '{environment_id}': {e}", exc_info=True)
             return None
 
-    async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:
-        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+    async def _get_valid_pod_name(self, environment_id: str) -> str:
+        """
+        Normalise l'environment_id, vérifie son existence dans le cache,
+        et s'assure que le pod est en état Running.
+
+        :param environment_id: ID logique du plan (ex: gplan_xxx ou exec_gplan_xxx)
+        :return: pod_name valide prêt à être utilisé
+        :raises: RuntimeError si l'environnement ou le pod sont invalides
+        """
+        if environment_id=="N/A":
+            environment_id = "default"
+
+        if not str(environment_id).startswith("exec-gplan_") and not str(environment_id) == "default":
+            environment_id = f"exec-{self.extract_global_plan_id(plan_id=environment_id)}"
+
+        # Vérifie présence dans le cache
         if environment_id not in self.environments:
-            await self._load_existing_environment_details(environment_id)
-            if environment_id not in self.environments:
-                logger.error(f"Attempted to execute command in non-existent environment: '{environment_id}' and could not discover it.")
-                #return {"stdout": "", "stderr": f"Environment '{environment_id}' not found.", "exit_code": 1}
-        
+            raise RuntimeError(f"Unknown environment_id: {environment_id}. Ensure it is created before use.")
+
         pod_name = self.environments[environment_id]['pod_name']
+
+        # Vérifie état du pod
+        await self._ensure_pod_running(pod_name)
+
+        return pod_name
+
+    async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:
+        pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"
-        try:
-            await self._ensure_pod_running(pod_name)
-        except RuntimeError as e:
-            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
-            await self.create_isolated_environment(environment_id)
-            await self._load_existing_environment_details(environment_id)
-            pod_name = self.environments[environment_id]['pod_name']
-            await self._ensure_pod_running(pod_name)
-    
         try:
             logger.info(f"Executing command '{command}' in Pod '{pod_name}' (container '{container_name}') at workdir '{workdir}')")
             
@@ -389,19 +433,8 @@ class EnvironmentManager:
             return {"stdout": "", "stderr": f"Internal Error: {e}", "exit_code": 1}
 
     async def write_file_to_environment(self, environment_id: str, file_path: str, content: str) -> None:
-        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
-       
-        pod_name = self.environments[environment_id]['pod_name']
+        pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"
-        try:
-            await self._ensure_pod_running(pod_name)
-        except RuntimeError as e:
-            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
-            await self.create_isolated_environment(environment_id)
-            await self._load_existing_environment_details(environment_id)
-            pod_name = self.environments[environment_id]['pod_name']
-            await self._ensure_pod_running(pod_name)        
-        
         dir_name = os.path.dirname(file_path)
         if dir_name and dir_name != "/":
             cmd_result = await self.execute_command_in_environment(environment_id, f"mkdir -p {dir_name}")
@@ -448,18 +481,8 @@ class EnvironmentManager:
             raise
 
     async def read_file_from_environment(self, environment_id: str, file_path: str) -> str:
-        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
-        pod_name = self.environments[environment_id]['pod_name']
+        pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"
-        try:
-            await self._ensure_pod_running(pod_name)
-        except RuntimeError as e:
-            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
-            await self.create_isolated_environment(environment_id)
-            await self._load_existing_environment_details(environment_id)
-            pod_name = self.environments[environment_id]['pod_name']
-            await self._ensure_pod_running(pod_name)        
-
         try:
             pod = await asyncio.to_thread(self.v1.read_namespaced_pod, pod_name, self.namespace)
             if pod.status.phase != 'Running':
@@ -537,19 +560,8 @@ class EnvironmentManager:
         Liste les fichiers et répertoires dans un chemin donné à l'intérieur d'un pod.
         Retourne une liste d'objets avec des détails sur chaque entrée.
         """
-        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
-        pod_name = self.environments[environment_id]['pod_name']
+        pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"
-        try:
-            await self._ensure_pod_running(pod_name)
-        except RuntimeError as e:
-            logger.warning(f"Pod '{pod_name}' not found or not running: {e}. Attempting to recreate environment.")
-            await self.create_isolated_environment(environment_id)
-            await self._load_existing_environment_details(environment_id)
-            pod_name = self.environments[environment_id]['pod_name']
-            await self._ensure_pod_running(pod_name)        
-
-
         try:
             pod = await asyncio.to_thread(self.v1.read_namespaced_pod, pod_name, self.namespace)
             if pod.status.phase != 'Running':
@@ -628,10 +640,11 @@ class EnvironmentManager:
             raise
  
     async def destroy_environment(self, environment_id: str) -> None:
-        environment_id = f"exec_{self.extract_global_plan_id(plan_id=environment_id)}"
+        environment_id = f"exec-{self.extract_global_plan_id(plan_id=environment_id)}"
         safe_env_id = self._make_safe_k8s_name(environment_id)
-        pod_name = f"dev-env-{safe_env_id}"
-        pvc_name = f"dev-env-pvc-{safe_env_id}"
+        names = self.generate_k8s_names(environment_id)
+        pod_name = names["pod_name"]
+        pvc_name = names["pvc_name"]
         
         try:
             try:
@@ -657,6 +670,13 @@ class EnvironmentManager:
                     raise
 
             self.environments.pop(environment_id, None)
+
             logger.info(f"Environment '{environment_id}' (Pod: {pod_name}, PVC: {pvc_name}) destruction initiated.")
+            # Optionnel : attendre que le pod soit effectivement supprimé
+            try:
+                await asyncio.to_thread(self._ensure_pod_running, pod_name)
+                await asyncio.sleep(5)  # Attente courte pour laisser le temps à Kubernetes de traiter la suppression
+            except client.ApiException as e:
+                logger.error(f"Kubernetes API Error destroying environment '{environment_id}': Status {e.status}, Reason {e.reason}, Body {e.body}", exc_info=True)
         except Exception as e:
             logger.error(f"Error destroying environment '{environment_id}': {e}", exc_info=True)

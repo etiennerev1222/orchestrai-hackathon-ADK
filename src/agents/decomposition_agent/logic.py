@@ -63,7 +63,7 @@ class DecompositionAgentLogic(BaseAgentLogic):
             "- 'dependances': une liste d'IDs locaux des tâches dont cette tâche dépend directement. Si une tâche d'exécution de tests (ex: avec compétence 'software_testing') dépend de code ET de cas de tests, elle doit lister les IDs des tâches ayant produit ces deux éléments.\n"
             "- 'instructions_locales': liste de strings.\n"
             "- 'acceptance_criteria': liste de strings.\n"
-            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences disponibles : [{skills_string}]. Choisis la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
+            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences disponibles de tes agents LLM : [{skills_string}]. Choisis la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
             "- 'input_data_refs': un dictionnaire optionnel (peut être omis ou vide {}). Si une tâche a besoin de l'artefact d'une tâche précédente comme input nommé, utilise ce champ. Par exemple, pour une tâche qui exécute des tests, tu pourrais avoir : `\"input_data_refs\": {\"code_to_test\": \"ID_TACHE_CODE\", \"test_cases_file\": \"ID_TACHE_GEN_TESTS\"}`. Les valeurs sont les 'id' locaux d'autres tâches.\n"
             "- 'sous_taches': une liste vide [] ou une liste d'objets tâche imbriqués, suivant la même structure.\n"
             "Assure-toi que la réponse est UNIQUEMENT l'objet JSON global."
@@ -72,7 +72,7 @@ class DecompositionAgentLogic(BaseAgentLogic):
         prompt = (
             f"Voici le plan détaillé à décomposer :\n\n"
             f"'''{team1_plan_text}'''\n\n"
-            f"Les compétences d'agent que tu DOIS utiliser pour 'assigned_agent_type' sont : [{skills_string}].\n"
+            f"Les compétences d'agent LLM que tu DOIS utiliser pour 'assigned_agent_type' sont : [{skills_string}].\n"
             "Pour les tâches d'exécution de tests (généralement assignées à 'software_testing'), si elles nécessitent à la fois du code et des cas de test, assure-toi que leurs 'dependances' incluent les IDs locaux des tâches qui produisent le code et celles qui produisent les cas de test. "
             "De plus, pour de telles tâches, utilise 'input_data_refs' pour spécifier comment les artefacts des dépendances doivent être nommés en entrée. L'entrée contenant le code à tester DOIT s'appeler 'code_to_test'. Par exemple : `\"input_data_refs\": {\"code_to_test\": \"ID_TACHE_DEV\", \"test_specifications\": \"ID_TACHE_GEN_CAS_TEST\"}`. Adapte les autres noms de clés si besoin.\n"
             "Génère l'objet JSON structuré comme décrit. Sois rigoureux sur le format JSON et les types de données.\n"

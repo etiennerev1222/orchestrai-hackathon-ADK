@@ -105,3 +105,4 @@ requirements.txt.bak
 cluster-ca.crt.base64 
 curl_iam_test_response.json
 credentials.json
+secrets.env.template

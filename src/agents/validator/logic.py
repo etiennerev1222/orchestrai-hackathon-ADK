@@ -32,7 +32,7 @@ class ValidatorAgentLogic(BaseAgentLogic):
             "\nTa décision doit se baser sur les critères suivants :\n"
             "1.  **Faisabilité Générale :** Le score de faisabilité est-il raisonnable (par exemple, 6/10 ou plus) ?\n"
             "2.  **Blocage Critique :** Les faiblesses identifiées sont-elles des obstacles insurmontables qui empêcheraient totalement le démarrage, ou sont-ce des risques gérables et des points de vigilance pour l'équipe d'exécution ?\n"
-            "Un manque de détails techniques fins n'est PAS un bloqueur, mais un objectif principal contradictoire ou un budget manifestement irréaliste en est un.\n"
+            "Un manque de détails techniques fins n'est PAS un bloqueur, mais un objectif principal contradictoire\n"
             "Justifie toujours ta décision de manière constructive et retourne le résultat UNIQUEMENT au format JSON."
         )
         

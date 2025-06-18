@@ -796,7 +796,8 @@ async def list_files(environment_id: str, path: Optional[str] = "."):
     if not environment_manager:
         raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
     try:
-        files = await environment_manager.list_files_in_environment(environment_id, path)
+        env_id = f"exec_{EnvironmentManager.extract_global_plan_id(plan_id=environment_id)}"
+        files = await environment_manager.list_files_in_environment(env_id, path)
         return files
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

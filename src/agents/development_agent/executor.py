@@ -40,15 +40,27 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             description=self.default_artifact_description,
             text=result_data 
         )
+    
+    def _reconstruct_environment_id(self):
+        # Supposons que l'execution_plan_id est du style exec_gplan_<idgplan>_<idexec>
+        parts = self.execution_plan_id.split("_")
+        if len(parts) >= 3:
+            return f"{parts[0]}_{parts[1]}_{parts[2]}"
+        else:
+            return self.execution_plan_id  # fallback (à ajuster selon ton pattern exact)
 
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         task_context_id_for_log = context.context_id if context.context_id else (context.message.contextId if context.message and context.message.contextId else "N/A")
         self.logger.info(f"{self.__class__.__name__}.execute appelé pour le contexte: {task_context_id_for_log}")
-
+        
         message = context.message
         task = context.current_task
-
+        if context.message and hasattr(context.message, "input") and isinstance(context.message.input, dict):
+            self.execution_plan_id = context.message.input.get("execution_plan_id", "N/A")
+        else:
+            logger.warning(f"{context.message}: Aucune entrée JSON valide trouvée dans le message, utilisation de 'N/A'.")
+            self.execution_plan_id = "exec_default"
         if not message:
             self.logger.error("Aucun message fourni dans le contexte.")
             return
@@ -122,28 +134,28 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 )
                 
                 generated_code = await call_llm(code_generation_prompt, code_system_prompt, json_mode=False)
-                await self.environment_manager.write_file_to_environment(environment_id, file_path, generated_code)
+                await self.environment_manager.write_file_to_environment(self._reconstruct_environment_id(),file_path, generated_code)
                 
                 action_result_summary = f"Code généré et écrit dans {file_path}. Aperçu: {generated_code[:100]}..."
                 
             elif action_type == "execute_command":
                 command = llm_action_payload.get("command")
                 workdir = llm_action_payload.get("workdir", "/app")
-                self.logger.info(f"Développement : Exécution de commande '{command}' dans '{environment_id}'.")
+                self.logger.info(f"Développement : Exécution de commande '{command}' dans '{self._reconstruct_environment_id}'.")
                 
-                cmd_result = await self.environment_manager.execute_command_in_environment(environment_id, command, workdir)
+                cmd_result = await self.environment_manager.execute_command_in_environment(self._reconstruct_environment_id, command, workdir)
                 action_result_summary = f"Commande '{command}' exécutée. Exit code: {cmd_result['exit_code']}. Stdout: {cmd_result['stdout'][:100]}... Stderr: {cmd_result['stderr'][:100]}..."
                 
                 if cmd_result['exit_code'] != 0:
-                    self.logger.error(f"La commande '{command}' a échoué dans l'environnement {environment_id}. Stdout: {cmd_result['stdout']}, Stderr: {cmd_result['stderr']}")
+                    self.logger.error(f"La commande '{command}' a échoué dans l'environnement {self._reconstruct_environment_id}. Stdout: {cmd_result['stdout']}, Stderr: {cmd_result['stderr']}")
                     final_status_state = TaskState.failed
                     is_final_event = True
             
             elif action_type == "read_file":
                 file_path = llm_action_payload.get("file_path")
-                self.logger.info(f"Développement : Lecture de fichier '{file_path}' depuis '{environment_id}'.")
+                self.logger.info(f"Développement : Lecture de fichier '{file_path}' depuis '{self._reconstruct_environment_id}'.")
                 try:
-                    content = await self.environment_manager.read_file_from_environment(environment_id, file_path)
+                    content = await self.environment_manager.read_file_from_environment(self._reconstruct_environment_id, file_path)
                     action_result_summary = f"Fichier '{file_path}' lu. Contenu (début): {content[:100]}..."
                 except FileNotFoundError:
                     action_result_summary = f"Erreur: Fichier '{file_path}' non trouvé."
@@ -157,7 +169,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             elif action_type == "list_directory":
                 path = llm_action_payload.get("path", "/app")
                 self.logger.info(f"Développement : Listing du répertoire '{path}' dans '{environment_id}'.")
-                cmd_result = await self.environment_manager.execute_command_in_environment(environment_id, f"ls -F {path}")
+                cmd_result = await self.environment_manager.execute_command_in_environment(self._reconstruct_environment_id, f"ls -F {path}")
                 action_result_summary = f"Contenu de '{path}': {cmd_result['stdout']}. Exit code: {cmd_result['exit_code']}"
                 if cmd_result['exit_code'] != 0:
                     final_status_state = TaskState.failed

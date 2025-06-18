@@ -20,11 +20,11 @@ from src.agents.development_agent.logic import AGENT_SKILL_CODING_PYTHON
 from src.agents.decomposition_agent.logic import AGENT_SKILL_DECOMPOSE_EXECUTION_PLAN
 
 from src.services.environment_manager.environment_manager import EnvironmentManager
-
+GLOBAL_PLAN_COLLECTION = "global_plans"
 logger = logging.getLogger(__name__)
 
 class ExecutionSupervisorLogic:
-    def __init__(self, global_plan_id: str, team1_plan_final_text: str, execution_plan_id: Optional[str] = None):
+    def __init__(self, global_plan_id: str, team1_plan_final_text: str, execution_plan_id: Optional[str] = None, plan_environment_id: Optional[str] = None):
         """Initialise le superviseur d'exécution.
 
         Parameters
@@ -50,7 +50,7 @@ class ExecutionSupervisorLogic:
                 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self.logger.info(f"ExecutionSupervisorLogic initialisé pour global_plan '{global_plan_id}'. Execution plan ID: '{self.execution_plan_id}'")
         self.environment_manager = EnvironmentManager()
-        self.plan_environment_id = None
+        self.plan_environment_id = plan_environment_id
 
 
     async def initialize_and_decompose_plan(self):
@@ -197,7 +197,7 @@ class ExecutionSupervisorLogic:
             "task_id": task_node.id,
             "execution_plan_id": self.execution_plan_id,
             "task_type": task_node.task_type.value,
-            "assigned_skill": task_node.assigned_agent_type 
+            "assigned_skill": task_node.assigned_agent_type
         }
         if self.plan_environment_id:
             input_payload["environment_id"] = self.plan_environment_id
@@ -428,14 +428,13 @@ class ExecutionSupervisorLogic:
         
         self.logger.info(f"[{self.execution_plan_id}] Fin du cycle de traitement d'exécution.")
 
+
     async def run_full_execution(self):
-        self.plan_environment_id = await self.environment_manager.create_isolated_environment(self.execution_plan_id)
         if not self.plan_environment_id:
-            self.logger.error(f"[{self.execution_plan_id}] Failed to create dedicated environment. Aborting execution.")
+            self.logger.error(f"[{self.execution_plan_id}] No environment_id found in plan. Cannot proceed.")
             self.task_graph.set_overall_status("FAILED_ENVIRONMENT_CREATION")
             return
 
-   
         await self.initialize_and_decompose_plan()
         
         max_cycles = 10 
