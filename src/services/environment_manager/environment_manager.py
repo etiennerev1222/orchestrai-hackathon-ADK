@@ -126,7 +126,7 @@ class EnvironmentManager:
 
         if environment_id in self.environments:
             return
-        names = self.generate_k8s_names(environment_id)
+        names = EnvironmentManager.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
         pvc_name = names["pvc_name"]
 
@@ -171,8 +171,7 @@ class EnvironmentManager:
         return EnvironmentManager._make_safe_k8s_name_static(base)
     
 
-    def generate_k8s_names(self, environment_id: str) -> dict:
-        return EnvironmentManager.generate_k8s_names(environment_id)
+
 
     async def get_environment_or_fallback(self, plan_id: str, fallback_id: str = FALLBACK_ENV_ID) -> str:
         """Return the environment id for a plan, creating it if needed. If creation fails, use fallback."""
@@ -194,7 +193,7 @@ class EnvironmentManager:
         environment_id = EnvironmentManager.normalize_environment_id(environment_id)
         safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
 
-        names = self.generate_k8s_names(environment_id)
+        names = EnvironmentManager.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
         pvc_name = names["pvc_name"]
         volume_name = names.get("volume_name")
@@ -659,7 +658,7 @@ class EnvironmentManager:
     async def destroy_environment(self, environment_id: str) -> None:
         environment_id = EnvironmentManager.normalize_environment_id(environment_id)
         safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
-        names = self.generate_k8s_names(environment_id)
+        names = EnvironmentManager.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
         pvc_name = names["pvc_name"]
         
