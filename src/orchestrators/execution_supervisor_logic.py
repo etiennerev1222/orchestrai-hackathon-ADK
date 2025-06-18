@@ -431,9 +431,12 @@ class ExecutionSupervisorLogic:
 
     async def run_full_execution(self):
         if not self.plan_environment_id:
-            self.logger.error(f"[{self.execution_plan_id}] No environment_id found in plan. Cannot proceed.")
-            self.task_graph.set_overall_status("FAILED_ENVIRONMENT_CREATION")
-            return
+            self.logger.warning(f"[{self.execution_plan_id}] No environment_id provided. Retrieving via EnvironmentManager.")
+            self.plan_environment_id = await self.environment_manager.get_environment_or_fallback(self.execution_plan_id)
+            if not self.plan_environment_id:
+                self.logger.error(f"[{self.execution_plan_id}] Failed to obtain fallback environment.")
+                self.task_graph.set_overall_status("FAILED_ENVIRONMENT_CREATION")
+                return
 
         await self.initialize_and_decompose_plan()
         
@@ -489,7 +492,7 @@ class ExecutionSupervisorLogic:
     async def continue_execution(self, max_cycles: int = 5):
         """Reprendre un plan existant pour traiter les tâches restantes."""
         if not self.plan_environment_id:
-            self.plan_environment_id = await self.environment_manager.create_isolated_environment(self.execution_plan_id)
+            self.plan_environment_id = await self.environment_manager.get_environment_or_fallback(self.execution_plan_id)
             if not self.plan_environment_id:
                 self.logger.error(f"[{self.execution_plan_id}] Failed to recreate/attach dedicated environment for continuation. Aborting.")
                 self.task_graph.set_overall_status("FAILED_ENVIRONMENT_RECREATION")

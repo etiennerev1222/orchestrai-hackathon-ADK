@@ -22,17 +22,7 @@ logger = logging.getLogger(__name__)
 
 K8S_ENVIRONMENTS_COLLECTION = "kubernetes_environments"
 
-def normalize_environment_id(self, plan_id: str) -> str:
-    return f"exec-{self.extract_global_plan_id(plan_id)}"
-
-# Ajoute ce helper pour générer les noms K8s en un seul point
-def generate_k8s_names(self, environment_id: str) -> dict:
-    safe_env_id = self._make_safe_k8s_name(environment_id)
-    return {
-        "pod_name": f"dev-env-{safe_env_id}",
-        "pvc_name": f"dev-env-pvc-{safe_env_id}",
-        "volume_name": f"dev-env-vol-{safe_env_id}"
-    }
+FALLBACK_ENV_ID = "exec_default"
 
 
 class EnvironmentManager:
@@ -83,6 +73,28 @@ class EnvironmentManager:
         self.namespace = os.environ.get("KUBERNETES_NAMESPACE", "default")
         self.environments = {}
         logger.info(f"EnvironmentManager initialized for Kubernetes namespace: {self.namespace}.")
+
+    @staticmethod
+    def normalize_environment_id(plan_id: str) -> str:
+        """Return standardized environment ID for a given plan or environment identifier."""
+        return f"exec-{EnvironmentManager.extract_global_plan_id(plan_id)}"
+
+    @staticmethod
+    def generate_k8s_names(environment_id: str) -> dict:
+        safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
+        return {
+            "pod_name": f"dev-env-{safe_env_id}",
+            "pvc_name": f"dev-env-pvc-{safe_env_id}",
+            "volume_name": f"dev-env-vol-{safe_env_id}"
+        }
+
+    @staticmethod
+    def _make_safe_k8s_name_static(base: str) -> str:
+        safe = base.lower()
+        safe = re.sub(r'[^a-z0-9.-]', '-', safe)
+        safe = re.sub(r'^[^a-z0-9]+', '', safe)
+        safe = re.sub(r'[^a-z0-9]+$', '', safe)
+        return safe
     @staticmethod
     def extract_global_plan_id(plan_id: str) -> str:
         """
@@ -156,26 +168,31 @@ class EnvironmentManager:
         except Exception as e:
             logger.error(f"Error during initial Firestore/K8s lookup for environment '{environment_id}': {e}", exc_info=True)
     def _make_safe_k8s_name(self, base: str) -> str:
-        safe = base.lower()
-        safe = re.sub(r'[^a-z0-9.-]', '-', safe)
-        safe = re.sub(r'^[^a-z0-9]+', '', safe)
-        safe = re.sub(r'[^a-z0-9]+$', '', safe)
-        return safe
+        return EnvironmentManager._make_safe_k8s_name_static(base)
     
 
     def generate_k8s_names(self, environment_id: str) -> dict:
-        safe_env_id = self._make_safe_k8s_name(environment_id)
-        return {
-            "pod_name": f"dev-env-{safe_env_id}",
-            "pvc_name": f"dev-env-pvc-{safe_env_id}",
-            "volume_name": f"dev-env-vol-{safe_env_id}"
-        }
+        return EnvironmentManager.generate_k8s_names(environment_id)
+
+    async def get_environment_or_fallback(self, plan_id: str, fallback_id: str = FALLBACK_ENV_ID) -> str:
+        """Return the environment id for a plan, creating it if needed. If creation fails, use fallback."""
+        target_env = EnvironmentManager.normalize_environment_id(plan_id)
+        await self._load_existing_environment_details(target_env)
+        if target_env not in self.environments:
+            created = await self.create_isolated_environment(target_env)
+            if not created:
+                logger.warning(f"Environment '{target_env}' unavailable, falling back to '{fallback_id}'.")
+                await self._load_existing_environment_details(fallback_id)
+                if fallback_id not in self.environments:
+                    await self.create_isolated_environment(fallback_id)
+                return fallback_id
+        return target_env
 
    
 
     async def create_isolated_environment(self, environment_id: str, base_image: str = "python:3.9-slim-buster") -> str:
-        environment_id = f"exec-{self.extract_global_plan_id(plan_id=environment_id)}"
-        safe_env_id = self._make_safe_k8s_name(environment_id)
+        environment_id = EnvironmentManager.normalize_environment_id(environment_id)
+        safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
 
         names = self.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
@@ -640,8 +657,8 @@ class EnvironmentManager:
             raise
  
     async def destroy_environment(self, environment_id: str) -> None:
-        environment_id = f"exec-{self.extract_global_plan_id(plan_id=environment_id)}"
-        safe_env_id = self._make_safe_k8s_name(environment_id)
+        environment_id = EnvironmentManager.normalize_environment_id(environment_id)
+        safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
         names = self.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
         pvc_name = names["pvc_name"]

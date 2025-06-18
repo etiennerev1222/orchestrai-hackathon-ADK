@@ -32,6 +32,10 @@ if [ ! -f "$PAYLOAD_FILE" ]; then
     exit 1
 fi
 
+# Extraction de l'environment_id utilisé dans le payload pour information
+ENV_ID=$(jq -r '.params.message.parts[0].text | fromjson | .environment_id' "$PAYLOAD_FILE")
+echo "Environnement utilisé: ${ENV_ID}"
+
 RESPONSE=$(curl -X POST "${AGENT_URL}" \
      -H "Authorization: Bearer ${ID_TOKEN}" \
      -H "Content-Type: application/json" \
