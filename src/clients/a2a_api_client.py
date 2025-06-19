@@ -115,28 +115,34 @@ async def call_a2a_agent(
             for attempt in range(max_retries):
                 try:
                     send_response = await a2a_client.send_message(request=send_request)
-                    
+
                     if hasattr(send_response, 'root') and hasattr(send_response.root, 'result') and isinstance(send_response.root.result, Task):
                         created_task = send_response.root.result
                         task_id = created_task.id
                         context_id_for_task = created_task.contextId
-                        logger.info(f"Message envoyé. Tâche ID={task_id}, ContextID={context_id_for_task}, Statut initial={created_task.status.state}")
-                        return send_response  # ✅ Succès : on sort
+                        logger.info(
+                            f"Message envoyé. Tâche ID={task_id}, ContextID={context_id_for_task}, Statut initial={created_task.status.state}"
+                        )
+                        break
                     else:
                         error_content = send_response.model_dump_json(indent=2) if hasattr(send_response, 'model_dump_json') else str(send_response)
                         logger.error(f"Réponse inattendue de send_message à {agent_url}: {error_content}")
                         return None
-                
+
                 except (A2AClientHTTPError, A2AClientJSONError, httpx.RequestError) as e:
-                    logger.error(f"Erreur réseau ou JSON lors de l'envoi du message à {agent_url}: {e}", exc_info=True)
-                    
+                    logger.error(
+                        f"Erreur réseau ou JSON lors de l'envoi du message à {agent_url}: {e}", exc_info=True
+                    )
+
                 except Exception as e:
                     logger.error(f"Erreur inattendue lors de l'envoi du message à {agent_url}: {e}", exc_info=True)
-                
+
                 # Si on arrive ici : on va retry si pas au dernier tour
                 if attempt < max_retries - 1:
                     delay = 2 ** attempt
-                    logger.warning(f"A2A call failed on attempt {attempt + 1}, retrying in {delay} seconds...")
+                    logger.warning(
+                        f"A2A call failed on attempt {attempt + 1}, retrying in {delay} seconds..."
+                    )
                     await asyncio.sleep(delay)
                 else:
                     logger.error(f"A2A call failed after {max_retries} attempts.")
