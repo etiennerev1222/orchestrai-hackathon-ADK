@@ -225,14 +225,33 @@ function Graph({
 }
 
 function AgentStatusBar({ agents, graHealth, stats }) {
-  const statsMap = React.useMemo(() => {
-    const map = {};
-    (stats || []).forEach(s => {
-      map[s.agent_name] = s;
-    });
-    return map;
-  }, [stats]);
-  if (!agents?.length && !graHealth) return null;
+    // Ce composant ne gère plus son propre état, il reçoit tout via les props.
+    // C'est une meilleure pratique dans React.
+
+    const statsMap = React.useMemo(() => {
+        const map = {};
+        (stats || []).forEach(s => {
+            map[s.agent_name] = s;
+        });
+        return map;
+    }, [stats]);
+
+    const getStatusInfo = (healthStatus) => {
+        const state = healthStatus?.state || 'Offline';
+        switch (state.toUpperCase()) {
+            case 'IDLE': return { className: 'status-idle', icon: '🔵' };
+            case 'BUSY': return { className: 'status-busy', icon: '⚙️' };
+            case 'SLEEPING': return { className: 'status-sleeping', icon: '💤' };
+            case 'STARTING': return { className: 'status-starting', icon: '🚀' };
+            case 'ONLINE': case 'ONLINE (LEGACY)': return { className: 'status-online', icon: '✅' };
+            case 'ERROR': return { className: 'status-error', icon: '🔥' };
+            default: return { className: 'status-offline', icon: '⚠️' };
+        }
+    };
+
+    if (!agents?.length && !graHealth) return null;
+
+  // La carte pour le GRA reste inchangée
   const graCard = (
     <div
       key="gra"
@@ -247,35 +266,37 @@ function AgentStatusBar({ agents, graHealth, stats }) {
       </div>
     </div>
   );
-
-  return (
-    <div className="agents-container">
-      {graCard}
-      {agents.map(a => (
-        <div
-          key={a.name}
-          className="agent-card"
-          title={`Skills: ${(a.skills || []).join(', ')}\nInternal: ${a.internal_url}${a.public_url ? `\nURL: ${a.public_url}` : ''}`}
-        >
-          <div className="agent-header">
-            <div className="agent-name">{a.name.replace('AgentServer', '')}</div>
-            <div className={a.health_status?.includes('Online') ? 'status-online' : 'status-offline'}>
-              {a.health_status || ''}
+    return (
+      <div className="agents-container">
+        {graCard}
+        {agents.map(a => {
+          const { className, icon } = getStatusInfo(a.health_status);
+          const stateText = a.health_status?.state || 'Offline';
+          const tooltip = `Skills: ${(a.skills || []).join(', ')}\n` +
+                          `Internal: ${a.internal_url}\n` +
+                          (a.public_url ? `URL: ${a.public_url}\n` : '') +
+                          (a.health_status?.current_task_id ? `Task: ${a.health_status.current_task_id}` : 'No active task');
+          
+          return (
+            <div key={a.name} className="agent-card" title={tooltip}>
+              <div className="agent-header">
+                <div className="agent-name">{a.name.replace('AgentServer', '')}</div>
+                <div className={className}>{icon} {stateText}</div>
+              </div>
+              <div className="agent-timestamp">{a.timestamp ? new Date(a.timestamp).toLocaleString() : 'N/A'}</div>
+              <div className="agent-metrics">
+                <div className="metric-tile success">
+                  {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_completed ?? 0}
+                </div>
+                <div className="metric-tile fail">
+                  {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_failed ?? 0}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="agent-timestamp">{new Date(a.timestamp).toLocaleString()}</div>
-          <div className="agent-metrics">
-            <div className="metric-tile success">
-              {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_completed ?? 0}
-            </div>
-            <div className="metric-tile fail">
-              {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_failed ?? 0}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+          );
+        })}
+      </div>
+    );
 }
 
 function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) {
@@ -640,47 +661,110 @@ function FileBrowser({ environmentId, planId }) {
 }
 
 function App() {
+
+   // --- 1. GESTION DE L'ÉTAT ---
+  const [initialLoading, setInitialLoading] = React.useState(true);
+  const [agents, setAgents] = React.useState([]);
   const [plans, setPlans] = React.useState([]);
+  const [stats, setStats] = React.useState([]);
+  const [graHealth, setGraHealth] = React.useState('offline');
+  
   const [selectedPlanId, setSelectedPlanId] = React.useState('');
   const [planDetails, setPlanDetails] = React.useState(null);
   const [team1Graph, setTeam1Graph] = React.useState(null);
-  const [team1NodesMap, setTeam1NodesMap] = React.useState({});
   const [team2Graph, setTeam2Graph] = React.useState(null);
+  const [team1NodesMap, setTeam1NodesMap] = React.useState({});
   const [team2NodesMap, setTeam2NodesMap] = React.useState({});
   const [popup, setPopup] = React.useState(null);
-  const [agentsStatus, setAgentsStatus] = React.useState([]);
-  const [agentsStats, setAgentsStats] = React.useState([]);
   const [newObjective, setNewObjective] = React.useState('');
-  const [autoRefresh, setAutoRefresh] = React.useState(false);
-  const [team1Counts, setTeam1Counts] = React.useState(null);
-  const [team2Counts, setTeam2Counts] = React.useState(null);
+  const [autoRefresh, setAutoRefresh] = React.useState(true);
+  const [planSubmitting, setPlanSubmitting] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [stateFilter, setStateFilter] = React.useState('');
-  const [graHealth, setGraHealth] = React.useState(null);
-  const [initialLoading, setInitialLoading] = React.useState(true);
-  const [planSubmitting, setPlanSubmitting] = React.useState(false);
   const [activeEnvironmentId, setActiveEnvironmentId] = React.useState(null);
   const [showFileBrowser, setShowFileBrowser] = React.useState(false);
+  const [team1Counts, setTeam1Counts] = React.useState(null);
+  const [team2Counts, setTeam2Counts] = React.useState(null);
 
-  const uniqueStates = React.useMemo(
-    () => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(),
-    [plans]
-  );
+  
+  // --- 2. EFFETS (Hooks pour le cycle de vie) ---
+  
+  // Effet pour les WebSockets (temps réel)
+  React.useEffect(() => {
+    const wsUrl = `${BACKEND_API_URL.replace(/^http/, 'ws')}/ws/status`;
+    const socket = new WebSocket(wsUrl);
+    socket.onopen = () => console.log("WebSocket connection established.");
+    socket.onmessage = (event) => setAgents(JSON.parse(event.data));
+    socket.onerror = (error) => console.error("WebSocket Error:", error);
+    socket.onclose = () => console.log("WebSocket connection closed.");
+    return () => socket.close();
+  }, []);
 
+  // Effet pour le chargement initial et le polling
+  React.useEffect(() => {
+    const fetchPolledData = async () => {
+      try {
+        const [plansRes, statsRes, healthRes] = await Promise.all([
+          fetch(`${BACKEND_API_URL}/v1/global_plans_summary`),
+          fetch(`${BACKEND_API_URL}/v1/stats/agents`),
+          fetch(`${BACKEND_API_URL}/health`),
+        ]);
+        setPlans(await plansRes.json());
+        const statsData = await statsRes.json();
+        setStats(statsData.stats || []);
+        setGraHealth(healthRes.ok ? 'online' : 'offline');
+      } catch (err) {
+        console.error('Error fetching polled data:', err);
+      } finally {
+        if (initialLoading) setInitialLoading(false);
+      }
+    };
+    fetchPolledData();
+    const intervalId = setInterval(fetchPolledData, 30000); // Toutes les 30s
+    return () => clearInterval(intervalId);
+  }, [initialLoading]);
+
+  // Effet pour rafraîchir les détails du plan sélectionné
+  const refreshPlanDetails = React.useCallback((planId) => {
+    if (!planId) return;
+    fetch(`${BACKEND_API_URL}/v1/global_plans/${planId}`).then(res => res.json()).then(plan => {
+        setPlanDetails(plan);
+        if (plan.team1_plan_id) {
+          fetch(`${BACKEND_API_URL}/plans/${plan.team1_plan_id}`).then(r => r.json()).then(d => {
+            setTeam1NodesMap(d.nodes || {}); setTeam1Graph(parseTaskGraph(d.nodes, true)); setTeam1Counts(computeStateCounts(d.nodes));
+          });
+        }
+        if (plan.team2_execution_plan_id) {
+          fetch(`${BACKEND_API_URL}/v1/execution_task_graphs/${plan.team2_execution_plan_id}`).then(r => r.json()).then(d => {
+            setTeam2NodesMap(d.nodes || {}); setTeam2Graph(parseTaskGraph(d.nodes, false)); setTeam2Counts(computeStateCounts(d.nodes));
+          });
+        }
+    }).catch(err => console.error('Error loading plan details', err));
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedPlanId) refreshPlanDetails(selectedPlanId);
+  }, [selectedPlanId, refreshPlanDetails]);
+
+  React.useEffect(() => {
+    if (autoRefresh && selectedPlanId) {
+      const intervalId = setInterval(() => refreshPlanDetails(selectedPlanId), 5000);
+      return () => clearInterval(intervalId);
+    }
+  }, [autoRefresh, selectedPlanId, refreshPlanDetails]);
+  
+  React.useEffect(() => {
+    if (planDetails && planDetails.team2_execution_plan_id) setActiveEnvironmentId(planDetails.team2_execution_plan_id);
+    else setActiveEnvironmentId(null);
+  }, [planDetails]);
+
+  // --- 3. FONCTIONS MEMOIZED et HANDLERS ---
+  const uniqueStates = React.useMemo(() => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(), [plans]);
   const filteredPlans = React.useMemo(() => {
     let list = plans;
-    if (statusFilter === 'inprogress') {
-      list = list.filter(
-        p => !FINISHED_STATES.includes(p.current_supervisor_state)
-      );
-    } else if (statusFilter === 'finished') {
-      list = list.filter(p =>
-        FINISHED_STATES.includes(p.current_supervisor_state)
-      );
-    }
-    if (stateFilter) {
-      list = list.filter(p => p.current_supervisor_state === stateFilter);
-    }
+    if (statusFilter === 'inprogress') list = list.filter(p => !FINISHED_STATES.includes(p.current_supervisor_state));
+    else if (statusFilter === 'finished') list = list.filter(p => FINISHED_STATES.includes(p.current_supervisor_state));
+    if (stateFilter) list = list.filter(p => p.current_supervisor_state === stateFilter);
     return list;
   }, [plans, statusFilter, stateFilter]);
 
@@ -689,99 +773,12 @@ function App() {
     return countFail(team1Counts) + countFail(team2Counts) > 0;
   }, [team1Counts, team2Counts]);
 
-  React.useEffect(() => {
-    async function fetchInitial() {
-      try {
-        const [plansRes, agentsRes, statsRes, healthRes] = await Promise.all([
-          fetch(`${BACKEND_API_URL}/v1/global_plans_summary`),
-          fetch(`${BACKEND_API_URL}/agents_status`),
-          fetch(`${BACKEND_API_URL}/v1/stats/agents`),
-          fetch(`${BACKEND_API_URL}/health`)
-        ]);
-        const plansData = await plansRes.json();
-        setPlans(plansData);
-        const agentsList = await agentsRes.json();
-        setAgentsStatus(agentsList);
-        const statsData = await statsRes.json();
-        setAgentsStats(statsData.stats || statsData || []);
-        setGraHealth(healthRes.ok ? 'online' : 'offline');
-      } catch (err) {
-        console.error('Initial load error', err);
-      } finally {
-        setInitialLoading(false);
-      }
-    }
-    fetchInitial();
-  }, []);
+  const onNodeClick = (info, isTeam1) => showArtifactForNode(info.id, isTeam1, { x: info.x, y: info.y });
+  const onEdgeClick = (info, isTeam1) => { if (info.edge?.from) showArtifactForNode(info.edge.from, isTeam1, { x: info.x, y: info.y }); };
 
-  React.useEffect(() => {
-    if (!selectedPlanId) return;
-    refreshPlanDetails(selectedPlanId);
-  }, [selectedPlanId]);
-
-  React.useEffect(() => {
-    if (!autoRefresh || !selectedPlanId) return;
-    const id = setInterval(() => refreshPlanDetails(selectedPlanId), 5000);
-    return () => clearInterval(id);
-  }, [autoRefresh, selectedPlanId]);
-
-  React.useEffect(() => {
-    if (!autoRefresh) return;
-    const id = setInterval(() => refreshAgentStats(), 5000);
-    return () => clearInterval(id);
-  }, [autoRefresh]);
-
-  React.useEffect(() => {
-    // Met à jour automatiquement l'environmentId lorsque les détails du plan
-    // sont chargés ou changent. Le FileBrowser utilise cet ID pour se
-    // synchroniser avec l'environnement créé pour TEAM 2.
-    if (planDetails && planDetails.team2_execution_plan_id) {
-      setActiveEnvironmentId(planDetails.team2_execution_plan_id);
-    } else {
-      setActiveEnvironmentId(null);
-    }
-  }, [planDetails?.team2_execution_plan_id]);
-
-  function refreshPlanDetails(planId) {
-    fetch(`${BACKEND_API_URL}/v1/global_plans/${planId}`)
-      .then(res => res.json())
-      .then(plan => {
-        setPlanDetails(plan);
-        if (plan.team1_plan_id) {
-          fetch(`${BACKEND_API_URL}/plans/${plan.team1_plan_id}`)
-            .then(r => r.json())
-            .then(d => {
-              setTeam1NodesMap(d.nodes || {});
-              setTeam1Graph(parseTaskGraph(d.nodes, true));
-              setTeam1Counts(computeStateCounts(d.nodes));
-            });
-        } else {
-          setTeam1Counts(null);
-        }
-        if (plan.team2_execution_plan_id) {
-          fetch(`${BACKEND_API_URL}/v1/execution_task_graphs/${plan.team2_execution_plan_id}`)
-            .then(r => r.json())
-            .then(d => {
-              setTeam2NodesMap(d.nodes || {});
-              setTeam2Graph(parseTaskGraph(d.nodes, false));
-              setTeam2Counts(computeStateCounts(d.nodes));
-            });
-        } else {
-          setTeam2Graph(null);
-          setTeam2NodesMap({});
-          setTeam2Counts(null);
-        }
-      })
-      .catch(err => console.error('Error loading plan details', err));
-  }
-
-  function refreshAgentStats() {
-    fetch(`${BACKEND_API_URL}/v1/stats/agents`)
-      .then(r => r.json())
-      .then(d => setAgentsStats(d.stats || d || []))
-      .catch(err => console.error('Error refreshing agent stats', err));
-  }
-
+  // Toutes vos autres fonctions doivent être déclarées ici...) showArtifactForNode(info.edge.from, isTeam1, { x: info.x, y: info.y }); };
+  
+ 
   function parseTaskGraph(nodesObj, isTeam1) {
     const nodes = [];
     const edges = [];
@@ -991,16 +988,12 @@ function App() {
     );
   }
 
-  function onNodeClick(info, isTeam1) {
-    showArtifactForNode(info.id, isTeam1, { x: info.x, y: info.y });
-  }
 
-  function onEdgeClick(info, isTeam1) {
-    if (info.edge?.from) {
-      showArtifactForNode(info.edge.from, isTeam1, { x: info.x, y: info.y });
-    }
-  }
 
+  // --- 4. RENDU DU COMPOSANT ---
+  if (initialLoading) {
+    return <div className="loading-overlay"><div className="spinner"></div></div>;
+  }
   return (
     <div className="app">
       <header className="app-header">
@@ -1067,7 +1060,8 @@ function App() {
         <hr />
       </div>
       <div className="content">
-        <AgentStatusBar agents={agentsStatus} graHealth={graHealth} stats={agentsStats} />
+        {/* On passe les états en props aux composants enfants */}
+        <AgentStatusBar agents={agents} graHealth={graHealth} stats={stats} />
         <div style={{ marginBottom: '0.5rem' }}>
           <button
             onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)}

@@ -74,9 +74,17 @@ def create_app_instance() -> Starlette:
     async def health_check_endpoint(request):
         """Endpoint simple pour la vérification de santé."""
         return JSONResponse({"status": "ok"})
+    async def status_endpoint(request):
+        """Retourne le statut opérationnel détaillé de l'agent."""
+        if not agent_executor:
+            return JSONResponse({"state": "Error", "message": "Executor not initialized"}, status_code=500)
+        return JSONResponse(agent_executor.get_status())
 
     app.router.routes.append(
         Route("/health", endpoint=health_check_endpoint, methods=["GET"])
+    )
+    app.router.routes.append(
+        Route("/status", endpoint=status_endpoint, methods=["GET"])
     )
     
     app.router.lifespan_context = lifespan
@@ -96,6 +104,7 @@ async def lifespan(app_param: Starlette):
             skill_ids = [skill.id for skill in agent_card.skills] if agent_card.skills else []
             logger.info(f"[{AGENT_NAME}] URLs détectées. Tentative d'enregistrement avec les compétences : {skill_ids}")
             await register_self_with_gra(AGENT_NAME, agent_public_url, agent_internal_url, skill_ids)
+            await agent_executor._notify_gra_of_status_change()
         except Exception as e:
             logger.error(f"[{AGENT_NAME}] L'enregistrement auprès du GRA a échoué durant le démarrage : {e}", exc_info=True)
     else:

@@ -15,12 +15,12 @@ from collections import Counter
 from fastapi import FastAPI, HTTPException, Body, Path, File, UploadFile, Form, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-
+import json
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 from src.services.environment_manager.environment_manager import EnvironmentManager
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
-
-
+from starlette.websockets import WebSocket, WebSocketDisconnect
+from src.shared.agent_state import AgentOperationalState
 import google.auth
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -124,7 +124,25 @@ class AllAgentTasksStatsResponse(BaseModel):
     stats: List[AllAgentTaskStats]
     last_updated: str
 
-# --- Classe d'authentification pour httpx ---
+
+# --- NOUVEAU : Gestionnaire de connexions WebSocket ---
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+manager = ConnectionManager()
+agent_statuses: Dict[str, Dict[str, Any]] = {}
 class GoogleIDTokenAuth(httpx.Auth):
     """
     Classe d'authentification pour httpx qui injecte un Google ID Token.
@@ -524,51 +542,36 @@ async def get_plan_details_endpoint(plan_id: str):
         logger.error(f"[GRA] Erreur lors de la récupération des détails du plan '{plan_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
 @app.get("/agents_status")
 async def get_agents_status_endpoint():
-    """Récupère la liste des agents enregistrés et leur statut de santé."""
+    """
+    MODIFIÉ : Récupère la liste des agents et leur statut depuis le registre
+    et fusionne avec le cache de statut en temps réel.
+    """
     if not db:
         raise HTTPException(status_code=503, detail="Base de données non disponible.")
 
-    agents_list: List[Dict[str, Any]] = []
+    agents_from_db = []
     try:
-        # Utilisation de votre logique pour récupérer les agents depuis Firestore
         docs_stream = db.collection("service_registry").stream()
-        agents_list = [doc.to_dict() for doc in docs_stream if doc.id != 'gra_instance_config']
-        
+        agents_from_db = [doc.to_dict() for doc in docs_stream if doc.id != 'gra_instance_config']
     except Exception as e:
-        logger.error(f"[GRA] Erreur lors de la récupération de la liste des agents: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Erreur lors de la lecture du registre des services.")
+        logger.error(f"[GRA] Erreur Firestore: {e}", exc_info=True)
+        # On ne lève pas d'exception, on peut continuer avec le cache
 
-    # Utilisation du client httpx authentifié
-    async with httpx.AsyncClient(auth=GoogleIDTokenAuth(), http2=False) as client:
-        async def check(agent_data: Dict[str, Any]) -> dict:
-            url_to_check = agent_data.get("internal_url")
-            agent_name = agent_data.get("name", "inconnu")
-            health_status = "⚠️ Offline"
+    # Fusionner les données du registre (officielles) avec le cache de statut (temps réel)
+    for agent_data in agents_from_db:
+        agent_name = agent_data.get("name")
+        if agent_name in agent_statuses:
+            # On met à jour les infos statiques (URL, skills) au cas où elles auraient changé
+            agent_statuses[agent_name].update(agent_data)
+        else:
+            # L'agent est dans le registre mais n'a pas encore envoyé de statut
+            agent_data["health_status"] = {"state": "Offline"}
+            agent_statuses[agent_name] = agent_data
 
-            if not url_to_check:
-                logger.warning(f"Agent {agent_name} n'a pas d'internal_url pour le health check.")
-            else:
-                try:
-                    health_url = url_to_check.rstrip("/") + "/health"
-                    res = await client.get(health_url, timeout=5.0)
-                    if res.status_code == 200:
-                        health_status = "✅ Online"
-                except Exception as e:
-                    logger.warning(f"Health check a échoué pour {agent_name} à {health_url}: {e}")
-
-            # Retourne un dictionnaire complet avec le statut de santé
-            return {**agent_data, "health_status": health_status}
-
-        # On lance tous les checks en parallèle et on récupère les dictionnaires mis à jour
-        results = await asyncio.gather(*(check(agent) for agent in agents_list))
-    
-    logger.info(f"[GRA] Statut de {len(results)} agents récupéré avec santé.")
-    return results
-
+    # Retourne la vue la plus à jour
+    return list(agent_statuses.values())
 
 @app.post("/v1/global_plans/{global_plan_id}/accept_and_plan", response_model=GlobalPlanResponse)
 async def accept_objective_and_trigger_team1_planning(
@@ -854,6 +857,37 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
         logging.error(f"Error uploading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred during file upload.")
 
+# --- NOUVEAU : Endpoint pour que les frontends se connectent ---
+@app.websocket("/ws/status")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        # Envoie l'état actuel dès la connexion
+        await websocket.send_text(json.dumps(list(agent_statuses.values())))
+        while True:
+            # On maintient la connexion ouverte
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+@app.post("/agent_status_update")
+async def update_agent_status(status_update: Dict[str, Any]):
+    agent_name = status_update.get("name")
+    if not agent_name:
+        return {"status": "error", "message": "agent name is missing"}
+
+    # Mettre à jour le cache
+    # On fusionne avec les infos du registre (URL, skills, etc.)
+    current_agent_info = agent_statuses.get(agent_name, {})
+    # La mise à jour du statut est dans "health_status" pour garder la structure cohérente
+    current_agent_info['health_status'] = status_update
+    agent_statuses[agent_name] = current_agent_info
+    # --- AJOUT DE LOG POUR LE DEBUG ---
+    logger.info(f"Notification de statut reçue de l'agent : {agent_name} -> {status_update.get('state')}")
+
+    # Diffuser la liste complète mise à jour à tous les clients connectés
+    await manager.broadcast(json.dumps(list(agent_statuses.values())))
+    return {"status": "received"}
 
 if __name__ == "__main__":
     

@@ -141,14 +141,25 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 env_id = self._reconstruct_environment_id()
                 self.logger.info(f"Développement : Exécution de commande '{command}' dans '{env_id}'.")
 
-                cmd_result = await self.environment_manager.execute_command_in_environment(env_id, command, workdir)
-                action_result_summary = f"Commande '{command}' exécutée. Exit code: {cmd_result['exit_code']}. Stdout: {cmd_result['stdout'][:100]}... Stderr: {cmd_result['stderr'][:100]}..."
-                
-                if cmd_result['exit_code'] != 0:
-                    self.logger.error(f"La commande '{command}' a échoué dans l'environnement {env_id}. Stdout: {cmd_result['stdout']}, Stderr: {cmd_result['stderr']}")
-                    final_status_state = TaskState.failed
-                    is_final_event = True
-            
+                cmd_result = await self.environment_manager.execute_command_in_environment(
+                    env_id, command, workdir
+                )
+                action_result_summary = (
+                    f"Commande '{command}' exécutée. Exit code: {cmd_result['exit_code']}. "
+                    f"Stdout: {cmd_result['stdout'][:100]}... Stderr: {cmd_result['stderr'][:100]}..."
+                )
+
+                if cmd_result["exit_code"] != 0:
+                    # Ne pas échouer immédiatement la tâche. On renvoie le résultat
+                    # de la commande à l'agent appelant pour qu'il décide de la suite
+                    self.logger.warning(
+                        "La commande '%s' a retourné un code non nul dans l'environnement %s."
+                        " Stdout: %s, Stderr: %s",
+                        command,
+                        env_id,
+                        cmd_result["stdout"],
+                        cmd_result["stderr"],
+                    )            
             elif action_type == "read_file":
                 file_path = llm_action_payload.get("file_path")
                 env_id = self._reconstruct_environment_id()
@@ -156,14 +167,18 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 try:
                     content = await self.environment_manager.read_file_from_environment(env_id, file_path)
                     action_result_summary = f"Fichier '{file_path}' lu. Contenu (début): {content[:100]}..."
-                except FileNotFoundError:
-                    action_result_summary = f"Erreur: Fichier '{file_path}' non trouvé."
-                    final_status_state = TaskState.failed
-                    is_final_event = True
                 except Exception as e:
-                    action_result_summary = f"Erreur lecture fichier '{file_path}': {str(e)}"
-                    final_status_state = TaskState.failed
-                    is_final_event = True
+                    # Ne pas échouer immédiatement la tâche. On renvoie le résultat
+                    # de la commande à l'agent appelant pour qu'il décide de la suite
+                    self.logger.warning(
+                        "La commande '%s' a retourné une erreur de fichier l'environnement %s."
+                        " Stdout: %s, Stderr: %s",
+                        command,
+                        env_id,
+                        cmd_result["stdout"],
+                        cmd_result["stderr"],
+                    )            
+
 
             elif action_type == "list_directory":
                 path = llm_action_payload.get("path", "/app")

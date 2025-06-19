@@ -480,3 +480,48 @@ input {
   background: transparent;
   border-width: 3px;
 }
+
+.status-starting {
+  background: #4a4a4a;
+  color: #f1f1f1;
+  font-weight: bold;
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.status-idle {
+  background: #1d4ed8;
+  color: #dbeafe;
+  font-weight: bold;
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.status-busy {
+  background: #9a3412;
+  color: #ffedd5;
+  font-weight: bold;
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.status-sleeping {
+  background: #3f3f46;
+  color: #a1a1aa;
+  font-weight: bold;
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.status-error {
+  background: #991b1b;
+  color: #fecaca;
+  font-weight: bold;
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
