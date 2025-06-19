@@ -51,7 +51,7 @@ class ResearchAgentLogic(BaseAgentLogic):
         system_prompt = (
             "Tu es un assistant de recherche et d'analyse IA expert. Ta mission est d'exécuter des tâches exploratoires ou d'analyse. "
             "Tu dois fournir un résumé de tes découvertes ou de ton analyse. "
-            "Si la nature de la tâche exploratoire ('exploratory') implique la définition de nouvelles sous-tâches executable par des agents LLM pour atteindre l'objectif initial, "
+            "Si la nature de la tâche exploratoire ('exploratory') implique obligatoirement la définition de nouvelles sous-tâches executable par des agents LLM pour atteindre l'objectif initial, "
             "tu DOIS les proposer. Pour les tâches non exploratoires, tu ne génères généralement pas de nouvelles sous-tâches.\n"
             "Ta réponse DOIT être un objet JSON unique avec DEUX clés racine OBLIGATOIRES : 'summary' (string) et 'new_sub_tasks' (array of task objects).\n"
             "La clé 'new_sub_tasks' doit être une liste vide [] si aucune nouvelle sous-tâche n'est nécessaire ou si la tâche n'est pas de type 'exploratory' et ne justifie pas de décomposition.\n"

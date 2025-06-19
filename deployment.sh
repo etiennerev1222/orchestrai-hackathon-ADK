@@ -73,6 +73,7 @@ EOF
       - GRA_PUBLIC_URL=http://gra_server:8000
       - PUBLIC_URL=http://localhost:${PUBLIC_PORT}
       - INTERNAL_URL=http://${COMPONENT}:${INTERNAL_PORT}
+      - AGENT_NAME=${COMPONENT}
     volumes:
       - ./credentials.json:/app/credentials.json:ro
 EOF
@@ -248,13 +249,41 @@ function deploy_gcp() {
         local AGENT_SERVICE_NAME=${AGENT_NAME//_/-}
         echo "        -> Déploiement de '${AGENT_SERVICE_NAME}'..."
 
+
+    # --- CORRECTION IMPORTANTE ---
+        # Le nom de l'agent DOIT inclure "Server" pour correspondre à l'enregistrement
+        local FULL_AGENT_NAME="${AGENT_NAME/agent/AgentServer}"
+        if [[ "$AGENT_NAME" == "user_interaction_agent" ]]; then
+            FULL_AGENT_NAME="UserInteractionAgentServer"
+        elif [[ "$AGENT_NAME" == "decomposition_agent" ]]; then
+            FULL_AGENT_NAME="DecompositionAgentServer"
+        elif [[ "$AGENT_NAME" == "development_agent" ]]; then
+            FULL_AGENT_NAME="DevelopmentAgentServer"
+        elif [[ "$AGENT_NAME" == "testing_agent" ]]; then
+            FULL_AGENT_NAME="TestingAgentServer"
+        elif [[ "$AGENT_NAME" == "research_agent" ]]; then
+            FULL_AGENT_NAME="ResearchAgentServer"
+        elif [[ "$AGENT_NAME" == "evaluator" ]]; then
+             FULL_AGENT_NAME="EvaluatorAgentServer"
+        elif [[ "$AGENT_NAME" == "reformulator" ]]; then
+            FULL_AGENT_NAME="ReformulatorAgentServer"
+        elif [[ "$AGENT_NAME" == "validator" ]]; then
+            FULL_AGENT_NAME="ValidatorAgentServer"
+        else
+            # Pour reformulator, evaluator, validator
+            FULL_AGENT_NAME="$(tr '[:lower:]' '[:upper:]' <<< ${AGENT_NAME:0:1})${AGENT_NAME:1}AgentServer"
+        fi
+        # ---------------------------
+
+        echo "        -> Nom de l'Agent         : ${AGENT_NAME}"
+        echo "        -> Nom complet de l'agent : ${FULL_AGENT_NAME}"
         gcloud run deploy ${AGENT_SERVICE_NAME} \
           --image="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_REPO_NAME}/${AGENT_NAME}:latest" \
           --platform=managed \
           --region=${GCP_REGION} \
           --no-allow-unauthenticated \
           --port=8080 \
-          --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+          --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
           --vpc-connector="${CONNECTOR_NAME}" \
           --project=${GCP_PROJECT_ID}
         
@@ -268,10 +297,12 @@ function deploy_gcp() {
         
         gcloud run services update ${AGENT_SERVICE_NAME} \
             --region=${GCP_REGION} \
-            --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
+            --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
             --project=${GCP_PROJECT_ID}
 
         echo "        ✅ '${AGENT_SERVICE_NAME}' déployé et configuré."
+        echo "------------------------------------------------------------"
+        echo " "                                                              
     done
     echo "✅ ÉTAPE 4 TERMINÉE : Tous les services ont été déployés sur Cloud Run."
     echo ""
@@ -319,13 +350,41 @@ function deploy_single_agent() {
 
     echo "    -> Lancement du déploiement de '${AGENT_SERVICE_NAME}'..." # Corrected: AGENT_SERVICE_NAME was not set
     local AGENT_SERVICE_NAME=${AGENT_NAME_TO_DEPLOY//_/-} # Set AGENT_SERVICE_NAME here
+
+   # --- CORRECTION IMPORTANTE ---
+    # Le nom de l'agent DOIT inclure "Server" pour correspondre à l'enregistrement
+    local FULL_AGENT_NAME="${AGENT_NAME_TO_DEPLOY/agent/AgentServer}"
+    if [[ "$AGENT_NAME_TO_DEPLOY" == "user_interaction_agent" ]]; then
+        FULL_AGENT_NAME="UserInteractionAgentServer"
+    elif [[ "$AGENT_NAME_TO_DEPLOY" == "decomposition_agent" ]]; then
+        FULL_AGENT_NAME="DecompositionAgentServer"
+    elif [[ "$AGENT_NAME_TO_DEPLOY" == "development_agent" ]]; then
+        FULL_AGENT_NAME="DevelopmentAgentServer"
+    elif [[ "$AGENT_NAME_TO_DEPLOY" == "testing_agent" ]]; then
+        FULL_AGENT_NAME="TestingAgentServer"
+    elif [[ "$AGENT_NAME_TO_DEPLOY" == "research_agent" ]]; then
+        FULL_AGENT_NAME="ResearchAgentServer"
+    elif [[ "$AGENT_NAME_TO_DEPLOY" == "evaluator" ]]; then
+         FULL_AGENT_NAME="EvaluatorAgentServer"
+    elif [[ "$AGENT_NAME_TO_DEPLOY" == "reformulator" ]]; then
+        FULL_AGENT_NAME="ReformulatorAgentServer"
+    elif [[ "$AGENT_NAME_TO_DEPLOY" == "validator" ]]; then
+        FULL_AGENT_NAME="ValidatorAgentServer"
+    
+    else
+         # Pour reformulator, evaluator, validator
+        FULL_AGENT_NAME="$(tr '[:lower:]' '[:upper:]' <<< ${AGENT_NAME_TO_DEPLOY:0:1})${AGENT_NAME__TO_DEPLOY:1}AgentServer"
+    fi
+    # ---------------------------
+    echo "    -> Nom de l'agent         : ${AGENT_NAME_TO_DEPLOY}" 
+    echo "    -> Nom complet de l'agent : ${FULL_AGENT_NAME}"
     gcloud run deploy ${AGENT_SERVICE_NAME} \
       --image="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_REPO_NAME}/${AGENT_NAME_TO_DEPLOY}:latest" \
       --platform=managed \
       --region=${GCP_REGION} \
       --no-allow-unauthenticated \
       --port=8080 \
-      --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+      --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
       --vpc-connector="${CONNECTOR_NAME}" \
       --project=${GCP_PROJECT_ID}
     
@@ -338,7 +397,7 @@ function deploy_single_agent() {
     echo "    -> Mise à jour de '${AGENT_SERVICE_NAME}' avec ses URLs publiques..."
     gcloud run services update ${AGENT_SERVICE_NAME} \
         --region=${GCP_REGION} \
-        --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL}" \
+        --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
         --project=${GCP_PROJECT_ID}
 
     echo "    ✅ Agent '${AGENT_SERVICE_NAME}' déployé et configuré avec l'URL : ${AGENT_PUBLIC_URL}"
@@ -379,5 +438,5 @@ case "$1" in
         deploy_gcp
         ;;
     *)
-        echo "Commande inconnue: $1"; exit 1 ;;
+        echo "Usage: $0 {configure|build|push|deploy|deploy-one <agent_name>|all_single_agent <agent_name>|deploy_frontend|all}"; exit 1 ;;
 esac

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 import os
 import io
 from datetime import datetime, timezone
+
 import asyncio
 import uuid
 from collections import Counter
@@ -25,9 +26,29 @@ import google.auth
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
+from starlette.applications import Starlette
 
 logger = logging.getLogger(__name__)
+def json_serializer(obj):
+    """
+    Traducteur JSON robuste pour les objets non sérialisables par défaut.
+    Utilise le "duck typing" pour éviter les problèmes d'import.
+    """
+    # Si l'objet vient de Firestore, il a une méthode .ToDatetime()
+    # On le convertit d'abord en objet datetime standard de Python.
+    if hasattr(obj, 'ToDatetime'):
+        obj = obj.ToDatetime()
 
+    # Maintenant, si l'objet a une méthode .isoformat() (comme les datetime et date),
+    # on l'utilise pour le convertir en chaîne de caractères.
+    if hasattr(obj, 'isoformat'):
+        return obj.isoformat()
+
+    # Si on ne peut toujours pas le sérialiser, on lève une erreur.
+    raise TypeError(f"Type {type(obj)} not serializable for JSON")
+# ----------------------------------------------------
+
+# --------------------------
 
 from src.shared.firebase_init import db
 if db is None:
@@ -191,9 +212,38 @@ def secure_filename(filename: str) -> str:
     return ascii_name
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: Starlette):
+    """
+    MODIFIÉ : Gère le cycle de vie, y compris l'initialisation du cache au démarrage.
+    """
+    logger.info("[GRA] Démarrage du cycle de vie (lifespan)...")
+    
+    # --- BLOC À AJOUTER : Initialisation du cache des statuts ---
+    logger.info("[GRA] Initialisation du cache des statuts depuis Firestore...")
+    if not db:
+        logger.error("[GRA] La base de données Firestore n'est pas disponible. Le cache ne sera pas initialisé.")
+    else:
+        try:
+            docs_stream = db.collection("service_registry").stream()
+            for doc in docs_stream:
+                if doc.id != 'gra_instance_config':
+                    agent_data = doc.to_dict()
+                    agent_name = agent_data.get("name")
+                    if agent_name:
+                        # On initialise l'agent avec un statut "Offline" par défaut.
+                        # S'il est en ligne, il enverra sa mise à jour peu après.
+                        agent_data["health_status"] = {"state": "Offline"}
+                        agent_statuses[agent_name] = agent_data
+            logger.info(f"[GRA] Cache initialisé avec {len(agent_statuses)} agents depuis Firestore.")
+        except Exception as e:
+            logger.error(f"[GRA] Erreur lors de l'initialisation du cache depuis Firestore: {e}", exc_info=True)
+    # -----------------------------------------------------------
     await publish_gra_location()
-    yield
+
+    yield # L'application tourne ici
+
+    logger.info("[GRA] Arrêt du cycle de vie (lifespan)...")
+
 
 app = FastAPI(
     title="Gestionnaire de Ressources et d'Agents (GRA)",
@@ -862,31 +912,34 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
-        # Envoie l'état actuel dès la connexion
-        await websocket.send_text(json.dumps(list(agent_statuses.values())))
+        # On envoie l'état actuel dès la connexion
+        # MODIFICATION ICI : ajout de default=json_serializer
+        await websocket.send_text(json.dumps(list(agent_statuses.values()), default=json_serializer))
         while True:
-            # On maintient la connexion ouverte
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-
+    
 @app.post("/agent_status_update")
 async def update_agent_status(status_update: Dict[str, Any]):
     agent_name = status_update.get("name")
     if not agent_name:
         return {"status": "error", "message": "agent name is missing"}
 
-    # Mettre à jour le cache
-    # On fusionne avec les infos du registre (URL, skills, etc.)
+    # Récupérer les infos existantes de l'agent dans le cache, ou un dict vide
     current_agent_info = agent_statuses.get(agent_name, {})
-    # La mise à jour du statut est dans "health_status" pour garder la structure cohérente
-    current_agent_info['health_status'] = status_update
-    agent_statuses[agent_name] = current_agent_info
-    # --- AJOUT DE LOG POUR LE DEBUG ---
-    logger.info(f"Notification de statut reçue de l'agent : {agent_name} -> {status_update.get('state')}")
 
-    # Diffuser la liste complète mise à jour à tous les clients connectés
-    await manager.broadcast(json.dumps(list(agent_statuses.values())))
+    # --- LA CORRECTION ---
+    # S'assurer que la propriété 'name' de haut niveau est toujours présente.
+    current_agent_info['name'] = agent_name
+    # ---------------------
+
+    # Mettre à jour le sous-objet "health_status"
+    current_agent_info['health_status'] = status_update
+
+    # Remettre l'objet complet et corrigé dans le cache
+    agent_statuses[agent_name] = current_agent_info
+    await manager.broadcast(json.dumps(list(agent_statuses.values()), default=json_serializer))
     return {"status": "received"}
 
 if __name__ == "__main__":

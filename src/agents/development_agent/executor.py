@@ -119,26 +119,26 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     code_instructions = llm_action_payload.get("local_instructions", [])
                     code_acceptance_criteria = llm_action_payload.get("acceptance_criteria", [])
                 
-                self.logger.info(f"Développement : Action 'generate_code_and_write_file' décidée par LLM pour '{file_path}'.")
-                
-                from src.shared.llm_client import call_llm 
+                    self.logger.info(f"Développement : Action 'generate_code_and_write_file' décidée par LLM pour '{file_path}'.")
+                    
+                    from src.shared.llm_client import call_llm 
 
-                code_system_prompt = (
-                    "Tu es un développeur IA expert en Python. Ta mission est de générer du code Python propre, "
-                    "fonctionnel et bien commenté, basé sur les spécifications fournies. "
-                    "Le code doit être directement utilisable. N'inclus que le code dans ta réponse, "
-                    "sauf si des commentaires dans le code sont nécessaires pour l'expliquer."
-                    "Assure-toi de respecter les instructions spécifiques et les critères d'acceptation."
-                )
-                code_generation_prompt = (
-                    f"Objectif du code : {code_objective}\n\n"
-                    f"Instructions spécifiques : {', '.join(code_instructions) if code_instructions else 'Aucune.'}\n\n"
-                    f"Critères d'acceptation : {', '.join(code_acceptance_criteria) if code_acceptance_criteria else 'Non spécifiés.'}\n\n"
-                    "Génère UNIQUEMENT le code Python correspondant."
-                )
-                
-                generated_code = await call_llm(code_generation_prompt, code_system_prompt, json_mode=False)
-                await self.environment_manager.write_file_to_environment(self._reconstruct_environment_id(), file_path, generated_code)
+                    code_system_prompt = (
+                        "Tu es un développeur IA expert en Python. Ta mission est de générer du code Python propre, "
+                        "fonctionnel et bien commenté, basé sur les spécifications fournies. "
+                        "Le code doit être directement utilisable. N'inclus que le code dans ta réponse, "
+                        "sauf si des commentaires dans le code sont nécessaires pour l'expliquer."
+                        "Assure-toi de respecter les instructions spécifiques et les critères d'acceptation."
+                    )
+                    code_generation_prompt = (
+                        f"Objectif du code : {code_objective}\n\n"
+                        f"Instructions spécifiques : {', '.join(code_instructions) if code_instructions else 'Aucune.'}\n\n"
+                        f"Critères d'acceptation : {', '.join(code_acceptance_criteria) if code_acceptance_criteria else 'Non spécifiés.'}\n\n"
+                        "Génère UNIQUEMENT le code Python correspondant."
+                    )
+                    
+                    generated_code = await call_llm(code_generation_prompt, code_system_prompt, json_mode=False)
+                    await self.environment_manager.write_file_to_environment(self._reconstruct_environment_id(), file_path, generated_code)
                 
                     action_result_summary = f"Code généré et écrit dans {file_path}. Aperçu: {generated_code[:100]}..."
 
@@ -148,54 +148,60 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     env_id = self._reconstruct_environment_id()
                     self.logger.info(f"Développement : Exécution de commande '{command}' dans '{env_id}'.")
 
-                cmd_result = await self.environment_manager.execute_command_in_environment(
-                    env_id, command, workdir
-                )
-                action_result_summary = (
-                    f"Commande '{command}' exécutée. Exit code: {cmd_result['exit_code']}. "
-                    f"Stdout: {cmd_result['stdout'][:100]}... Stderr: {cmd_result['stderr'][:100]}..."
-                )
-
-                if cmd_result["exit_code"] != 0:
-                    # Ne pas échouer immédiatement la tâche. On renvoie le résultat
-                    # de la commande à l'agent appelant pour qu'il décide de la suite
-                    self.logger.warning(
-                        "La commande '%s' a retourné un code non nul dans l'environnement %s."
-                        " Stdout: %s, Stderr: %s",
-                        command,
-                        env_id,
-                        cmd_result["stdout"],
-                        cmd_result["stderr"],
+                    cmd_result = await self.environment_manager.execute_command_in_environment(
+                        env_id, command, workdir
                     )
+                    action_result_summary = (
+                        f"Commande '{command}' exécutée. Exit code: {cmd_result['exit_code']}. "
+                        f"Stdout: {cmd_result['stdout'][:100]}... Stderr: {cmd_result['stderr'][:100]}..."
+                    )
+
+                    if cmd_result["exit_code"] != 0:
+                        # Ne pas échouer immédiatement la tâche. On renvoie le résultat
+                        # de la commande à l'agent appelant pour qu'il décide de la suite
+                        self.logger.warning(
+                            "La commande '%s' a retourné un code non nul dans l'environnement %s."
+                            " Stdout: %s, Stderr: %s",
+                            command,
+                            env_id,
+                            cmd_result["stdout"],
+                            cmd_result["stderr"],
+                        )
                 elif action_type == "read_file":
                     file_path = llm_action_payload.get("file_path")
                     env_id = self._reconstruct_environment_id()
                     self.logger.info(f"Développement : Lecture de fichier '{file_path}' depuis '{env_id}'.")
-                try:
-                    content = await self.environment_manager.read_file_from_environment(env_id, file_path)
-                    action_result_summary = f"Fichier '{file_path}' lu. Contenu (début): {content[:100]}..."
-                except Exception as e:
-                    # Ne pas échouer immédiatement la tâche. On renvoie le résultat
-                    # de la commande à l'agent appelant pour qu'il décide de la suite
-                    self.logger.warning(
-                        "La commande '%s' a retourné une erreur de fichier l'environnement %s."
-                        " Stdout: %s, Stderr: %s",
-                        command,
-                        env_id,
-                        cmd_result["stdout"],
-                        cmd_result["stderr"],
-                    )
+                    try:
+                        content = await self.environment_manager.read_file_from_environment(env_id, file_path)
+                        action_result_summary = f"Fichier '{file_path}' lu. Contenu (début): {content[:100]}..."
+                    except Exception as e:
+                        # Ne pas échouer immédiatement la tâche. On renvoie le résultat
+                        # de la commande à l'agent appelant pour qu'il décide de la suite
+                        action_result_summary = f"Erreur lors de la lecture du fichier '{file_path}': {str(e)}"
+                        self.logger.warning(
+                            "La commande '%s' a retourné une erreur de fichier l'environnement %s."
+                            " Stdout: %s, Stderr: %s",
+                            command,
+                            env_id,
+                            cmd_result["stdout"],
+                            cmd_result["stderr"],
+                        )
 
 
                 elif action_type == "list_directory":
-                    path = llm_action_payload.get("path", "/app")
-                    env_id = self._reconstruct_environment_id()
-                    self.logger.info(f"Développement : Listing du répertoire '{path}' dans '{env_id}'.")
-                cmd_result = await self.environment_manager.execute_command_in_environment(env_id, f"ls -F {path}")
-                action_result_summary = f"Contenu de '{path}': {cmd_result['stdout']}. Exit code: {cmd_result['exit_code']}"
-                if cmd_result['exit_code'] != 0:
-                    final_status_state = TaskState.failed
-                    is_final_event = True
+                    try:
+
+                        path = llm_action_payload.get("path", "/app")
+                        env_id = self._reconstruct_environment_id()
+                        self.logger.info(f"Développement : Listing du répertoire '{path}' dans '{env_id}'.")
+                        cmd_result = await self.environment_manager.execute_command_in_environment(env_id, f"ls -F {path}")
+                        action_result_summary = f"Contenu de '{path}': {cmd_result['stdout']}. Exit code: {cmd_result['exit_code']}"
+                        if cmd_result['exit_code'] != 0:
+                            final_status_state = TaskState.failed
+                            is_final_event = True
+                    except Exception as e:
+                        self.logger.error(f"Erreur lors de la liste du répertoire: {e}", exc_info=True)
+                        action_result_summary = f"Erreur lors de la liste du répertoire: {str(e)}"
 
                 elif action_type == "complete_task":
                     action_result_summary = llm_action_payload.get("summary", "Tâche complétée par l'agent de développement.")

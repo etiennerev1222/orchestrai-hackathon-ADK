@@ -1,3 +1,4 @@
+import os
 import logging
 from typing_extensions import override
 from abc import ABC, abstractmethod
@@ -70,13 +71,15 @@ class BaseAgentExecutor(AgentExecutor, ABC):
             )
             return
         else:
-            logger.debug(
+            logger.info(
                 f"Notification du statut au GRA à l'URL: {self.gra_url}/agent_status_update"
             )
 
         status_payload = self.get_status()
         # Ajout du nom de l'agent pour que le GRA sache qui envoie la mise à jour
-        status_payload['name'] = self.__class__.__name__
+        status_payload['name'] =  os.environ.get("AGENT_NAME", self.__class__.__name__) 
+        logger.debug(f"Payload de statut à envoyer: {status_payload}")
+        logger.info(f"Notification du statut de l'agent {status_payload['name']} au GRA.")
 
         try:
             # On utilise un client HTTP asynchrone pour ne pas bloquer
@@ -117,7 +120,7 @@ class BaseAgentExecutor(AgentExecutor, ABC):
     def _update_stats(self, success: bool):
         """Met à jour les compteurs de statistiques dans Firestore."""
         try:
-            agent_name = getattr(self.agent_logic, 'AGENT_NAME', self.__class__.__name__)
+            agent_name = os.environ.get("AGENT_NAME", self.__class__.__name__)
             
             if not db:
                 logger.error("Client Firestore (db) non initialisé, impossible de mettre à jour les stats.")
@@ -137,14 +140,16 @@ class BaseAgentExecutor(AgentExecutor, ABC):
             logger.info(log_message)
 
         except Exception as e:
-            agent_name_for_log = getattr(self.agent_logic, 'AGENT_NAME', self.__class__.__name__)
+            agent_name_for_log = os.environ.get("AGENT_NAME", self.__class__.__name__)
             logger.error(f"Impossible de mettre à jour les statistiques pour {agent_name_for_log}: {e}")
 
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        # VÉRIFIEZ QUE CE BLOC EST PRÉSENT
         self.state = AgentOperationalState.BUSY
         self.current_task_id = context.current_task.id if context.current_task else None
         self.last_activity_time = time.time()
+        await self._notify_gra_of_status_change() # Notifier le début
         try:
             task_context_id_for_log = context.context_id if context.context_id else (context.message.contextId if context.message and context.message.contextId else "N/A")
             logger.info(f"{self.__class__.__name__}.execute appelé pour le contexte: {task_context_id_for_log}")
@@ -196,6 +201,7 @@ class BaseAgentExecutor(AgentExecutor, ABC):
                 self._update_stats(success=True)
             except Exception as e:
                 self.state = AgentOperationalState.ERROR
+                await self._notify_gra_of_status_change() # Notifier le début
                 logger.error(f"Erreur pendant le traitement de la tâche {current_task_id}: {e}", exc_info=True)
                 await event_queue.enqueue_event(TaskStatusUpdateEvent(
                     status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
@@ -209,6 +215,8 @@ class BaseAgentExecutor(AgentExecutor, ABC):
             self.state = AgentOperationalState.IDLE
             self.current_task_id = None
             self.last_activity_time = time.time()
+            await self._notify_gra_of_status_change() # Notifier le début
+
                       
     @override
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
