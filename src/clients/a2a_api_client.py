@@ -161,7 +161,12 @@ async def call_a2a_agent(
         for attempt in range(max_retries):
             try:
                 await asyncio.sleep(retry_delay)
-                get_task_params = TaskQueryParams(id=task_id, context_id=context_id_for_task)
+                # Les TaskQueryParams de la librairie A2A ne gèrent pas
+                # directement le context_id. Certains serveurs A2A n'en ont
+                # pas besoin car l'identifiant de tâche est global. On retire
+                # donc ce paramètre pour éviter qu'il soit ignoré et on
+                # l'utilise uniquement pour le logging.
+                get_task_params = TaskQueryParams(id=task_id)
                 get_task_request = GetTaskRequest(id=str(uuid4()), params=get_task_params)
 
                 get_task_response = await a2a_client.get_task(request=get_task_request)
