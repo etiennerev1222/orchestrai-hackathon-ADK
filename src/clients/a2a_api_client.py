@@ -129,17 +129,20 @@ async def call_a2a_agent(
                 try:
                     send_response = await a2a_client.send_message(request=send_request)
 
+
                     if (
                         hasattr(send_response, "root")
                         and hasattr(send_response.root, "result")
                         and isinstance(send_response.root.result, Task)
                     ):
+
                         created_task = send_response.root.result
                         task_id = created_task.id
                         context_id_for_task = created_task.contextId
                         logger.info(
                             f"Message envoyé. Tâche ID={task_id}, ContextID={context_id_for_task}, Statut initial={created_task.status.state}"
                         )
+
                         if created_task.status.state not in [
                             TaskState.submitted,
                             TaskState.working,
@@ -179,6 +182,7 @@ async def call_a2a_agent(
                 # Si on arrive ici : on va retry si pas au dernier tour
                 if attempt < max_retries - 1:
                     delay = 2**attempt
+
                     logger.warning(
                         f"A2A call failed on attempt {attempt + 1}, retrying in {delay} seconds..."
                     )
