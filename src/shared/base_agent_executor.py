@@ -57,12 +57,22 @@ class BaseAgentExecutor(AgentExecutor, ABC):
     # --- NOUVEAU : Méthode pour notifier le GRA ---
     async def _notify_gra_of_status_change(self):
         import os
-        self.gra_url = os.environ.get("GRA_PUBLIC_URL")
+        from src.shared.service_discovery import get_gra_base_url
+
+        # Tente de récupérer l'URL du GRA depuis l'environnement, sinon via la
+        # fonction de discovery (Firestore ou autre)
+        self.gra_url = os.environ.get("GRA_PUBLIC_URL") or await get_gra_base_url()
+
         if not self.gra_url:
-            logger.warning("GRA_INTERNAL_URL non configuré. Impossible de notifier le changement de statut.")
+            logger.warning(
+                "GRA_PUBLIC_URL non configuré et découverte impossible. "
+                "Impossible de notifier le changement de statut."
+            )
             return
         else:
-            logger.debug(f"Notification du statut au GRA à l'URL: {self.gra_url}/agent_status_update")
+            logger.debug(
+                f"Notification du statut au GRA à l'URL: {self.gra_url}/agent_status_update"
+            )
 
         status_payload = self.get_status()
         # Ajout du nom de l'agent pour que le GRA sache qui envoie la mise à jour
