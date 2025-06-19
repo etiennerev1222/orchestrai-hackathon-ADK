@@ -95,22 +95,29 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             )
             await self.environment_manager.create_isolated_environment(self.current_environment_id)
 
-            self.logger.info(
-                f"Appel de la logique de l'agent pour décider de la prochaine action (env: {self.current_environment_id}).")
-            llm_action_json_str = await self.agent_logic.process(user_input_json_str, current_context_id)
+            last_action_result: dict | None = None
+            continue_loop = True
+            while continue_loop:
+                payload_for_logic = dict(input_payload_from_supervisor)
+                if last_action_result is not None:
+                    payload_for_logic["last_action_result"] = last_action_result
 
-            llm_action_payload = json.loads(llm_action_json_str)
-            action_type = llm_action_payload.get("action")
-            
-            final_status_state = TaskState.working
-            is_final_event = False
-            action_result_summary = "Action exécutée par l'agent de développement."
-            
-            if action_type == "generate_code_and_write_file":
-                file_path = llm_action_payload.get("file_path", "/app/main.py")
-                code_objective = llm_action_payload.get("objective", "")
-                code_instructions = llm_action_payload.get("local_instructions", [])
-                code_acceptance_criteria = llm_action_payload.get("acceptance_criteria", [])
+                self.logger.info(
+                    f"Appel de la logique de l'agent pour décider de la prochaine action (env: {self.current_environment_id}).")
+                llm_action_json_str = await self.agent_logic.process(json.dumps(payload_for_logic), current_context_id)
+
+                llm_action_payload = json.loads(llm_action_json_str)
+                action_type = llm_action_payload.get("action")
+
+                final_status_state = TaskState.working
+                is_final_event = False
+                action_result_summary = "Action exécutée par l'agent de développement."
+
+                if action_type == "generate_code_and_write_file":
+                    file_path = llm_action_payload.get("file_path", "/app/main.py")
+                    code_objective = llm_action_payload.get("objective", "")
+                    code_instructions = llm_action_payload.get("local_instructions", [])
+                    code_acceptance_criteria = llm_action_payload.get("acceptance_criteria", [])
                 
                 self.logger.info(f"Développement : Action 'generate_code_and_write_file' décidée par LLM pour '{file_path}'.")
                 
@@ -133,13 +140,13 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 generated_code = await call_llm(code_generation_prompt, code_system_prompt, json_mode=False)
                 await self.environment_manager.write_file_to_environment(self._reconstruct_environment_id(), file_path, generated_code)
                 
-                action_result_summary = f"Code généré et écrit dans {file_path}. Aperçu: {generated_code[:100]}..."
-                
-            elif action_type == "execute_command":
-                command = llm_action_payload.get("command")
-                workdir = llm_action_payload.get("workdir", "/app")
-                env_id = self._reconstruct_environment_id()
-                self.logger.info(f"Développement : Exécution de commande '{command}' dans '{env_id}'.")
+                    action_result_summary = f"Code généré et écrit dans {file_path}. Aperçu: {generated_code[:100]}..."
+
+                elif action_type == "execute_command":
+                    command = llm_action_payload.get("command")
+                    workdir = llm_action_payload.get("workdir", "/app")
+                    env_id = self._reconstruct_environment_id()
+                    self.logger.info(f"Développement : Exécution de commande '{command}' dans '{env_id}'.")
 
                 cmd_result = await self.environment_manager.execute_command_in_environment(
                     env_id, command, workdir
@@ -159,11 +166,11 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         env_id,
                         cmd_result["stdout"],
                         cmd_result["stderr"],
-                    )            
-            elif action_type == "read_file":
-                file_path = llm_action_payload.get("file_path")
-                env_id = self._reconstruct_environment_id()
-                self.logger.info(f"Développement : Lecture de fichier '{file_path}' depuis '{env_id}'.")
+                    )
+                elif action_type == "read_file":
+                    file_path = llm_action_payload.get("file_path")
+                    env_id = self._reconstruct_environment_id()
+                    self.logger.info(f"Développement : Lecture de fichier '{file_path}' depuis '{env_id}'.")
                 try:
                     content = await self.environment_manager.read_file_from_environment(env_id, file_path)
                     action_result_summary = f"Fichier '{file_path}' lu. Contenu (début): {content[:100]}..."
@@ -177,48 +184,52 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         env_id,
                         cmd_result["stdout"],
                         cmd_result["stderr"],
-                    )            
+                    )
 
 
-            elif action_type == "list_directory":
-                path = llm_action_payload.get("path", "/app")
-                env_id = self._reconstruct_environment_id()
-                self.logger.info(f"Développement : Listing du répertoire '{path}' dans '{env_id}'.")
+                elif action_type == "list_directory":
+                    path = llm_action_payload.get("path", "/app")
+                    env_id = self._reconstruct_environment_id()
+                    self.logger.info(f"Développement : Listing du répertoire '{path}' dans '{env_id}'.")
                 cmd_result = await self.environment_manager.execute_command_in_environment(env_id, f"ls -F {path}")
                 action_result_summary = f"Contenu de '{path}': {cmd_result['stdout']}. Exit code: {cmd_result['exit_code']}"
                 if cmd_result['exit_code'] != 0:
                     final_status_state = TaskState.failed
                     is_final_event = True
 
-            elif action_type == "complete_task":
-                action_result_summary = llm_action_payload.get("summary", "Tâche complétée par l'agent de développement.")
-                final_status_state = TaskState.completed
-                is_final_event = True
-            
-            else:
-                action_result_summary = f"Action LLM inconnue: '{action_type}'."
-                final_status_state = TaskState.failed
-                is_final_event = True
+                elif action_type == "complete_task":
+                    action_result_summary = llm_action_payload.get("summary", "Tâche complétée par l'agent de développement.")
+                    final_status_state = TaskState.completed
+                    is_final_event = True
 
-            artifact_content = {"action_taken": action_type, "summary": action_result_summary, "details": llm_action_payload}
-            result_artifact = self._create_artifact_from_result(json.dumps(artifact_content), task)
+                else:
+                    action_result_summary = f"Action LLM inconnue: '{action_type}'."
+                    final_status_state = TaskState.failed
+                    is_final_event = True
 
-            await event_queue.enqueue_event(TaskArtifactUpdateEvent(
-                append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
-                artifact=result_artifact
-            ))
-            
-            status_message_text = f"Action '{action_type}' exécutée. {action_result_summary}"
-            if final_status_state == TaskState.failed:
-                status_message_text = f"Action '{action_type}' a échoué. {action_result_summary}"
+                artifact_content = {"action_taken": action_type, "summary": action_result_summary, "details": llm_action_payload}
+                result_artifact = self._create_artifact_from_result(json.dumps(artifact_content), task)
 
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                status=TaskStatus(state=final_status_state, message=new_agent_text_message(
-                    text=status_message_text,
-                    context_id=current_context_id, task_id=current_task_id)),
-                final=is_final_event, contextId=current_context_id, taskId=current_task_id))
-            
-            self._update_stats(success=final_status_state != TaskState.failed)
+                await event_queue.enqueue_event(TaskArtifactUpdateEvent(
+                    append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
+                    artifact=result_artifact
+                ))
+
+                status_message_text = f"Action '{action_type}' exécutée. {action_result_summary}"
+                if final_status_state == TaskState.failed:
+                    status_message_text = f"Action '{action_type}' a échoué. {action_result_summary}"
+
+                await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                    status=TaskStatus(state=final_status_state, message=new_agent_text_message(
+                        text=status_message_text,
+                        context_id=current_context_id, task_id=current_task_id)),
+                    final=is_final_event, contextId=current_context_id, taskId=current_task_id))
+
+                if is_final_event:
+                    self._update_stats(success=final_status_state != TaskState.failed)
+                    continue_loop = False
+                else:
+                    last_action_result = artifact_content
 
         except json.JSONDecodeError as e:
             self.logger.error(f"Erreur de décodage JSON de l'input ou de la réponse LLM pour la tâche {current_task_id}: {e}", exc_info=True)
