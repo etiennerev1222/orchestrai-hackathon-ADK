@@ -653,22 +653,28 @@ class EnvironmentManager:
             # La sortie de jq est un unique objet JSON (un tableau de fichiers)
             file_list_raw = json.loads(stdout)
 
-            # Convertit le type de 'y' (d, f, l) en un type plus lisible.
-            type_map = {
-                'd': 'directory',
-                'f': 'file',
-                'l': 'link'
-            }
-            
-            # Formatte la liste finale
+            # 'stat -c %F' renvoie des descriptions complètes comme
+            # "regular file", "directory" ou "symbolic link". On normalise
+            # ces valeurs pour l'interface Web.
+
             formatted_list = []
             for item in file_list_raw:
+                raw_type = str(item.get("type", ""))
+                if raw_type == "directory":
+                    mapped_type = "directory"
+                elif "file" in raw_type:
+                    mapped_type = "file"
+                elif "link" in raw_type:
+                    mapped_type = "link"
+                else:
+                    mapped_type = "unknown"
+
                 formatted_list.append({
-                    "name": item["name"],
-                    "type": type_map.get(item["type"], "unknown"),
-                    "size": int(item["size"]),
+                    "name": item.get("name"),
+                    "type": mapped_type,
+                    "size": int(item.get("size", 0)),
                     # Convertir le timestamp en une chaîne ISO 8601 serait une bonne amélioration
-                    "last_modified": int(float(item["mtime"])) 
+                    "last_modified": int(float(item.get("mtime", 0)))
                 })
 
             return formatted_list
