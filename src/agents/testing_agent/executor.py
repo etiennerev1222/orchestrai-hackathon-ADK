@@ -102,8 +102,25 @@ class TestingAgentExecutor(BaseAgentExecutor):
             self.current_environment_id = EnvironmentManager.normalize_environment_id(provided_env)
             self.status_detail = "Création de l'environnement"
             await self._notify_gra_of_status_change()
-            await self.environment_manager.create_isolated_environment(self.current_environment_id)
-            self.status_detail = "Environnement prêt"
+            try:
+                create_result = await self.environment_manager.safe_tool_call(
+                    self.environment_manager.create_isolated_environment(self.current_environment_id),
+                    "create_isolated_environment",
+                )
+                if isinstance(create_result, dict) and "error" in create_result:
+                    logger.warning(
+                        f"Tâche échouée contrôlée : {create_result['error']}"
+                    )
+                    await self._update_task_state(
+                        TaskState.FAILED, details=create_result["error"]
+                    )
+                self.status_detail = "Environnement prêt"
+            except Exception as e:
+                logger.error(
+                    f"Erreur inattendue non capturée par safe_tool_call : {e}",
+                    exc_info=True,
+                )
+                await self._update_task_state(TaskState.FAILED, details=str(e))
             await self._notify_gra_of_status_change()
 
 
@@ -138,12 +155,20 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 self.status_detail = f"Génération du fichier {file_path}"
                 await self._notify_gra_of_status_change()
 
-                tool_result = await self.environment_manager.safe_tool_call(
-                    self.environment_manager.write_file_to_environment(
-                        self.current_environment_id, file_path, code
-                    ),
-                    f"Écriture du fichier {file_path}",
-                )
+                try:
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        self.environment_manager.write_file_to_environment(
+                            self.current_environment_id, file_path, code
+                        ),
+                        f"Écriture du fichier {file_path}",
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"Erreur inattendue non capturée par safe_tool_call : {e}",
+                        exc_info=True,
+                    )
+                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    tool_result = {"error": str(e)}
                 if tool_result is None:
                     action_summary = (
                         f"L'appel à l'outil pour {action_type} n'a rien retourné."
@@ -162,12 +187,24 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 self.status_detail = f"Exécution de la commande: {command}"
                 await self._notify_gra_of_status_change()
 
-                tool_result = await self.environment_manager.safe_tool_call(
-                    self.environment_manager.execute_command_in_environment(
+                try:
+                    tool_result = await self.environment_manager.safe_execute_command_in_environment(
                         self.current_environment_id, command, workdir
-                    ),
-                    f"Commande '{command}'",
-                )
+                    )
+                    if "error" in tool_result:
+                        self.logger.warning(
+                            f"Tâche échouée contrôlée : {tool_result['error']}"
+                        )
+                        await self._update_task_state(
+                            TaskState.FAILED, details=tool_result["error"]
+                        )
+                except Exception as e:
+                    self.logger.error(
+                        f"Erreur inattendue non capturée par safe_tool_call : {e}",
+                        exc_info=True,
+                    )
+                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    tool_result = {"error": str(e)}
                 if tool_result is None:
                     action_summary = (
                         f"L'appel à l'outil pour {action_type} n'a rien retourné."
@@ -190,12 +227,20 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 self.status_detail = f"Lecture du fichier {file_path}"
                 await self._notify_gra_of_status_change()
 
-                tool_result = await self.environment_manager.safe_tool_call(
-                    self.environment_manager.read_file_from_environment(
-                        self.current_environment_id, file_path
-                    ),
-                    f"Lecture du fichier {file_path}",
-                )
+                try:
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        self.environment_manager.read_file_from_environment(
+                            self.current_environment_id, file_path
+                        ),
+                        f"Lecture du fichier {file_path}",
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"Erreur inattendue non capturée par safe_tool_call : {e}",
+                        exc_info=True,
+                    )
+                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    tool_result = {"error": str(e)}
                 if tool_result is None:
                     action_summary = (
                         f"L'appel à l'outil pour {action_type} n'a rien retourné."
@@ -216,12 +261,20 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 self.status_detail = f"Listing du répertoire {path}"
                 await self._notify_gra_of_status_change()
 
-                tool_result = await self.environment_manager.safe_tool_call(
-                    self.environment_manager.list_files_in_environment(
-                        self.current_environment_id, path
-                    ),
-                    f"Listing du répertoire {path}",
-                )
+                try:
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        self.environment_manager.list_files_in_environment(
+                            self.current_environment_id, path
+                        ),
+                        f"Listing du répertoire {path}",
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"Erreur inattendue non capturée par safe_tool_call : {e}",
+                        exc_info=True,
+                    )
+                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    tool_result = {"error": str(e)}
 
                 if tool_result is None:
                     action_summary = (
