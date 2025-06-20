@@ -287,12 +287,21 @@ function AgentStatusBar({ agents, graHealth, stats }) {
               </div>
               <div className="agent-timestamp">{a.timestamp ? new Date(a.timestamp).toLocaleString() : 'N/A'}</div>
               <div className="agent-metrics">
-                <div className="metric-tile success">
-                  {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_completed ?? 0}
-                </div>
-                <div className="metric-tile fail">
-                  {statsMap[a.name.replace('AgentServer', 'AgentExecutor')]?.tasks_failed ?? 0}
-                </div>
+                {(() => {
+                  const statKey = a.name;
+                  const altKey = a.name.replace('AgentServer', 'AgentExecutor');
+                  const stat = statsMap[statKey] || statsMap[altKey];
+                  return (
+                    <>
+                      <div className="metric-tile success">
+                        {stat?.tasks_completed ?? 0}
+                      </div>
+                      <div className="metric-tile fail">
+                        {stat?.tasks_failed ?? 0}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           );
