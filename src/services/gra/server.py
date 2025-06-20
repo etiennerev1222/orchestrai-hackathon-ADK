@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 from src.services.environment_manager.environment_manager import EnvironmentManager
+from kubernetes import client
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from src.shared.agent_state import AgentOperationalState
@@ -101,7 +102,8 @@ class GlobalPlanDetailResponse(BaseModel):
     conversation_history: List[Dict[str, str]] = []
     clarification_attempts: int = 0
     team1_plan_id: Optional[str] = None
-    team2_execution_plan_id: Optional[str] = None 
+    team2_execution_plan_id: Optional[str] = None
+    environment_id: Optional[str] = None
     created_at: str
     updated_at: str
     last_agent_response_artifact: Optional[Dict[str, Any]] = None
@@ -112,6 +114,7 @@ class GlobalPlanSummaryItem(BaseModel):
     raw_objective: str
     current_supervisor_state: str
     task_type_estimation: Optional[str] = None
+    environment_id: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -431,6 +434,7 @@ async def get_global_plan_details(
             "clarification_attempts": plan_details.get('clarification_attempts', 0),
             "team1_plan_id": plan_details.get('team1_plan_id'),
             "team2_execution_plan_id": plan_details.get('team2_execution_plan_id'),
+            "environment_id": plan_details.get('environment_id') or EnvironmentManager.normalize_environment_id(global_plan_id),
             "created_at": plan_details.get('created_at', datetime.now(timezone.utc).isoformat()),
             "updated_at": plan_details.get('updated_at', datetime.now(timezone.utc).isoformat()),
             "last_agent_response_artifact": plan_details.get('last_agent_response_artifact'),
@@ -472,6 +476,7 @@ async def get_all_global_plans_summary():
                     raw_objective=plan_data.get("raw_objective", "Objectif non disponible"),
                     current_supervisor_state=plan_data.get("current_supervisor_state", "État inconnu"),
                     task_type_estimation=plan_data.get("task_type_estimation"),
+                    environment_id=plan_data.get("environment_id") or EnvironmentManager.normalize_environment_id(doc.id),
                     created_at=plan_data.get("created_at", ""),
                     updated_at=plan_data.get("updated_at", "")
                 ))
@@ -849,13 +854,16 @@ async def list_files(environment_id: str, path: Optional[str] = "."):
     if not environment_manager:
         raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
     try:
-        env_id = f"exec_{EnvironmentManager.extract_global_plan_id(plan_id=environment_id)}"
+        env_id = EnvironmentManager.normalize_environment_id(environment_id)
         files = await environment_manager.list_files_in_environment(env_id, path)
         return files
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) # Pour un env_id non valide
+    except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
+        logging.error(f"External connection error listing files for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
     except Exception as e:
         logging.error(f"Error listing files for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while listing files.")
@@ -866,7 +874,8 @@ async def download_file(environment_id: str, path: str):
     if not environment_manager:
         raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
     try:
-        file_content_str = await environment_manager.read_file_from_environment(environment_id, path)
+        env_id = EnvironmentManager.normalize_environment_id(environment_id)
+        file_content_str = await environment_manager.read_file_from_environment(env_id, path)
         file_content_bytes = file_content_str.encode('utf-8')
         
         # Utilise StreamingResponse pour envoyer des données binaires
@@ -879,6 +888,9 @@ async def download_file(environment_id: str, path: str):
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
+        logging.error(f"External connection error downloading file for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
     except Exception as e:
         logging.error(f"Error downloading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while downloading the file.")
@@ -898,11 +910,15 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
         file_content_bytes = await file.read()
         file_content = file_content_bytes.decode('utf-8')
 
-        await environment_manager.write_file_to_environment(environment_id, filename, file_content)
+        env_id = EnvironmentManager.normalize_environment_id(environment_id)
+        await environment_manager.write_file_to_environment(env_id, filename, file_content)
 
         return {"message": f"File '{filename}' uploaded successfully to '{environment_id}'."}
-    except ValueError as e: # Erreur si l'env_id est invalide
+    except ValueError as e:  # Erreur si l'env_id est invalide
         raise HTTPException(status_code=404, detail=str(e))
+    except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
+        logging.error(f"External connection error uploading file for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
     except Exception as e:
         logging.error(f"Error uploading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred during file upload.")
