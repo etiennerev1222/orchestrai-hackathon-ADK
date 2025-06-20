@@ -10,7 +10,6 @@ from a2a.types import (
 from a2a.utils import new_text_artifact, new_agent_text_message, new_task
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events.event_queue import EventQueue
-import json
 from src.services.environment_manager.environment_manager import EnvironmentManager
 from typing_extensions import override
 
@@ -68,6 +67,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
                     context_id=current_context_id, task_id=current_task_id)),
                 final=True, contextId=current_context_id, taskId=current_task_id
             ))
+            self._update_stats(success=False)
             return
 
         try:
@@ -75,7 +75,14 @@ class TestingAgentExecutor(BaseAgentExecutor):
             environment_id = input_payload.get("environment_id")
 
             if not environment_id:
-                raise ValueError("Environment ID missing in task input.")
+                self.logger.error(f"Environment ID missing in task input for task {current_task_id}. Cannot proceed.")
+                await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                    status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
+                        text="Environment ID missing in task input. Cannot proceed.",
+                        context_id=current_context_id, task_id=current_task_id)),
+                    final=True, contextId=current_context_id, taskId=current_task_id))
+                self._update_stats(success=False)
+                return
 
             llm_action_str = await self.agent_logic.process(input_json_str, current_context_id)
             llm_action = json.loads(llm_action_str)
@@ -155,17 +162,23 @@ class TestingAgentExecutor(BaseAgentExecutor):
             }), task)
 
             await event_queue.enqueue_event(TaskArtifactUpdateEvent(
-                append=False, contextId=current_context_id, taskId=current_task_id,
-                artifact=artifact, lastChunk=True
+                append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
+                artifact=artifact
             ))
+
+            status_message_text = f"Action '{action_type}' exécutée. {action_summary}"
+            if final_state == TaskState.failed:
+                status_message_text = f"Action '{action_type}' a échoué. {action_summary}"
 
             await event_queue.enqueue_event(TaskStatusUpdateEvent(
                 status=TaskStatus(state=final_state, message=new_agent_text_message(
-                    text=action_summary,
+                    text=status_message_text,
                     context_id=current_context_id, task_id=current_task_id
                 )),
                 final=is_final, contextId=current_context_id, taskId=current_task_id
             ))
+
+            self._update_stats(success=final_state != TaskState.failed)
 
         except Exception as e:
             self.logger.error(f"Erreur lors de l'exécution : {e}", exc_info=True)
@@ -176,4 +189,5 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 )),
                 final=True, contextId=current_context_id, taskId=current_task_id
             ))
+            self._update_stats(success=False)
     
