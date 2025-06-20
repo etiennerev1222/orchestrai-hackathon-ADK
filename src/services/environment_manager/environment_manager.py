@@ -403,6 +403,20 @@ class EnvironmentManager:
 
         return pod_name
 
+    async def safe_tool_call(self, tool_coro, action_description, timeout_sec=60):
+        """
+        Exécute un outil avec gestion des exceptions et du timeout.
+        Retourne un dict avec le résultat ou l'erreur.
+        """
+        try:
+            return await asyncio.wait_for(tool_coro, timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            self.logger.warning(f"{action_description} a échoué: timeout après {timeout_sec}s.")
+            return {"error": f"Timeout: {action_description} a pris plus de {timeout_sec}s."}
+        except Exception as e:
+            self.logger.warning(f"{action_description} a échoué: {e}")
+            return {"error": f"Erreur: {str(e)}"}
+
     async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:
         pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"

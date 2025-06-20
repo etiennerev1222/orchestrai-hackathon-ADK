@@ -13,7 +13,8 @@ from src.services.environment_manager.environment_manager import EnvironmentMana
 from typing_extensions import override
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
-
+import time
+from src.shared.agent_state import AgentOperationalState
 logger = logging.getLogger(__name__)
 
 class DevelopmentAgentExecutor(BaseAgentExecutor):
@@ -47,209 +48,233 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             return self.current_environment_id
         return EnvironmentManager.normalize_environment_id(self.execution_plan_id)
 
+# etiennerev1222/orchestrai-hackathon-adk/etiennerev1222-orchestrai-hackathon-ADK-d586faaf788627821ab712e191de5e893b702a13/src/agents/development_agent/executor.py
+
+
     @override
-    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        task_context_id_for_log = context.context_id if context.context_id else (context.message.contextId if context.message and context.message.contextId else "N/A")
-        self.logger.info(f"{self.__class__.__name__}.execute appelé pour le contexte: {task_context_id_for_log}")
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None: #
+
+        self.state = AgentOperationalState.WORKING
+        self.current_task_id = context.current_task.id if context.current_task else None
+        self.last_activity_time = time.time()
+        await self._notify_gra_of_status_change() # Notifier le début
+
+        # --- Initialisation de la tâche ---
+        task_context_id_for_log = context.context_id or (context.message.contextId if context.message else "N/A") #
+        self.logger.info(f"{self.__class__.__name__}.execute appelé pour le contexte: {task_context_id_for_log}") #
         
-        message = context.message
-        task = context.current_task
-        if context.message and hasattr(context.message, "input") and isinstance(context.message.input, dict):
-            self.execution_plan_id = context.message.input.get("execution_plan_id", "N/A")
-        else:
-            logger.warning(f"{context.message}: Aucune entrée JSON valide trouvée dans le message, utilisation de 'N/A'.")
-            self.execution_plan_id = "exec_default"
-        if not message:
-            self.logger.error("Aucun message fourni dans le contexte.")
-            return
-
-        if not task:
-            task = new_task(request=message)
-            self.logger.info(f"Nouvelle tâche créée: ID={task.id}, ContextID={task.contextId}")
-            await event_queue.enqueue_event(task)
-
-        current_task_id = task.id
-        current_context_id = task.contextId 
-
-        user_input_json_str = self._extract_input_from_message(message)
+        message = context.message #
+        task = context.current_task #
+        if not task: #
+            task = new_task(request=message) #
+            await event_queue.enqueue_event(task) #
         
-        if user_input_json_str is None:
-            self.logger.warning(f"Aucune entrée utilisateur valide extraite du message pour la tâche {current_task_id}.")
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
-                    text="Aucune entrée utilisateur valide fournie ou format de partie incorrect.",
-                    context_id=current_context_id, task_id=current_task_id)),
-                final=True, contextId=current_context_id, taskId=current_task_id))
-            self._update_stats(success=False)
+        current_task_id = task.id #
+        current_context_id = task.contextId #
+
+        user_input_json_str = self._extract_input_from_message(message) #
+        
+        if user_input_json_str is None: #
+            # Gestion d'erreur si l'input est invalide
+            await event_queue.enqueue_event(TaskStatusUpdateEvent( #
+                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(text="Input invalide.")), #
+                final=True, contextId=current_context_id, taskId=current_task_id)) #
+            self._update_stats(success=False) #
             return
         
         try:
-            input_payload_from_supervisor = json.loads(user_input_json_str)
-            provided_env = input_payload_from_supervisor.get("environment_id")
+            # L'input initial du superviseur contient l'objectif.
+            input_payload_from_supervisor = json.loads(user_input_json_str) #
+            
+            # Récupération de l'ID de l'environnement
+            provided_env = input_payload_from_supervisor.get("environment_id") #
+            if not provided_env: #
+                raise ValueError("Environment ID est manquant dans l'input de la tâche.")
+            
+            self.current_environment_id = EnvironmentManager.normalize_environment_id(provided_env) #
+            await self.environment_manager.create_isolated_environment(self.current_environment_id) #
 
-            if not provided_env:
-                self.logger.warning(
-                    f"Environment ID missing in task input for task {current_task_id}. Attempting reconstruction.")
-            self.current_environment_id = EnvironmentManager.normalize_environment_id(
-                provided_env or self.execution_plan_id
-            )
-            await self.environment_manager.create_isolated_environment(self.current_environment_id)
+            # --- Début de la boucle Pensée-Action ---
+            last_action_result: dict | None = None #
+            continue_loop = True #
+            
+            await event_queue.enqueue_event(TaskStatusUpdateEvent( #
+                status=TaskStatus(state=TaskState.working, message=new_agent_text_message(text="Début du cycle de développement.")), #
+                final=False, contextId=current_context_id, taskId=current_task_id #
+            ))
 
-            last_action_result: dict | None = None
-            continue_loop = True
-            while continue_loop:
-                payload_for_logic = dict(input_payload_from_supervisor)
-                if last_action_result is not None:
-                    payload_for_logic["last_action_result"] = last_action_result
+            while continue_loop: #
+                tool_result = None  # Réinitialiser le résultat de l'outil à chaque itération
+                # 1. Préparer l'input pour la logique (LLM)
+                payload_for_logic = { #
+                    "objective": input_payload_from_supervisor.get("objective"),
+                    "last_action_result": last_action_result #
+                }
 
-                self.logger.info(
-                    f"Appel de la logique de l'agent pour décider de la prochaine action (env: {self.current_environment_id}).")
-                llm_action_json_str = await self.agent_logic.process(json.dumps(payload_for_logic), current_context_id)
+                self.logger.info(f"Début itération: Appel de la logique pour décider de la prochaine action.")
+                
+                # 2. Appeler le LLM pour qu'il décide de la prochaine action
+                llm_action_json_str = await self.agent_logic.process(json.dumps(payload_for_logic), current_context_id) #
+                llm_action_payload = json.loads(llm_action_json_str) #
+                action_type = llm_action_payload.get("action") #
 
-                llm_action_payload = json.loads(llm_action_json_str)
-                action_type = llm_action_payload.get("action")
+                self.logger.info(f"Action décidée par le LLM: {action_type}")
 
-                final_status_state = TaskState.working
-                is_final_event = False
-                action_result_summary = "Action exécutée par l'agent de développement."
+                action_result_details = {}
+                action_summary = f"Action '{action_type}' exécutée." #
 
+                # 3. Exécuter l'action demandée par le LLM
                 if action_type == "generate_code_and_write_file":
                     file_path = llm_action_payload.get("file_path", "/app/main.py")
-                    code_objective = llm_action_payload.get("objective", "")
-                    code_instructions = llm_action_payload.get("local_instructions", [])
-                    code_acceptance_criteria = llm_action_payload.get("acceptance_criteria", [])
-                
-                    self.logger.info(f"Développement : Action 'generate_code_and_write_file' décidée par LLM pour '{file_path}'.")
-                    
-                    from src.shared.llm_client import call_llm 
+                    code_to_write = await self._generate_code_from_specs(llm_action_payload)
 
-                    code_system_prompt = (
-                        "Tu es un développeur IA expert en Python. Ta mission est de générer du code Python propre, "
-                        "fonctionnel et bien commenté, basé sur les spécifications fournies. "
-                        "Le code doit être directement utilisable. N'inclus que le code dans ta réponse, "
-                        "sauf si des commentaires dans le code sont nécessaires pour l'expliquer."
-                        "Assure-toi de respecter les instructions spécifiques et les critères d'acceptation."
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        self.environment_manager.write_file_to_environment(
+                            self.current_environment_id, file_path, code_to_write
+                        ),
+                        f"Écriture du fichier {file_path}"
                     )
-                    code_generation_prompt = (
-                        f"Objectif du code : {code_objective}\n\n"
-                        f"Instructions spécifiques : {', '.join(code_instructions) if code_instructions else 'Aucune.'}\n\n"
-                        f"Critères d'acceptation : {', '.join(code_acceptance_criteria) if code_acceptance_criteria else 'Non spécifiés.'}\n\n"
-                        "Génère UNIQUEMENT le code Python correspondant."
-                    )
-                    
-                    generated_code = await call_llm(code_generation_prompt, code_system_prompt, json_mode=False)
-                    await self.environment_manager.write_file_to_environment(self._reconstruct_environment_id(), file_path, generated_code)
-                
-                    action_result_summary = f"Code généré et écrit dans {file_path}. Aperçu: {generated_code[:100]}..."
+                    if tool_result is None:
+                        action_summary = f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                        action_result_details = {"error": action_summary}
+                    elif isinstance(tool_result, dict) and "error" in tool_result:
+                        action_summary = tool_result["error"]
+                        action_result_details = tool_result
+                    else:
+                        action_summary = f"Code généré et écrit dans {file_path}."
+                        action_result_details = {
+                            "file_path": file_path,
+                            "code_snippet": code_to_write[:150] + "..."
+                        }
 
                 elif action_type == "execute_command":
                     command = llm_action_payload.get("command")
                     workdir = llm_action_payload.get("workdir", "/app")
-                    env_id = self._reconstruct_environment_id()
-                    self.logger.info(f"Développement : Exécution de commande '{command}' dans '{env_id}'.")
 
-                    cmd_result = await self.environment_manager.execute_command_in_environment(
-                        env_id, command, workdir
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        self.environment_manager.execute_command_in_environment(
+                            self.current_environment_id, command, workdir
+                        ),
+                        f"Commande '{command}'"
                     )
-                    action_result_summary = (
-                        f"Commande '{command}' exécutée. Exit code: {cmd_result['exit_code']}. "
-                        f"Stdout: {cmd_result['stdout'][:100]}... Stderr: {cmd_result['stderr'][:100]}..."
-                    )
+                    if tool_result is None:
+                        action_summary = f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                        action_result_details = {"error": action_summary}
+                    elif isinstance(tool_result, dict) and "error" in tool_result:
+                        action_summary = tool_result["error"]
+                        action_result_details = tool_result
+                    else:
+                        action_summary = f"Commande '{command}' exécutée."
+                        action_result_details = tool_result
 
-                    if cmd_result["exit_code"] != 0:
-                        # Ne pas échouer immédiatement la tâche. On renvoie le résultat
-                        # de la commande à l'agent appelant pour qu'il décide de la suite
-                        self.logger.warning(
-                            "La commande '%s' a retourné un code non nul dans l'environnement %s."
-                            " Stdout: %s, Stderr: %s",
-                            command,
-                            env_id,
-                            cmd_result["stdout"],
-                            cmd_result["stderr"],
-                        )
                 elif action_type == "read_file":
                     file_path = llm_action_payload.get("file_path")
-                    env_id = self._reconstruct_environment_id()
-                    self.logger.info(f"Développement : Lecture de fichier '{file_path}' depuis '{env_id}'.")
-                    try:
-                        content = await self.environment_manager.read_file_from_environment(env_id, file_path)
-                        action_result_summary = f"Fichier '{file_path}' lu. Contenu (début): {content[:100]}..."
-                    except Exception as e:
-                        # Ne pas échouer immédiatement la tâche. On renvoie le résultat
-                        # de la commande à l'agent appelant pour qu'il décide de la suite
-                        action_result_summary = f"Erreur lors de la lecture du fichier '{file_path}': {str(e)}"
-                        self.logger.warning(
-                            "La commande '%s' a retourné une erreur de fichier l'environnement %s."
-                            " Stdout: %s, Stderr: %s",
-                            command,
-                            env_id,
-                            cmd_result["stdout"],
-                            cmd_result["stderr"],
-                        )
 
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        self.environment_manager.read_file_from_environment(
+                            self.current_environment_id, file_path
+                        ),
+                        f"Lecture du fichier {file_path}"
+                    )
+                    if tool_result is None:
+                        action_summary = f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                        action_result_details = {"error": action_summary}
+                    elif isinstance(tool_result, dict) and "error" in tool_result:
+                        action_summary = tool_result["error"]
+                        action_result_details = tool_result
+                    else:
+                        action_summary = f"Fichier '{file_path}' lu."
+                        action_result_details = {
+                            "file_path": file_path,
+                            "content": tool_result
+                        }
 
                 elif action_type == "list_directory":
-                    try:
+                    path = llm_action_payload.get("path", "/app")
 
-                        path = llm_action_payload.get("path", "/app")
-                        env_id = self._reconstruct_environment_id()
-                        self.logger.info(f"Développement : Listing du répertoire '{path}' dans '{env_id}'.")
-                        cmd_result = await self.environment_manager.execute_command_in_environment(env_id, f"ls -F {path}")
-                        action_result_summary = f"Contenu de '{path}': {cmd_result['stdout']}. Exit code: {cmd_result['exit_code']}"
-                        if cmd_result['exit_code'] != 0:
-                            final_status_state = TaskState.failed
-                            is_final_event = True
-                    except Exception as e:
-                        self.logger.error(f"Erreur lors de la liste du répertoire: {e}", exc_info=True)
-                        action_result_summary = f"Erreur lors de la liste du répertoire: {str(e)}"
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        self.environment_manager.execute_command_in_environment(
+                            self.current_environment_id, f"ls -F {path}"
+                        ),
+                        f"Listing du répertoire {path}"
+                    )
+                    if tool_result is None:
+                        action_summary = f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                        action_result_details = {"error": action_summary}
+                    elif isinstance(tool_result, dict) and "error" in tool_result:
+                        action_summary = tool_result["error"]
+                        action_result_details = tool_result
+                    else:
+                        action_summary = f"Contenu de '{path}' listé."
+                        action_result_details = {
+                            "path": path,
+                            "files": tool_result
+                        }
 
                 elif action_type == "complete_task":
-                    action_result_summary = llm_action_payload.get("summary", "Tâche complétée par l'agent de développement.")
-                    final_status_state = TaskState.completed
-                    is_final_event = True
+                    action_summary = llm_action_payload.get("summary", "Tâche de développement terminée.")
+                    final_artifact_content = {
+                        "final_summary": action_summary,
+                        "status": "completed"
+                    }
+
+                    continue_loop = False  # Stopper la boucle
+
+                    final_artifact = self._create_artifact_from_result(json.dumps(final_artifact_content), task)
+                    await event_queue.enqueue_event(TaskArtifactUpdateEvent(
+                        append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
+                        artifact=final_artifact
+                    ))
+                    await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                        status=TaskStatus(state=TaskState.completed, message=new_agent_text_message(text=action_summary)),
+                        final=True, contextId=current_context_id, taskId=current_task_id
+                    ))
+
+                    self._update_stats(success=True)
 
                 else:
-                    action_result_summary = f"Action LLM inconnue: '{action_type}'."
-                    final_status_state = TaskState.failed
-                    is_final_event = True
+                    action_summary = f"Action LLM inconnue ou non gérée: '{action_type}'."
+                    action_result_details = {"error": action_summary}
 
-                artifact_content = {"action_taken": action_type, "summary": action_result_summary, "details": llm_action_payload}
-                result_artifact = self._create_artifact_from_result(json.dumps(artifact_content), task)
+                # Préparer un retour intermédiaire si la boucle continue
+                if continue_loop:
+                    last_action_result = {
+                        "action_taken": action_type,
+                        "summary": action_summary,
+                        "details": action_result_details
+                    }
+                    await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                        status=TaskStatus(state=TaskState.working, message=new_agent_text_message(text=action_summary)),
+                        final=False, contextId=current_context_id, taskId=current_task_id
+                    ))
 
-                await event_queue.enqueue_event(TaskArtifactUpdateEvent(
-                    append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
-                    artifact=result_artifact
-                ))
+        except Exception as e: #
+            self.logger.error(f"Erreur majeure dans l'exécuteur de développement pour la tâche {current_task_id}: {e}", exc_info=True) #
+            await event_queue.enqueue_event(TaskStatusUpdateEvent( #
+                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(text=f"Erreur interne de l'agent: {str(e)}")), #
+                final=True, contextId=current_context_id, taskId=current_task_id)) #
+            self._update_stats(success=False) #
+        finally: #
+            self.state = AgentOperationalState.IDLE
+            self.current_task_id = context.current_task.id if context.current_task else None
+            self.last_activity_time = time.time()
+            await self._notify_gra_of_status_change() # Notifier le début
 
-                status_message_text = f"Action '{action_type}' exécutée. {action_result_summary}"
-                if final_status_state == TaskState.failed:
-                    status_message_text = f"Action '{action_type}' a échoué. {action_result_summary}"
-
-                await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                    status=TaskStatus(state=final_status_state, message=new_agent_text_message(
-                        text=status_message_text,
-                        context_id=current_context_id, task_id=current_task_id)),
-                    final=is_final_event, contextId=current_context_id, taskId=current_task_id))
-
-                if is_final_event:
-                    self._update_stats(success=final_status_state != TaskState.failed)
-                    continue_loop = False
-                else:
-                    last_action_result = artifact_content
-
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Erreur de décodage JSON de l'input ou de la réponse LLM pour la tâche {current_task_id}: {e}", exc_info=True)
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
-                    text=f"JSON invalide en entrée ou de la logique de l'agent: {str(e)}",
-                    context_id=current_context_id, task_id=current_task_id)),
-                final=True, contextId=current_context_id, taskId=current_task_id))
-            self._update_stats(success=False)
-        except Exception as e:
-            self.logger.error(f"Erreur pendant l'exécution de la tâche {current_task_id}: {e}", exc_info=True)
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
-                    text=f"Erreur interne de l'agent: {str(e)}",
-                    context_id=current_context_id, task_id=current_task_id)),
-                final=True, contextId=current_context_id, taskId=current_task_id))
-            self._update_stats(success=False)
+    async def _generate_code_from_specs(self, specs: dict) -> str:
+        """Méthode privée pour appeler le LLM spécifiquement pour la génération de code."""
+        from src.shared.llm_client import call_llm #
+        
+        code_system_prompt = ( #
+            "Tu es un développeur IA expert en Python. Ta mission est de générer du code Python propre, " #
+            "fonctionnel et bien commenté, basé sur les spécifications fournies. " #
+            "Le code doit être directement utilisable. N'inclus que le code dans ta réponse, " #
+            "sauf si des commentaires dans le code sont nécessaires pour l'expliquer." #
+        )
+        code_generation_prompt = ( #
+            f"Objectif du code : {specs.get('objective', '')}\n\n" #
+            f"Instructions spécifiques : {specs.get('local_instructions', [])}\n\n" #
+            f"Critères d'acceptation : {specs.get('acceptance_criteria', [])}\n\n" #
+            "Génère UNIQUEMENT le code Python correspondant." #
+        )
+        
+        return await call_llm(code_generation_prompt, code_system_prompt, json_mode=False) #
