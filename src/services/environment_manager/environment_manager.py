@@ -193,7 +193,7 @@ class EnvironmentManager:
 
    
 
-    async def create_isolated_environment(self, environment_id: str, base_image: str = "python:3.9-slim-buster") -> str:
+    async def create_isolated_environment(self, environment_id: str, base_image: str = "gcr.io/orchestrai-hackathon/python-devtools:3.9-full") -> str:
         environment_id = EnvironmentManager.normalize_environment_id(environment_id)
         safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
 
@@ -614,20 +614,19 @@ class EnvironmentManager:
         # -printf '{"name":"%f", "type":"%y", "size":%s, "mtime":%T@}\n'
         # %f: Nom du fichier, %y: Type (d=dir, f=file), %s: Taille, %T@: Mtime en timestamp Unix
         # On échappe les guillemets pour le shell.
-        command = [
-            "/bin/sh",
-            "-c",
-            # On se place dans le bon répertoire et on exécute find
-            # On pipe vers 'jq' pour s'assurer que c'est bien un JSON valide et pour l'encapsuler dans un tableau
-            f"cd /workspace/{path.lstrip('/')} && find . -maxdepth 1 -mindepth 1 -printf '{{\"name\":\"%f\", \"type\":\"%y\", \"size\":%s, \"mtime\":%T@}}\\n' | jq -s ."
-        ]
+        workdir = f"/workspace{path}"  # Assure-toi que /workspace est ton point de montage racine dans le pod
+        cmd_str = (
+            f"cd {path} && "
+            "find . -maxdepth 1 -mindepth 1 "
+            "-exec stat -c '{\"name\":\"%n\", \"type\":\"%F\", \"size\":%s, \"mtime\":%Y}' {} \\; | jq -s ."
+        )
 
         try:
             # Réutilise la logique de `execute_command_in_pod`
             result = await self.execute_command_in_environment(
                 environment_id,
-                command,
-                workdir=f"/workspace/{path.lstrip('/')}"
+                cmd_str,
+                workdir=path
             )
             stdout = result["stdout"]
             stderr = result["stderr"]
@@ -710,7 +709,7 @@ class EnvironmentManager:
             logger.info(f"Environment '{environment_id}' (Pod: {pod_name}, PVC: {pvc_name}) destruction initiated.")
             # Optionnel : attendre que le pod soit effectivement supprimé
             try:
-                await asyncio.to_thread(self._ensure_pod_running, pod_name)
+                await self._ensure_pod_running(pod_name)
                 await asyncio.sleep(5)  # Attente courte pour laisser le temps à Kubernetes de traiter la suppression
             except client.ApiException as e:
                 logger.error(f"Kubernetes API Error destroying environment '{environment_id}': Status {e.status}, Reason {e.reason}, Body {e.body}", exc_info=True)

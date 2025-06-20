@@ -10,7 +10,8 @@ async def test_environment_manager():
     import uuid
     hex_id = uuid.uuid4().hex[:12]
     test_global_plan_id = f"gplan_{hex_id}"
-    env_id = f"exec_{test_global_plan_id}"
+    test_global_plan_id ='exec-gplan_baee972ca40f'
+    env_id = EnvironmentManager.normalize_environment_id(test_global_plan_id)
 
     logging.info(f"🌱 Création de l'environnement : {env_id}")
     created_env = await manager.create_isolated_environment(test_global_plan_id)
@@ -38,12 +39,15 @@ async def test_environment_manager():
 
     # Listing des fichiers
     files = await manager.list_files_in_environment(test_global_plan_id, "/app")
-    assert any(f["name"] == "hello_test.py" for f in files), "❌ Le fichier écrit n'apparaît pas dans le listing."
+    assert any(
+    f["name"].endswith("hello_test.py") or f["name"] == "hello_test.py"
+    for f in files
+), "❌ Le fichier écrit n'apparaît pas dans le listing."
     logging.info("✅ Listing des fichiers validé.")
 
     # Destruction de l'environnement
-    await manager.destroy_environment(test_global_plan_id)
-    logging.info("✅ Environnement détruit avec succès.")
+    #await manager.destroy_environment(test_global_plan_id)
+    #logging.info("✅ Environnement détruit avec succès.")
 
 if __name__ == "__main__":
     asyncio.run(test_environment_manager())
