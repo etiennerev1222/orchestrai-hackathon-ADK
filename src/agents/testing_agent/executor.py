@@ -10,9 +10,10 @@ from a2a.types import (
 from a2a.utils import new_text_artifact, new_agent_text_message, new_task
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events.event_queue import EventQueue
-import json
 from src.services.environment_manager.environment_manager import EnvironmentManager
 from typing_extensions import override
+from src.shared.agent_state import AgentOperationalState
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
 
         self.environment_manager = EnvironmentManager()
         self.agent_logic.set_environment_manager(self.environment_manager)
+        self.current_environment_id: str | None = None
 
     def _create_artifact_from_result(self, result_data: str, task: Task) -> Artifact:
         """
@@ -43,9 +45,17 @@ class TestingAgentExecutor(BaseAgentExecutor):
 
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        self.state = AgentOperationalState.WORKING
+        self.current_task_id = context.current_task.id if context.current_task else None
+        self.last_activity_time = time.time()
+        self.status_detail = "Préparation de la tâche"
+        await self._notify_gra_of_status_change()
+
         current_task_id = context.current_task.id if context.current_task else "N/A"
         current_context_id = context.context_id or (context.message.contextId if context.message else "N/A")
-        self.logger.info(f"TestingAgentExecutor.execute appelé pour la tâche {current_task_id}, contexte {current_context_id}")
+        self.logger.info(
+            f"TestingAgentExecutor.execute appelé pour la tâche {current_task_id}, contexte {current_context_id}"
+        )
 
         message = context.message
         task = context.current_task
@@ -62,21 +72,39 @@ class TestingAgentExecutor(BaseAgentExecutor):
         input_json_str = self._extract_input_from_message(message)
 
         if input_json_str is None:
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
-                    text="Entrée utilisateur invalide ou manquante.",
-                    context_id=current_context_id, task_id=current_task_id)),
-                final=True, contextId=current_context_id, taskId=current_task_id
-            ))
+            await event_queue.enqueue_event(
+                TaskStatusUpdateEvent(
+                    status=TaskStatus(
+                        state=TaskState.failed,
+                        message=new_agent_text_message(
+                            text="Entrée utilisateur invalide ou manquante.",
+                            context_id=current_context_id,
+                            task_id=current_task_id,
+                        ),
+                    ),
+                    final=True,
+                    contextId=current_context_id,
+                    taskId=current_task_id,
+                )
+            )
+            self.status_detail = "Input invalide"
+            await self._notify_gra_of_status_change()
+            self._update_stats(success=False)
             return
 
         try:
             input_payload = json.loads(input_json_str)
-            environment_id = input_payload.get("environment_id")
+            provided_env = input_payload.get("environment_id")
 
-            if not environment_id:
+            if not provided_env:
                 raise ValueError("Environment ID missing in task input.")
 
+            self.current_environment_id = EnvironmentManager.normalize_environment_id(provided_env)
+            self.status_detail = "Création de l'environnement"
+            await self._notify_gra_of_status_change()
+            await self.environment_manager.create_isolated_environment(self.current_environment_id)
+            self.status_detail = "Environnement prêt"
+            await self._notify_gra_of_status_change()
 
 
             llm_action_str = await self.agent_logic.process(input_json_str, current_context_id)
@@ -86,6 +114,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
             final_state = TaskState.working
             is_final = False
             action_summary = ""
+            action_result_details = {}
 
             if action_type == "generate_test_code_and_write_file":
                 file_path = llm_action.get("file_path", "/app/test.py")
@@ -106,39 +135,105 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 )
 
                 code = await call_llm(prompt, system_prompt, json_mode=False)
-                await self.environment_manager.write_file_to_environment(environment_id, file_path, code)
-                action_summary = f"Code de test généré et écrit dans {file_path}."
+                self.status_detail = f"Génération du fichier {file_path}"
+                await self._notify_gra_of_status_change()
+
+                tool_result = await self.environment_manager.safe_tool_call(
+                    self.environment_manager.write_file_to_environment(
+                        self.current_environment_id, file_path, code
+                    ),
+                    f"Écriture du fichier {file_path}",
+                )
+                if tool_result is None:
+                    action_summary = (
+                        f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                    )
+                    action_result_details = {"error": action_summary}
+                elif isinstance(tool_result, dict) and "error" in tool_result:
+                    action_summary = tool_result["error"]
+                    action_result_details = tool_result
+                else:
+                    action_summary = f"Code de test généré et écrit dans {file_path}."
+                    action_result_details = {"file_path": file_path}
 
             elif action_type == "execute_command":
                 command = llm_action.get("command")
                 workdir = llm_action.get("workdir", "/app")
-                result = await self.environment_manager.execute_command_in_environment(environment_id, command, workdir)
-                action_summary = f"Commande '{command}' exécutée. Exit: {result['exit_code']}. Stdout: {result['stdout'][:100]}... Stderr: {result['stderr'][:100]}..."
-                if result['exit_code'] != 0:
-                    final_state = TaskState.failed
-                    is_final = True
+                self.status_detail = f"Exécution de la commande: {command}"
+                await self._notify_gra_of_status_change()
+
+                tool_result = await self.environment_manager.safe_tool_call(
+                    self.environment_manager.execute_command_in_environment(
+                        self.current_environment_id, command, workdir
+                    ),
+                    f"Commande '{command}'",
+                )
+                if tool_result is None:
+                    action_summary = (
+                        f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                    )
+                    action_result_details = {"error": action_summary}
+                elif isinstance(tool_result, dict) and "error" in tool_result:
+                    action_summary = tool_result["error"]
+                    action_result_details = tool_result
+                else:
+                    action_summary = (
+                        f"Commande '{command}' exécutée. Exit: {tool_result['exit_code']}"
+                    )
+                    action_result_details = tool_result
+                    if tool_result["exit_code"] != 0:
+                        final_state = TaskState.failed
+                        is_final = True
 
             elif action_type == "read_file":
                 file_path = llm_action.get("file_path")
-                try:
-                    content = await self.environment_manager.read_file_from_environment(environment_id, file_path)
-                    action_summary = f"Fichier '{file_path}' lu. Contenu (début): {content[:100]}..."
-                except FileNotFoundError:
-                    action_summary = f"Erreur: Fichier '{file_path}' non trouvé."
-                    final_state = TaskState.failed
-                    is_final = True
-                except Exception as e:
-                    action_summary = f"Erreur lecture fichier '{file_path}': {str(e)}"
-                    final_state = TaskState.failed
-                    is_final = True
+                self.status_detail = f"Lecture du fichier {file_path}"
+                await self._notify_gra_of_status_change()
+
+                tool_result = await self.environment_manager.safe_tool_call(
+                    self.environment_manager.read_file_from_environment(
+                        self.current_environment_id, file_path
+                    ),
+                    f"Lecture du fichier {file_path}",
+                )
+                if tool_result is None:
+                    action_summary = (
+                        f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                    )
+                    action_result_details = {"error": action_summary}
+                elif isinstance(tool_result, dict) and "error" in tool_result:
+                    action_summary = tool_result["error"]
+                    action_result_details = tool_result
+                else:
+                    action_summary = f"Fichier '{file_path}' lu."
+                    action_result_details = {
+                        "file_path": file_path,
+                        "content": tool_result,
+                    }
 
             elif action_type == "list_directory":
                 path = llm_action.get("path", "/app")
-                result = await self.environment_manager.execute_command_in_environment(environment_id, f"ls -F {path}")
-                action_summary = f"Contenu de '{path}': {result['stdout']}. Exit code: {result['exit_code']}"
-                if result['exit_code'] != 0:
-                    final_state = TaskState.failed
-                    is_final = True
+                self.status_detail = f"Listing du répertoire {path}"
+                await self._notify_gra_of_status_change()
+
+                tool_result = await self.environment_manager.safe_tool_call(
+                    self.environment_manager.list_files_in_environment(
+                        self.current_environment_id, path
+                    ),
+                    f"Listing du répertoire {path}",
+                )
+
+                if tool_result is None:
+                    action_summary = (
+                        f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                    )
+                    action_result_details = {"error": action_summary}
+                elif isinstance(tool_result, dict) and "error" in tool_result:
+                    action_summary = tool_result["error"]
+                    action_result_details = tool_result
+                else:
+                    action_summary = f"Contenu de '{path}' listé."
+                    action_result_details = {"path": path, "files": tool_result}
 
             elif action_type == "complete_task":
                 action_summary = llm_action.get("summary", "Tâche de test complétée.")
@@ -150,32 +245,67 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 final_state = TaskState.failed
                 is_final = True
 
-            artifact = self._create_artifact_from_result(json.dumps({
-                "action_taken": action_type,
-                "summary": action_summary,
-                "details": llm_action
-            }), task)
+            artifact = self._create_artifact_from_result(
+                json.dumps({
+                    "action_taken": action_type,
+                    "summary": action_summary,
+                    "details": action_result_details,
+                }),
+                task,
+            )
 
             await event_queue.enqueue_event(TaskArtifactUpdateEvent(
                 append=False, contextId=current_context_id, taskId=current_task_id,
                 artifact=artifact, lastChunk=True
             ))
 
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                status=TaskStatus(state=final_state, message=new_agent_text_message(
-                    text=action_summary,
-                    context_id=current_context_id, task_id=current_task_id
-                )),
-                final=is_final, contextId=current_context_id, taskId=current_task_id
-            ))
+            self.status_detail = action_summary
+            await self._notify_gra_of_status_change()
+            await event_queue.enqueue_event(
+                TaskStatusUpdateEvent(
+                    status=TaskStatus(
+                        state=final_state,
+                        message=new_agent_text_message(
+                            text=action_summary,
+                            context_id=current_context_id,
+                            task_id=current_task_id,
+                        ),
+                    ),
+                    final=is_final,
+                    contextId=current_context_id,
+                    taskId=current_task_id,
+                )
+            )
+            self._update_stats(success=(final_state == TaskState.completed))
 
         except Exception as e:
-            self.logger.error(f"Erreur lors de l'exécution : {e}", exc_info=True)
-            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(
-                    text=f"Erreur interne : {str(e)}",
-                    context_id=current_context_id, task_id=current_task_id
-                )),
-                final=True, contextId=current_context_id, taskId=current_task_id
-            ))
-    
+            self.logger.error(
+                f"Erreur lors de l'exécution : {e}", exc_info=True
+            )
+            self.status_detail = f"Erreur: {e}"
+            await self._notify_gra_of_status_change()
+            await event_queue.enqueue_event(
+                TaskStatusUpdateEvent(
+                    status=TaskStatus(
+                        state=TaskState.failed,
+                        message=new_agent_text_message(
+                            text=f"Erreur interne : {str(e)}",
+                            context_id=current_context_id,
+                            task_id=current_task_id,
+                        ),
+                    ),
+                    final=True,
+                    contextId=current_context_id,
+                    taskId=current_task_id,
+                )
+            )
+            self._update_stats(success=False)
+        finally:
+            self.state = AgentOperationalState.IDLE
+            self.current_task_id = (
+                context.current_task.id if context.current_task else None
+            )
+            self.last_activity_time = time.time()
+            self.status_detail = None
+            await self._notify_gra_of_status_change()
+   
