@@ -494,6 +494,7 @@ function FileBrowser({ environmentId, planId }) {
   const [currentPath, setCurrentPath] = React.useState('.');
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const [preview, setPreview] = React.useState(null); // {name, content}
   const fileInputRef = React.useRef(null);
 
   const fetchFiles = React.useCallback(async path => {
@@ -566,6 +567,23 @@ function FileBrowser({ environmentId, planId }) {
       window.URL.revokeObjectURL(downloadUrl);
     } catch (err) {
       console.error('Download error:', err);
+      setError(err.message);
+    }
+  };
+
+  const handlePreview = async name => {
+    const filePath = currentPath === '.' ? name : `${currentPath}/${name}`;
+    const url = `${BACKEND_API_URL}/api/environments/${environmentId}/files/download?path=${encodeURIComponent(filePath)}`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Unable to load file');
+      }
+      const text = await response.text();
+      setPreview({ name, content: text });
+    } catch (err) {
+      console.error('Preview error:', err);
       setError(err.message);
     }
   };
@@ -687,11 +705,32 @@ function FileBrowser({ environmentId, planId }) {
                     Download
                   </button>
                 )}
+                {file.type === 'file' && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      handlePreview(file.name);
+                    }}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    View
+                  </button>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {preview && (
+        <div className="file-preview-overlay" onClick={() => setPreview(null)}>
+          <div className="file-preview" onClick={e => e.stopPropagation()}>
+            <span className="file-preview-close" onClick={() => setPreview(null)}>×</span>
+            <h4>{preview.name}</h4>
+            <pre>{preview.content}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
