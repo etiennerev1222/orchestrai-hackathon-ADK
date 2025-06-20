@@ -700,7 +700,24 @@ function App() {
     const wsUrl = `${BACKEND_API_URL.replace(/^http/, 'ws')}/ws/status`;
     const socket = new WebSocket(wsUrl);
     socket.onopen = () => console.log("WebSocket connection established.");
-    socket.onmessage = (event) => setAgents(JSON.parse(event.data));
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (Array.isArray(payload)) {
+          setAgents(payload);
+        } else {
+          if (payload.agents) setAgents(payload.agents);
+          if (payload.gra_status)
+            setGraHealth(
+              payload.gra_status.state?.toLowerCase() === "running"
+                ? "online"
+                : "offline"
+            );
+        }
+      } catch (err) {
+        console.error("Error parsing WebSocket payload", err);
+      }
+    };
     socket.onerror = (error) => console.error("WebSocket Error:", error);
     socket.onclose = () => console.log("WebSocket connection closed.");
     return () => socket.close();
