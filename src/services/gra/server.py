@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 from src.services.environment_manager.environment_manager import EnvironmentManager
+from kubernetes import client
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from src.shared.agent_state import AgentOperationalState
@@ -860,6 +861,9 @@ async def list_files(environment_id: str, path: Optional[str] = "."):
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) # Pour un env_id non valide
+    except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
+        logging.error(f"External connection error listing files for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
     except Exception as e:
         logging.error(f"Error listing files for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while listing files.")
@@ -884,6 +888,9 @@ async def download_file(environment_id: str, path: str):
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
+        logging.error(f"External connection error downloading file for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
     except Exception as e:
         logging.error(f"Error downloading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while downloading the file.")
@@ -907,8 +914,11 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
         await environment_manager.write_file_to_environment(env_id, filename, file_content)
 
         return {"message": f"File '{filename}' uploaded successfully to '{environment_id}'."}
-    except ValueError as e: # Erreur si l'env_id est invalide
+    except ValueError as e:  # Erreur si l'env_id est invalide
         raise HTTPException(status_code=404, detail=str(e))
+    except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
+        logging.error(f"External connection error uploading file for env '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
     except Exception as e:
         logging.error(f"Error uploading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred during file upload.")

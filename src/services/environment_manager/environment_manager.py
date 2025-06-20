@@ -120,6 +120,9 @@ class EnvironmentManager:
                 raise RuntimeError(f"Pod '{pod_name}' does not exist (404).")
             else:
                 raise
+        except Exception as e:
+            logger.error(f"Connection error while verifying pod '{pod_name}': {e}", exc_info=True)
+            raise RuntimeError(f"Failed to connect to Kubernetes API for pod '{pod_name}'.")
 
     async def _load_existing_environment_details(self, environment_id: str):
         """Tente de charger les détails d'un environnement depuis Firestore et K8s API."""
