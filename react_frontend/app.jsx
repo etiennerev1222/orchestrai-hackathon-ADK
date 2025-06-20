@@ -325,6 +325,12 @@ function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) 
         <div className="card-header">Plan ID</div>
         <div className="card-content">{plan.global_plan_id}</div>
       </div>
+      {plan.environment_id && (
+        <div className="plan-card">
+          <div className="card-header">Environment ID</div>
+          <div className="card-content">{plan.environment_id}</div>
+        </div>
+      )}
       <div className="plan-card">
         <div className="card-header">Raw Objective</div>
         <div className="card-content">{plan.raw_objective}</div>
@@ -754,8 +760,14 @@ function App() {
   }, [autoRefresh, selectedPlanId, refreshPlanDetails]);
   
   React.useEffect(() => {
-    if (planDetails && planDetails.team2_execution_plan_id) setActiveEnvironmentId(planDetails.team2_execution_plan_id);
-    else setActiveEnvironmentId(null);
+    if (planDetails) {
+      const envId = planDetails.environment_id ||
+        (planDetails.global_plan_id ? `exec-${planDetails.global_plan_id}` : null);
+      if (envId) setActiveEnvironmentId(envId);
+      else setActiveEnvironmentId(null);
+    } else {
+      setActiveEnvironmentId(null);
+    }
   }, [planDetails]);
 
   // --- 3. FONCTIONS MEMOIZED et HANDLERS ---
