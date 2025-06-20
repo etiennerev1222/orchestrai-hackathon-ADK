@@ -544,12 +544,30 @@ function FileBrowser({ environmentId, planId }) {
     fetchFiles(parentPath);
   };
 
-  const handleDownload = name => {
+  const handleDownload = async name => {
     const filePath = currentPath === '.' ? name : `${currentPath}/${name}`;
     const url = `${BACKEND_API_URL}/api/environments/${environmentId}/files/download?path=${encodeURIComponent(
       filePath
     )}`;
-    window.open(url, '_blank');
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Download failed');
+      }
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error('Download error:', err);
+      setError(err.message);
+    }
   };
 
   const handleUpload = async e => {
