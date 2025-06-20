@@ -101,7 +101,6 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             )  #
             self._update_stats(success=False)  #
             return
-
         try:
             # L'input initial du superviseur contient l'objectif.
             input_payload_from_supervisor = json.loads(user_input_json_str)  #
