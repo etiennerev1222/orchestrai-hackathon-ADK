@@ -1102,6 +1102,82 @@ class GlobalSupervisorLogic:
             "current_supervisor_state": new_state,
         }
 
+    async def retry_team2_failed_tasks(self, global_plan_id: str) -> Dict[str, Any]:
+        """Relance les tâches TEAM 2 actuellement en échec."""
+        current_plan = await self._load_global_plan_state(global_plan_id)
+        if not current_plan:
+            return {
+                "status": "error",
+                "message": f"Plan global '{global_plan_id}' non trouvé.",
+                "global_plan_id": global_plan_id,
+            }
+
+        exec_plan_id = current_plan.get("team2_execution_plan_id")
+        if not exec_plan_id:
+            return {
+                "status": "error",
+                "message": "Aucune exécution TEAM 2 associée à ce plan.",
+                "global_plan_id": global_plan_id,
+            }
+
+        team1_plan_id = current_plan.get("team1_plan_id")
+        if not team1_plan_id:
+            return {
+                "status": "error",
+                "message": "team1_plan_id manquant pour relancer TEAM 2.",
+                "global_plan_id": global_plan_id,
+            }
+
+        team1_text = self._get_final_plan_text_from_team1(team1_plan_id)
+        if not team1_text:
+            return {
+                "status": "error",
+                "message": "Impossible de récupérer le plan TEAM 1 final.",
+                "global_plan_id": global_plan_id,
+            }
+
+        exec_supervisor = ExecutionSupervisorLogic(
+            global_plan_id=global_plan_id,
+            team1_plan_final_text=team1_text,
+            execution_plan_id=exec_plan_id,
+            plan_environment_id=self.plan_environment_id,
+        )
+
+        await self._update_status(
+            AgentOperationalState.WORKING, f"Relance TEAM2 {global_plan_id}"
+        )
+        await exec_supervisor.retry_failed_tasks()
+        await self._update_status(
+            AgentOperationalState.IDLE, f"Relance TEAM2 terminée {global_plan_id}"
+        )
+
+        final_exec_status = exec_supervisor.task_graph.as_dict().get(
+            "overall_status", "UNKNOWN"
+        )
+
+        new_state = (
+            "TEAM2_EXECUTION_COMPLETED"
+            if final_exec_status.startswith("EXECUTION_COMPLETED")
+            else current_plan.get(
+                "current_supervisor_state", "TEAM2_EXECUTION_IN_PROGRESS"
+            )
+        )
+
+        await self._save_global_plan_state(
+            global_plan_id,
+            {
+                "current_supervisor_state": new_state,
+                "team2_status": final_exec_status,
+            },
+        )
+
+        return {
+            "status": "team2_failed_tasks_retried",
+            "message": final_exec_status,
+            "global_plan_id": global_plan_id,
+            "current_supervisor_state": new_state,
+        }
+
 
 async def main_test_global_supervisor():
     supervisor = GlobalSupervisorLogic()
