@@ -700,7 +700,17 @@ function App() {
     const wsUrl = `${BACKEND_API_URL.replace(/^http/, 'ws')}/ws/status`;
     const socket = new WebSocket(wsUrl);
     socket.onopen = () => console.log("WebSocket connection established.");
-    socket.onmessage = (event) => setAgents(JSON.parse(event.data));
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.agents) setAgents(payload.agents);
+        if (payload.gra_status?.state) {
+          setGraHealth(payload.gra_status.state.toLowerCase() === 'running' ? 'online' : 'offline');
+        }
+      } catch (err) {
+        console.error('Error parsing WebSocket payload', err);
+      }
+    };
     socket.onerror = (error) => console.error("WebSocket Error:", error);
     socket.onclose = () => console.log("WebSocket connection closed.");
     return () => socket.close();
@@ -713,12 +723,17 @@ function App() {
         const [plansRes, statsRes, healthRes] = await Promise.all([
           fetch(`${BACKEND_API_URL}/v1/global_plans_summary`),
           fetch(`${BACKEND_API_URL}/v1/stats/agents`),
-          fetch(`${BACKEND_API_URL}/health`),
+          fetch(`${BACKEND_API_URL}/gra_status`),
         ]);
         setPlans(await plansRes.json());
         const statsData = await statsRes.json();
         setStats(statsData.stats || []);
-        setGraHealth(healthRes.ok ? 'online' : 'offline');
+        try {
+          const graData = await healthRes.json();
+          setGraHealth(graData.state === 'running' ? 'online' : 'offline');
+        } catch {
+          setGraHealth(healthRes.ok ? 'online' : 'offline');
+        }
       } catch (err) {
         console.error('Error fetching polled data:', err);
       } finally {
