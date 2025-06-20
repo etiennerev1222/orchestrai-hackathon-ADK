@@ -57,6 +57,7 @@ WORKDIR /app
 COPY docker_build/${COMPONENT}/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY src /app/src
+COPY src/services/environment_manager/ca.pem /app/ca.pem
 ENV PYTHONPATH=/app
 ENV GKE_SSL_CA_CERT=/app/ca.pem
 CMD ${DOCKER_CMD}

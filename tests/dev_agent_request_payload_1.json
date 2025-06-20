@@ -3,7 +3,7 @@
   "method": "message/send",
   "params": {
     "message": {
-      "contextId": "test-manual-context-123",
+      "contextId": "gplan-122f8758cf14",
       "messageId": "msg-exec-$(uuidgen)", 
       "role": "user",
       "parts": [

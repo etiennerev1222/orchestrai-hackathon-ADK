@@ -55,8 +55,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             return self.current_environment_id
         return EnvironmentManager.normalize_environment_id(self.execution_plan_id)
 
-    # etiennerev1222/orchestrai-hackathon-adk/etiennerev1222-orchestrai-hackathon-ADK-d586faaf788627821ab712e191de5e893b702a13/src/agents/development_agent/executor.py
-
+    
     @override
     async def execute(
         self, context: RequestContext, event_queue: EventQueue
@@ -191,9 +190,39 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                             f"L'appel à l'outil pour {action_type} n'a rien retourné."
                         )
                         action_result_details = {"error": action_summary}
+
+                        self.failure_count = getattr(self, "failure_count", 0)
+                        self.failure_count += 1
+                        if self.failure_count >= 3:
+                            action_summary = f"Abandon après {self.failure_count} échecs consécutifs sur {action_type}."
+                            await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                                status=TaskStatus(
+                                    state=TaskState.failed,
+                                    message=new_agent_text_message(text=action_summary)
+                                ),
+                                final=True,
+                                contextId=current_context_id,
+                                taskId=current_task_id
+                            ))
+                            break  # Ou return                        
                     elif isinstance(tool_result, dict) and "error" in tool_result:
                         action_summary = tool_result["error"]
                         action_result_details = tool_result
+                        self.failure_count = getattr(self, "failure_count", 0)
+                        self.failure_count += 1
+                        if self.failure_count >= 3:
+                            action_summary = f"Abandon après {self.failure_count} échecs consécutifs sur {action_type}."
+                            await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                                status=TaskStatus(
+                                    state=TaskState.failed,
+                                    message=new_agent_text_message(text=action_summary)
+                                ),
+                                final=True,
+                                contextId=current_context_id,
+                                taskId=current_task_id
+                            ))
+                            break  # Ou return                        
+
                     else:
                         action_summary = f"Code généré et écrit dans {file_path}."
                         action_result_details = {
@@ -257,11 +286,12 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     await self._notify_gra_of_status_change()
 
                     tool_result = await self.environment_manager.safe_tool_call(
-                        self.environment_manager.execute_command_in_environment(
-                            self.current_environment_id, f"ls -F {path}"
+                        self.environment_manager.list_files_in_environment(
+                            self.current_environment_id, path
                         ),
                         f"Listing du répertoire {path}",
                     )
+
                     if tool_result is None:
                         action_summary = (
                             f"L'appel à l'outil pour {action_type} n'a rien retourné."

@@ -104,6 +104,30 @@ def create_app_instance() -> Starlette:
 
 app = create_app_instance()
 
+from starlette.responses import PlainTextResponse
+
+async def debug_env_endpoint(request):
+    # Vérifie la variable d'environnement
+    ca_cert_env = os.environ.get("GKE_SSL_CA_CERT", "Non défini")
+    
+    # Vérifie la présence du fichier
+    ca_pem_path = ca_cert_env if os.path.isfile(ca_cert_env) else "Fichier introuvable"
+
+    # Affiche quelques variables utiles
+    env_vars = {
+        "GKE_CLUSTER_ENDPOINT": os.environ.get("GKE_CLUSTER_ENDPOINT", "Non défini"),
+        "GKE_SSL_CA_CERT": ca_cert_env,
+        "Fichier ca.pem trouvé à": ca_pem_path
+    }
+    
+    output = "\n".join([f"{key}: {value}" for key, value in env_vars.items()])
+    return PlainTextResponse(output)
+
+# Ajoute la route dans app
+app.router.routes.append(
+    Route("/debug/env", endpoint=debug_env_endpoint, methods=["GET"])
+)
+
 if __name__ == "__main__":
     is_production = 'K_SERVICE' in os.environ
     port = int(os.environ.get("PORT", 8080))
