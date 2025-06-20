@@ -267,17 +267,18 @@ function AgentStatusBar({ agents, graHealth, stats }) {
       </div>
     </div>
   );
-    return (
-      <div className="agents-container">
-        {graCard}
-        {agentList.map(a => {
+  const supervisorsNames = ['GlobalSupervisorLogic', 'ExecutionSupervisorLogic'];
+  const supervisors = agentList.filter(a => supervisorsNames.includes(a.name));
+  const otherAgents = agentList.filter(a => !supervisorsNames.includes(a.name));
+
+  const renderCard = a => {
           const { className, icon } = getStatusInfo(a.health_status);
           const stateText = a.health_status?.state || 'Offline';
           const tooltip = `Skills: ${(a.skills || []).join(', ')}\n` +
                           `Internal: ${a.internal_url}\n` +
                           (a.public_url ? `URL: ${a.public_url}\n` : '') +
                           (a.health_status?.current_task_id ? `Task: ${a.health_status.current_task_id}` : 'No active task');
-          
+
           return (
             <div key={a.name} className="agent-card" title={tooltip}>
               <div className="agent-header">
@@ -295,7 +296,17 @@ function AgentStatusBar({ agents, graHealth, stats }) {
               </div>
             </div>
           );
-        })}
+        };
+
+  return (
+      <div className="agents-container">
+        <div className="agents-group">
+          {graCard}
+          {supervisors.map(renderCard)}
+        </div>
+        <div className="agents-group">
+          {otherAgents.map(renderCard)}
+        </div>
       </div>
     );
 }

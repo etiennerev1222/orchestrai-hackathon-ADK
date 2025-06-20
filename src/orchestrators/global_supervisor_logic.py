@@ -18,6 +18,7 @@ from src.orchestrators.planning_supervisor_logic import PlanningSupervisorLogic
 from src.shared.task_graph_management import TaskGraph, TaskState as Team1TaskStateEnum
 from src.orchestrators.execution_supervisor_logic import ExecutionSupervisorLogic
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
+from src.shared.stats_utils import update_agent_stats
 
 from a2a.types import Task, TaskState, TextPart
 
@@ -1002,6 +1003,10 @@ class GlobalSupervisorLogic:
             await self._update_status(
                 AgentOperationalState.IDLE, f"TEAM2 terminée {global_plan_id}"
             )
+
+            success = final_exec_status.startswith("EXECUTION_COMPLETED")
+            update_agent_stats("ExecutionSupervisorLogic", success)
+            update_agent_stats("GlobalSupervisorLogic", success)
         except Exception as e:
             logger.error(
                 f"[GS] Erreur majeure durant l'exécution de TEAM 2 pour '{global_plan_id}': {e}",
@@ -1018,6 +1023,8 @@ class GlobalSupervisorLogic:
             await self._update_status(
                 AgentOperationalState.ERROR, f"TEAM2 erreur {global_plan_id}"
             )
+            update_agent_stats("ExecutionSupervisorLogic", False)
+            update_agent_stats("GlobalSupervisorLogic", False)
 
     async def continue_team2_execution(self, global_plan_id: str) -> Dict[str, Any]:
         """Reprend l'exécution TEAM 2 pour un plan global existant."""
