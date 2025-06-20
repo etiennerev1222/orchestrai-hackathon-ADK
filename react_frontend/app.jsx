@@ -1015,16 +1015,30 @@ function App() {
       display(parseMaybeJson(nodeInfo.artifact_ref));
   } else {
       const artifact = nodeInfo.output_artifact_ref;
+      const initialRequest = nodeInfo.objective;
       if (artifact) {
         fetch(`${BACKEND_API_URL}/artifacts/${artifact}`)
           .then(r => r.json())
-          .then(d => display(parseMaybeJson(d.content)))
+          .then(d => {
+            const artContent = parseMaybeJson(d.content);
+            if (nodeInfo.state === 'failed') {
+              display({ initial_request: initialRequest, artifact: artContent });
+            } else {
+              display(artContent);
+            }
+          })
           .catch(() => {
             if (nodeInfo.state === 'failed')
-              display(nodeInfo.result_summary || 'Failure without details');
+              display({
+                initial_request: initialRequest,
+                summary: nodeInfo.result_summary || 'Failure without details'
+              });
           });
       } else if (nodeInfo.state === 'failed') {
-        display(nodeInfo.result_summary || 'Failure without details');
+        display({
+          initial_request: initialRequest,
+          summary: nodeInfo.result_summary || 'Failure without details'
+        });
       }
   }
 }
