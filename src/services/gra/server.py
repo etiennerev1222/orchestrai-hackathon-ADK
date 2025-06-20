@@ -907,8 +907,14 @@ async def list_files(environment_id: str, path: Optional[str] = "."):
         status = 404 if "does not exist" in str(e) else 503
         raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
-        logging.error(f"External connection error listing files for env '{environment_id}': {e}", exc_info=True)
-        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
+        logging.error(
+            f"External connection error listing files for env '{environment_id}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to communicate with environment: {e}",
+        )
     except Exception as e:
         logging.error(f"Error listing files for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while listing files.")
@@ -938,8 +944,14 @@ async def download_file(environment_id: str, path: str):
         status = 404 if "does not exist" in str(e) else 503
         raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
-        logging.error(f"External connection error downloading file for env '{environment_id}': {e}", exc_info=True)
-        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
+        logging.error(
+            f"External connection error downloading file for env '{environment_id}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to communicate with environment: {e}",
+        )
     except Exception as e:
         logging.error(f"Error downloading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while downloading the file.")
@@ -970,8 +982,14 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
         status = 404 if "does not exist" in str(e) else 503
         raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
-        logging.error(f"External connection error uploading file for env '{environment_id}': {e}", exc_info=True)
-        raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
+        logging.error(
+            f"External connection error uploading file for env '{environment_id}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to communicate with environment: {e}",
+        )
     except Exception as e:
         logging.error(f"Error uploading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred during file upload.")
