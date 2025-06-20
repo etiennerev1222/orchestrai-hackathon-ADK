@@ -120,6 +120,9 @@ class EnvironmentManager:
                 raise RuntimeError(f"Pod '{pod_name}' does not exist (404).")
             else:
                 raise
+        except Exception as e:
+            logger.error(f"Connection error while verifying pod '{pod_name}': {e}", exc_info=True)
+            raise RuntimeError(f"Failed to connect to Kubernetes API for pod '{pod_name}'.")
 
     async def _load_existing_environment_details(self, environment_id: str):
         """Tente de charger les détails d'un environnement depuis Firestore et K8s API."""
@@ -190,7 +193,7 @@ class EnvironmentManager:
 
    
 
-    async def create_isolated_environment(self, environment_id: str, base_image: str = "python:3.9-slim-buster") -> str:
+    async def create_isolated_environment(self, environment_id: str, base_image: str = "gcr.io/orchestrai-hackathon/python-devtools:3.9-full") -> str:
         environment_id = EnvironmentManager.normalize_environment_id(environment_id)
         safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
 
@@ -402,20 +405,18 @@ class EnvironmentManager:
         await self._ensure_pod_running(pod_name)
 
         return pod_name
-
-    async def safe_tool_call(self, tool_coro, action_description, timeout_sec=60):
-        """
-        Exécute un outil avec gestion des exceptions et du timeout.
-        Retourne un dict avec le résultat ou l'erreur.
-        """
+    async def safe_tool_call(self, tool_coro, description: str, timeout_sec: int = 60) -> dict:
         try:
-            return await asyncio.wait_for(tool_coro, timeout=timeout_sec)
+            result = await asyncio.wait_for(tool_coro, timeout=timeout_sec)
+            return result
         except asyncio.TimeoutError:
-            self.logger.warning(f"{action_description} a échoué: timeout après {timeout_sec}s.")
-            return {"error": f"Timeout: {action_description} a pris plus de {timeout_sec}s."}
+            msg = f"Le délai d'exécution de l'outil a été dépassé pour : {description}"
+            logger.error(msg)
+            return {"error": msg}
         except Exception as e:
-            self.logger.warning(f"{action_description} a échoué: {e}")
-            return {"error": f"Erreur: {str(e)}"}
+            msg = f"Erreur lors de l'appel de l'outil ({description}): {str(e)}"
+            logger.error(msg, exc_info=True)
+            return {"error": msg}
 
     async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:
         pod_name = await self._get_valid_pod_name(environment_id)
@@ -613,20 +614,19 @@ class EnvironmentManager:
         # -printf '{"name":"%f", "type":"%y", "size":%s, "mtime":%T@}\n'
         # %f: Nom du fichier, %y: Type (d=dir, f=file), %s: Taille, %T@: Mtime en timestamp Unix
         # On échappe les guillemets pour le shell.
-        command = [
-            "/bin/sh",
-            "-c",
-            # On se place dans le bon répertoire et on exécute find
-            # On pipe vers 'jq' pour s'assurer que c'est bien un JSON valide et pour l'encapsuler dans un tableau
-            f"cd /workspace/{path.lstrip('/')} && find . -maxdepth 1 -mindepth 1 -printf '{{\"name\":\"%f\", \"type\":\"%y\", \"size\":%s, \"mtime\":%T@}}\\n' | jq -s ."
-        ]
+        workdir = f"/workspace{path}"  # Assure-toi que /workspace est ton point de montage racine dans le pod
+        cmd_str = (
+            f"cd {path} && "
+            "find . -maxdepth 1 -mindepth 1 "
+            "-exec stat -c '{\"name\":\"%n\", \"type\":\"%F\", \"size\":%s, \"mtime\":%Y}' {} \\; | jq -s ."
+        )
 
         try:
             # Réutilise la logique de `execute_command_in_pod`
             result = await self.execute_command_in_environment(
                 environment_id,
-                command,
-                workdir=f"/workspace/{path.lstrip('/')}"
+                cmd_str,
+                workdir=path
             )
             stdout = result["stdout"]
             stderr = result["stderr"]
@@ -709,7 +709,7 @@ class EnvironmentManager:
             logger.info(f"Environment '{environment_id}' (Pod: {pod_name}, PVC: {pvc_name}) destruction initiated.")
             # Optionnel : attendre que le pod soit effectivement supprimé
             try:
-                await asyncio.to_thread(self._ensure_pod_running, pod_name)
+                await self._ensure_pod_running(pod_name)
                 await asyncio.sleep(5)  # Attente courte pour laisser le temps à Kubernetes de traiter la suppression
             except client.ApiException as e:
                 logger.error(f"Kubernetes API Error destroying environment '{environment_id}': Status {e.status}, Reason {e.reason}, Body {e.body}", exc_info=True)

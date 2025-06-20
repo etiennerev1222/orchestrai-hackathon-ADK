@@ -703,12 +703,14 @@ function App() {
     socket.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
+
         if (payload.agents) setAgents(payload.agents);
         if (payload.gra_status?.state) {
           setGraHealth(payload.gra_status.state.toLowerCase() === 'running' ? 'online' : 'offline');
         }
       } catch (err) {
         console.error('Error parsing WebSocket payload', err);
+
       }
     };
     socket.onerror = (error) => console.error("WebSocket Error:", error);

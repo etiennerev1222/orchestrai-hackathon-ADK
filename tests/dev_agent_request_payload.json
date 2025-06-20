@@ -3,7 +3,7 @@
   "method": "message/send",
   "params": {
     "message": {
-      "contextId": "exec_default",
+      "contextId": "gplan-122f8758cf14",
       "messageId": "msg-a8e5f1d7-2c3b-4e0d-8a1c-9b6f7e8d9c0b",
       "role": "user",
       "parts": [

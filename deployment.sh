@@ -39,6 +39,8 @@ function configure() {
         local COMPONENT_DIR="$BUILD_DIR/$COMPONENT"
         mkdir -p "$COMPONENT_DIR"
         cp "$ROOT_DIR/$REQUIREMENTS_FILE" "$COMPONENT_DIR/requirements.txt"
+        cp "$ROOT_DIR/src/services/environment_manager/ca.pem" "$COMPONENT_DIR/ca.pem"
+
         
         if [ "$COMPONENT" == "gra_server" ]; then
             local PUBLIC_PORT=8000; local INTERNAL_PORT=8000
@@ -55,7 +57,9 @@ WORKDIR /app
 COPY docker_build/${COMPONENT}/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY src /app/src
+COPY src/services/environment_manager/ca.pem /app/ca.pem
 ENV PYTHONPATH=/app
+ENV GKE_SSL_CA_CERT=/app/ca.pem
 CMD ${DOCKER_CMD}
 EOF
         cat <<EOF >> "$DOCKER_COMPOSE_PATH"
@@ -74,6 +78,8 @@ EOF
       - PUBLIC_URL=http://localhost:${PUBLIC_PORT}
       - INTERNAL_URL=http://${COMPONENT}:${INTERNAL_PORT}
       - AGENT_NAME=${COMPONENT}
+      - GKE_SSL_CA_CERT=/app/ca.pem
+
     volumes:
       - ./credentials.json:/app/credentials.json:ro
 EOF
@@ -226,7 +232,7 @@ function deploy_gcp() {
       --region=${GCP_REGION} \
       --allow-unauthenticated \
       --port=8000 \
-      --set-env-vars="${COMMON_AGENT_ENV_VARS}" \
+      --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS}" \
       --project=${GCP_PROJECT_ID} \
       --vpc-connector="${CONNECTOR_NAME}" \
     
@@ -239,7 +245,7 @@ function deploy_gcp() {
     
     gcloud run services update gra-server \
         --region=${GCP_REGION} \
-        --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+        --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
         --project=${GCP_PROJECT_ID}
     echo "    -> Mise à jour de 'gra-server' avec ses URLs...Terminée."
             
@@ -283,7 +289,7 @@ function deploy_gcp() {
           --region=${GCP_REGION} \
           --no-allow-unauthenticated \
           --port=8080 \
-          --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
+          --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
           --vpc-connector="${CONNECTOR_NAME}" \
           --project=${GCP_PROJECT_ID}
         
@@ -297,7 +303,7 @@ function deploy_gcp() {
         
         gcloud run services update ${AGENT_SERVICE_NAME} \
             --region=${GCP_REGION} \
-            --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
+            --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
             --project=${GCP_PROJECT_ID}
 
         echo "        ✅ '${AGENT_SERVICE_NAME}' déployé et configuré."
@@ -384,7 +390,7 @@ function deploy_single_agent() {
       --region=${GCP_REGION} \
       --no-allow-unauthenticated \
       --port=8080 \
-      --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
+      --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
       --vpc-connector="${CONNECTOR_NAME}" \
       --project=${GCP_PROJECT_ID}
     
@@ -397,7 +403,7 @@ function deploy_single_agent() {
     echo "    -> Mise à jour de '${AGENT_SERVICE_NAME}' avec ses URLs publiques..."
     gcloud run services update ${AGENT_SERVICE_NAME} \
         --region=${GCP_REGION} \
-        --set-env-vars="${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
+        --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
         --project=${GCP_PROJECT_ID}
 
     echo "    ✅ Agent '${AGENT_SERVICE_NAME}' déployé et configuré avec l'URL : ${AGENT_PUBLIC_URL}"
