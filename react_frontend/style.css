@@ -121,9 +121,14 @@ input {
 
 .agents-container {
   display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.agents-group {
+  display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-bottom: 1rem;
 }
 
 .agent-card {

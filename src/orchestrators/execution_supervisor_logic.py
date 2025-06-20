@@ -23,6 +23,7 @@ from src.agents.decomposition_agent.logic import AGENT_SKILL_DECOMPOSE_EXECUTION
 
 from src.services.environment_manager.environment_manager import EnvironmentManager
 from src.shared.agent_state import AgentOperationalState
+from src.shared.stats_utils import update_agent_stats
 
 GLOBAL_PLAN_COLLECTION = "global_plans"
 logger = logging.getLogger(__name__)
@@ -867,6 +868,8 @@ class ExecutionSupervisorLogic:
         await self._update_status(
             AgentOperationalState.IDLE, f"Exécution terminée: {final_status}"
         )
+        success = final_status.startswith("EXECUTION_COMPLETED")
+        update_agent_stats("ExecutionSupervisorLogic", success)
 
     async def continue_execution(self, max_cycles: int = 5):
         """Reprendre un plan existant pour traiter les tâches restantes."""
@@ -946,6 +949,9 @@ class ExecutionSupervisorLogic:
                 f"[{self.execution_plan_id}] Environment '{self.execution_plan_id}' cleaned up after continuation."
             )
         await self._update_status(AgentOperationalState.IDLE, "Reprise terminée")
+        final_status = self.task_graph.as_dict().get("overall_status", "UNKNOWN")
+        success = final_status.startswith("EXECUTION_COMPLETED")
+        update_agent_stats("ExecutionSupervisorLogic", success)
 
     async def retry_failed_tasks(self, max_cycles: int = 5):
         """Relance uniquement les tâches actuellement en échec."""
@@ -978,6 +984,9 @@ class ExecutionSupervisorLogic:
 
         await self.continue_execution(max_cycles=max_cycles)
         await self._update_status(AgentOperationalState.IDLE, "Relance terminée")
+        final_status = self.task_graph.as_dict().get("overall_status", "UNKNOWN")
+        success = final_status.startswith("EXECUTION_COMPLETED")
+        update_agent_stats("ExecutionSupervisorLogic", success)
 
     async def _get_all_available_execution_skills_from_gra(self) -> List[str]:
         self.logger.info(
