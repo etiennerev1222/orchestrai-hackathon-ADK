@@ -166,7 +166,14 @@ class ConnectionManager:
             await connection.send_text(message)
 
 manager = ConnectionManager()
+# Cache in-memory des statuts des agents.
 agent_statuses: Dict[str, Dict[str, Any]] = {}
+# Statut interne du serveur GRA lui-même.
+gra_status: Dict[str, Any] = {
+    "state": "starting",
+    "detail": "Initialization",
+    "last_update": datetime.now(timezone.utc).isoformat(),
+}
 class GoogleIDTokenAuth(httpx.Auth):
     """
     Classe d'authentification pour httpx qui injecte un Google ID Token.
@@ -220,6 +227,13 @@ async def lifespan(app: Starlette):
     MODIFIÉ : Gère le cycle de vie, y compris l'initialisation du cache au démarrage.
     """
     logger.info("[GRA] Démarrage du cycle de vie (lifespan)...")
+    gra_status.update(
+        {
+            "state": "starting",
+            "detail": "Loading cache",
+            "last_update": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     
     # --- BLOC À AJOUTER : Initialisation du cache des statuts ---
     logger.info("[GRA] Initialisation du cache des statuts depuis Firestore...")
@@ -241,10 +255,30 @@ async def lifespan(app: Starlette):
         except Exception as e:
             logger.error(f"[GRA] Erreur lors de l'initialisation du cache depuis Firestore: {e}", exc_info=True)
     # -----------------------------------------------------------
+    gra_status.update(
+        {
+            "state": "running",
+            "detail": "Ready",
+            "last_update": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    await manager.broadcast(
+        json.dumps({"gra_status": gra_status, "agents": list(agent_statuses.values())}, default=json_serializer)
+    )
     await publish_gra_location()
 
-    yield # L'application tourne ici
+    yield  # L'application tourne ici
 
+    gra_status.update(
+        {
+            "state": "stopped",
+            "detail": "Server shutdown",
+            "last_update": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    await manager.broadcast(
+        json.dumps({"gra_status": gra_status, "agents": list(agent_statuses.values())}, default=json_serializer)
+    )
     logger.info("[GRA] Arrêt du cycle de vie (lifespan)...")
 
 
@@ -258,6 +292,12 @@ app = FastAPI(
 @app.get("/health")
 async def healthcheck():
     return {"status": "ok"}
+
+
+@app.get("/gra_status")
+async def get_gra_status():
+    """Retourne le statut actuel du serveur GRA."""
+    return gra_status
 
 app.add_middleware(
     CORSMiddleware,
@@ -626,7 +666,7 @@ async def get_agents_status_endpoint():
             agent_statuses[agent_name] = agent_data
 
     # Retourne la vue la plus à jour
-    return list(agent_statuses.values())
+    return {"gra_status": gra_status, "agents": list(agent_statuses.values())}
 
 @app.post("/v1/global_plans/{global_plan_id}/accept_and_plan", response_model=GlobalPlanResponse)
 async def accept_objective_and_trigger_team1_planning(
@@ -860,7 +900,12 @@ async def list_files(environment_id: str, path: Optional[str] = "."):
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) # Pour un env_id non valide
+        raise HTTPException(status_code=404, detail=str(e))  # Pour un env_id non valide
+    except RuntimeError as e:
+        # Erreurs courantes renvoyées par l'EnvironmentManager (pod manquant ou état incorrect)
+        logging.error(f"Runtime error listing files for env '{environment_id}': {e}", exc_info=True)
+        status = 404 if "does not exist" in str(e) else 503
+        raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
         logging.error(f"External connection error listing files for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
@@ -888,6 +933,10 @@ async def download_file(environment_id: str, path: str):
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        logging.error(f"Runtime error downloading file for env '{environment_id}': {e}", exc_info=True)
+        status = 404 if "does not exist" in str(e) else 503
+        raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
         logging.error(f"External connection error downloading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
@@ -916,6 +965,10 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
         return {"message": f"File '{filename}' uploaded successfully to '{environment_id}'."}
     except ValueError as e:  # Erreur si l'env_id est invalide
         raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        logging.error(f"Runtime error uploading file for env '{environment_id}': {e}", exc_info=True)
+        status = 404 if "does not exist" in str(e) else 503
+        raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
         logging.error(f"External connection error uploading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
@@ -930,7 +983,8 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # On envoie l'état actuel dès la connexion
         # MODIFICATION ICI : ajout de default=json_serializer
-        await websocket.send_text(json.dumps(list(agent_statuses.values()), default=json_serializer))
+        payload = {"gra_status": gra_status, "agents": list(agent_statuses.values())}
+        await websocket.send_text(json.dumps(payload, default=json_serializer))
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
@@ -951,11 +1005,26 @@ async def update_agent_status(status_update: Dict[str, Any]):
     # ---------------------
 
     # Mettre à jour le sous-objet "health_status"
+    status_update['timestamp'] = datetime.now(timezone.utc).isoformat()
     current_agent_info['health_status'] = status_update
 
-    # Remettre l'objet complet et corrigé dans le cache
+    history = current_agent_info.get('status_history', [])
+    history.append(status_update)
+    # Conserver uniquement les 10 dernières entrées
+    current_agent_info['status_history'] = history[-10:]
+
     agent_statuses[agent_name] = current_agent_info
-    await manager.broadcast(json.dumps(list(agent_statuses.values()), default=json_serializer))
+
+    gra_status.update(
+        {
+            "state": "running",
+            "detail": f"Update from {agent_name}",
+            "last_update": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+    payload = {"gra_status": gra_status, "agents": list(agent_statuses.values())}
+    await manager.broadcast(json.dumps(payload, default=json_serializer))
     return {"status": "received"}
 
 if __name__ == "__main__":
