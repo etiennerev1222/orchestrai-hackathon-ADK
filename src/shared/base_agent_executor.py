@@ -183,6 +183,29 @@ class BaseAgentExecutor(AgentExecutor, ABC):
                 f"Impossible de mettre à jour les statistiques pour {agent_name_for_log}: {e}"
             )
 
+    async def _update_task_state(self, state: TaskState, details: str | None = None):
+        """Persist a minimal task state update for monitoring purposes."""
+        if not self.current_task_id:
+            logger.warning("_update_task_state appelé sans current_task_id")
+            return
+        try:
+            if db:
+                from google.cloud import firestore
+
+                db.collection("agent_task_states").document(self.current_task_id).set(
+                    {
+                        "state": state.value,
+                        "details": details,
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                    },
+                    merge=True,
+                )
+            logger.info(
+                f"Tâche {self.current_task_id} mise à jour -> {state.value} ({details})"
+            )
+        except Exception as e:
+            logger.error(f"Erreur lors de _update_task_state: {e}")
+
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         # VÉRIFIEZ QUE CE BLOC EST PRÉSENT

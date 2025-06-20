@@ -418,6 +418,15 @@ class EnvironmentManager:
             logger.error(msg, exc_info=True)
             return {"error": msg}
 
+    async def safe_execute_command_in_environment(
+        self, environment_id: str, command: str, workdir: str = "/app"
+    ) -> dict:
+        """Alias combinant execute_command_in_environment et safe_tool_call."""
+        return await self.safe_tool_call(
+            self.execute_command_in_environment(environment_id, command, workdir),
+            description=f"execute_command_in_environment: {command}"
+        )
+
     async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:
         pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"
