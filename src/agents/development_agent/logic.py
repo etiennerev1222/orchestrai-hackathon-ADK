@@ -74,6 +74,7 @@ class DevelopmentAgentLogic(BaseAgentLogic):
             self.logger.info(f"DevelopmentAgentLogic - Réponse LLM (prochaine action): {llm_response_str}")
             # Valider que la réponse est un JSON est une bonne pratique, mais on la retourne directement
             # à l'exécuteur qui gérera le parsing et la validation.
+            logger.debug(f"Action LLM décidée: - Payload: {llm_response_str}")
             return llm_response_str
         except Exception as e:
             self.logger.error(f"DevelopmentAgentLogic - Échec lors de la décision de l'action par le LLM: {e}", exc_info=True)

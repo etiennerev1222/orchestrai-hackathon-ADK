@@ -167,8 +167,9 @@ class TestingAgentExecutor(BaseAgentExecutor):
                         f"Erreur inattendue non capturée par safe_tool_call : {e}",
                         exc_info=True,
                     )
-                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    #await self._update_task_state(TaskState.FAILED, details=str(e))
                     tool_result = {"error": str(e)}
+
                 if tool_result is None:
                     action_summary = (
                         f"L'appel à l'outil pour {action_type} n'a rien retourné."
@@ -203,7 +204,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
                         f"Erreur inattendue non capturée par safe_tool_call : {e}",
                         exc_info=True,
                     )
-                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    #await self._update_task_state(TaskState.FAILED, details=str(e))
                     tool_result = {"error": str(e)}
                 if tool_result is None:
                     action_summary = (
@@ -239,7 +240,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
                         f"Erreur inattendue non capturée par safe_tool_call : {e}",
                         exc_info=True,
                     )
-                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    #await self._update_task_state(TaskState.FAILED, details=str(e))
                     tool_result = {"error": str(e)}
                 if tool_result is None:
                     action_summary = (
@@ -273,7 +274,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
                         f"Erreur inattendue non capturée par safe_tool_call : {e}",
                         exc_info=True,
                     )
-                    await self._update_task_state(TaskState.FAILED, details=str(e))
+                    #await self._update_task_state(TaskState.FAILED, details=str(e))
                     tool_result = {"error": str(e)}
 
                 if tool_result is None:

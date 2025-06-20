@@ -6,5 +6,8 @@ class AgentOperationalState(str, Enum):
     IDLE = "IDLE"
     BUSY = "Busy"
     WORKING = "Working"
+    TOOLSCALL = "Toolscall"
+    TASKCOMPLETED = "TaskCompleted"
+    TASKFAILED = "TaskFailed"
     SLEEPING = "Sleeping"
     ERROR = "Error"

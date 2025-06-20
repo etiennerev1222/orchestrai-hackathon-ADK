@@ -268,15 +268,15 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                             self.logger.warning(
                                 f"Tâche échouée contrôlée : {tool_result['error']}"
                             )
-                            await self._update_task_state(
-                                TaskState.FAILED, details=tool_result["error"]
-                            )
+                            #await self._update_task_state(  TaskState.FAILED, details=tool_result["error"])
+                            action_summary = tool_result["error"]
+                            action_result_details = tool_result
                     except Exception as e:
                         self.logger.error(
                             f"Erreur inattendue non capturée par safe_tool_call : {e}",
                             exc_info=True,
                         )
-                        await self._update_task_state(TaskState.FAILED, details=str(e))
+                        #await self._update_task_state(TaskState.FAILED, details=str(e))
                         tool_result = {"error": str(e)}
                     if tool_result is None:
                         action_summary = (
@@ -307,7 +307,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                             f"Erreur inattendue non capturée par safe_tool_call : {e}",
                             exc_info=True,
                         )
-                        await self._update_task_state(TaskState.FAILED, details=str(e))
+                        #await self._update_task_state(TaskState.FAILED, details=str(e))
                         tool_result = {"error": str(e)}
                     if tool_result is None:
                         action_summary = (
@@ -341,7 +341,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                             f"Erreur inattendue non capturée par safe_tool_call : {e}",
                             exc_info=True,
                         )
-                        await self._update_task_state(TaskState.FAILED, details=str(e))
+                        #await self._update_task_state(TaskState.FAILED, details=str(e))
                         tool_result = {"error": str(e)}
 
                     if tool_result is None:

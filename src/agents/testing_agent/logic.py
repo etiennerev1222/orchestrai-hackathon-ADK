@@ -95,7 +95,9 @@ class TestingAgentLogic(BaseAgentLogic):
             
             deliverable_code = input_artifacts_content.get("code_to_test") 
             test_cases_str_or_list = input_artifacts_content.get("test_cases_file") 
-
+            if not deliverable_code:
+                deliverable_code = input_artifacts_content.get("deliverable")
+                
             self.logger.info(f"TestingAgent (software_testing) code_to_test: {'Présent' if deliverable_code else 'MANQUANT OU VIDE'}")
             self.logger.info(f"TestingAgent (software_testing) test_cases_file: {'Présent' if test_cases_str_or_list else 'MANQUANT OU VIDE'}")
             if isinstance(deliverable_code, str) and deliverable_code.strip():
