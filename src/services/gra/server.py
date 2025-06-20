@@ -860,7 +860,12 @@ async def list_files(environment_id: str, path: Optional[str] = "."):
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) # Pour un env_id non valide
+        raise HTTPException(status_code=404, detail=str(e))  # Pour un env_id non valide
+    except RuntimeError as e:
+        # Erreurs courantes renvoyées par l'EnvironmentManager (pod manquant ou état incorrect)
+        logging.error(f"Runtime error listing files for env '{environment_id}': {e}", exc_info=True)
+        status = 404 if "does not exist" in str(e) else 503
+        raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
         logging.error(f"External connection error listing files for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
@@ -888,6 +893,10 @@ async def download_file(environment_id: str, path: str):
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        logging.error(f"Runtime error downloading file for env '{environment_id}': {e}", exc_info=True)
+        status = 404 if "does not exist" in str(e) else 503
+        raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
         logging.error(f"External connection error downloading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
@@ -916,6 +925,10 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
         return {"message": f"File '{filename}' uploaded successfully to '{environment_id}'."}
     except ValueError as e:  # Erreur si l'env_id est invalide
         raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        logging.error(f"Runtime error uploading file for env '{environment_id}': {e}", exc_info=True)
+        status = 404 if "does not exist" in str(e) else 503
+        raise HTTPException(status_code=status, detail=str(e))
     except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
         logging.error(f"External connection error uploading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="Unable to communicate with environment.")
