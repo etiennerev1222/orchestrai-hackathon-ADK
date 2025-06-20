@@ -249,7 +249,8 @@ function AgentStatusBar({ agents, graHealth, stats }) {
         }
     };
 
-    if (!agents?.length && !graHealth) return null;
+  const agentList = Array.isArray(agents) ? agents : [];
+  if (!agentList.length && !graHealth) return null;
 
   // La carte pour le GRA reste inchangée
   const graCard = (
@@ -269,7 +270,7 @@ function AgentStatusBar({ agents, graHealth, stats }) {
     return (
       <div className="agents-container">
         {graCard}
-        {agents.map(a => {
+        {agentList.map(a => {
           const { className, icon } = getStatusInfo(a.health_status);
           const stateText = a.health_status?.state || 'Offline';
           const tooltip = `Skills: ${(a.skills || []).join(', ')}\n` +
@@ -706,7 +707,12 @@ function App() {
         if (Array.isArray(payload)) {
           setAgents(payload);
         } else {
-          if (payload.agents) setAgents(payload.agents);
+          if (payload.agents) {
+            const list = Array.isArray(payload.agents)
+              ? payload.agents
+              : Object.values(payload.agents);
+            setAgents(list);
+          }
           if (payload.gra_status)
             setGraHealth(
               payload.gra_status.state?.toLowerCase() === "running"
