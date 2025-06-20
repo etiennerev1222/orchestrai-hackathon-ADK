@@ -104,7 +104,8 @@ async def get_agents_status_with_health_from_api():
         try:
             response_agents = await client.get(f"{BACKEND_API_URL}/agents_status", timeout=10.0)
             response_agents.raise_for_status()
-            agents_list = response_agents.json()
+            data = response_agents.json()
+            agents_list = data.get("agents") if isinstance(data, dict) else data
 
             async def fetch_health_and_card(agent: Dict[str, Any]):
                 url = agent.get("public_url")

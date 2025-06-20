@@ -65,7 +65,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
         self.current_task_id = context.current_task.id if context.current_task else None
         self.last_activity_time = time.time()
         self.status_detail = "Préparation de la tâche"
-        await self._notify_gra_of_status_change()  # notifier le début
+        await self._notify_gra_of_status_change()  # Notifier le début
 
         # --- Initialisation de la tâche ---
         task_context_id_for_log = context.context_id or (
@@ -106,20 +106,16 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             input_payload_from_supervisor = json.loads(user_input_json_str)  #
 
             # Récupération de l'ID de l'environnement
-            provided_env = input_payload_from_supervisor.get("environment_id")  #
-            if not provided_env:  #
-                raise ValueError(
-                    "Environment ID est manquant dans l'input de la tâche."
-                )
 
-            self.current_environment_id = EnvironmentManager.normalize_environment_id(
-                provided_env
-            )  #
+            provided_env = input_payload_from_supervisor.get("environment_id") #
+            if not provided_env: #
+                raise ValueError("Environment ID est manquant dans l'input de la tâche.")
+            
+            self.current_environment_id = EnvironmentManager.normalize_environment_id(provided_env) #
             self.status_detail = "Création de l'environnement"
             await self._notify_gra_of_status_change()
-            await self.environment_manager.create_isolated_environment(
-                self.current_environment_id
-            )  #
+            await self.environment_manager.create_isolated_environment(self.current_environment_id) #
+
             self.status_detail = "Environnement prêt"
             await self._notify_gra_of_status_change()
 
@@ -172,9 +168,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 # 3. Exécuter l'action demandée par le LLM
                 if action_type == "generate_code_and_write_file":
                     file_path = llm_action_payload.get("file_path", "/app/main.py")
-                    code_to_write = await self._generate_code_from_specs(
-                        llm_action_payload
-                    )
+
+                    code_to_write = await self._generate_code_from_specs(llm_action_payload)
+
                     self.status_detail = f"Génération du fichier {file_path}"
                     await self._notify_gra_of_status_change()
 
@@ -235,6 +231,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     self.status_detail = f"Exécution de la commande: {command}"
                     await self._notify_gra_of_status_change()
 
+                    self.status_detail = f"Exécution de la commande: {command}"
+                    await self._notify_gra_of_status_change()
+
                     tool_result = await self.environment_manager.safe_tool_call(
                         self.environment_manager.execute_command_in_environment(
                             self.current_environment_id, command, workdir
@@ -255,6 +254,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
 
                 elif action_type == "read_file":
                     file_path = llm_action_payload.get("file_path")
+                    self.status_detail = f"Lecture du fichier {file_path}"
+                    await self._notify_gra_of_status_change()
+
                     self.status_detail = f"Lecture du fichier {file_path}"
                     await self._notify_gra_of_status_change()
 
@@ -281,6 +283,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
 
                 elif action_type == "list_directory":
                     path = llm_action_payload.get("path", "/app")
+                    self.status_detail = f"Listing du répertoire {path}"
+                    await self._notify_gra_of_status_change()
+
                     self.status_detail = f"Listing du répertoire {path}"
                     await self._notify_gra_of_status_change()
 
@@ -360,47 +365,29 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     }
                     self.status_detail = action_summary
                     await self._notify_gra_of_status_change()
-                    await event_queue.enqueue_event(
-                        TaskStatusUpdateEvent(
-                            status=TaskStatus(
-                                state=TaskState.working,
-                                message=new_agent_text_message(text=action_summary),
-                            ),
-                            final=False,
-                            contextId=current_context_id,
-                            taskId=current_task_id,
-                        )
-                    )
 
-        except Exception as e:  #
-            self.logger.error(
-                f"Erreur majeure dans l'exécuteur de développement pour la tâche {current_task_id}: {e}",
-                exc_info=True,
-            )  #
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(  #
-                    status=TaskStatus(
-                        state=TaskState.failed,
-                        message=new_agent_text_message(
-                            text=f"Erreur interne de l'agent: {str(e)}"
-                        ),
-                    ),  #
-                    final=True,
-                    contextId=current_context_id,
-                    taskId=current_task_id,
-                )
-            )  #
+                    await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                        status=TaskStatus(state=TaskState.working, message=new_agent_text_message(text=action_summary)),
+                        final=False, contextId=current_context_id, taskId=current_task_id
+                    ))
+
+        except Exception as e: #
+            self.logger.error(f"Erreur majeure dans l'exécuteur de développement pour la tâche {current_task_id}: {e}", exc_info=True) #
+            await event_queue.enqueue_event(TaskStatusUpdateEvent( #
+                status=TaskStatus(state=TaskState.failed, message=new_agent_text_message(text=f"Erreur interne de l'agent: {str(e)}")), #
+                final=True, contextId=current_context_id, taskId=current_task_id)) #
             self.status_detail = f"Erreur: {e}"
             await self._notify_gra_of_status_change()
-            self._update_stats(success=False)  #
-        finally:  #
+            self._update_stats(success=False) #
+        finally: #
+
             self.state = AgentOperationalState.IDLE
             self.current_task_id = (
                 context.current_task.id if context.current_task else None
             )
             self.last_activity_time = time.time()
             self.status_detail = None
-            await self._notify_gra_of_status_change()  # Notifier la fin
+            await self._notify_gra_of_status_change() # Notifier le début
 
     async def _generate_code_from_specs(self, specs: dict) -> str:
         """Méthode privée pour appeler le LLM spécifiquement pour la génération de code."""
@@ -419,6 +406,6 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             "Génère UNIQUEMENT le code Python correspondant."  #
         )
 
-        return await call_llm(
-            code_generation_prompt, code_system_prompt, json_mode=False
-        )  #
+        
+        return await call_llm(code_generation_prompt, code_system_prompt, json_mode=False) #
+

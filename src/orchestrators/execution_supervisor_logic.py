@@ -1012,7 +1012,8 @@ class ExecutionSupervisorLogic:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{gra_url}/agents_status", timeout=10.0)
                 response.raise_for_status()
-                agents_list = response.json()
+                data = response.json()
+                agents_list = data.get("agents") if isinstance(data, dict) else data
                 if isinstance(agents_list, list):
                     for agent_info in agents_list:
                         agent_skills = agent_info.get("skills", [])
