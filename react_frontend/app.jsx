@@ -285,7 +285,7 @@ function AgentStatusBar({ agents, graHealth, stats }) {
                 <div className="agent-name">{a.name.replace('AgentServer', '')}</div>
                 <div className={className}>{icon} {stateText}</div>
               </div>
-              <div className="agent-timestamp">{a.timestamp ? new Date(a.timestamp).toLocaleString() : 'N/A'}</div>
+              <div className="agent-timestamp">{a.timestamp ? new Date(a.timestamp).toLocaleString() : '–'}</div>
               <div className="agent-metrics">
                 {(() => {
                   const statKey = a.name;
