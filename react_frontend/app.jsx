@@ -369,11 +369,9 @@ function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) 
       </details>
       <div className="plan-card important">
         <div className="card-header">Current State</div>
-        <div className="card-content">{plan.current_supervisor_state}</div>
-      </div>
-      <div className="plan-card important">
-        <div className="card-header">Flow Running</div>
-        <div className="card-content">{flowRunning ? '🟢 Yes' : '🏁 Finished'}</div>
+        <div className="card-content">
+          {plan.current_supervisor_state} – {flowRunning ? '🟢 Flow running' : '🏁 Finished'}
+        </div>
       </div>
       {(team1Counts || team2Counts) && (
         <div className="plan-card stat-card combined-stats">
