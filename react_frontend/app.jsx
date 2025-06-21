@@ -303,14 +303,24 @@ function AgentStatusBar({ agents, graHealth, stats, onViewLogs, onRestart }) {
                   );
                 })()}
               </div>
-              {a.public_url && (
-                <button onClick={() => onViewLogs && onViewLogs(a)} style={{ marginTop: '0.25rem' }}>
-                  logs
+              <div className="agent-actions">
+                {a.public_url && (
+                  <button
+                    className="icon-btn"
+                    title="View logs"
+                    onClick={() => onViewLogs && onViewLogs(a)}
+                  >
+                    <i className="fa-solid fa-file-lines"></i>
+                  </button>
+                )}
+                <button
+                  className="icon-btn"
+                  title="Restart agent"
+                  onClick={() => onRestart && onRestart(a)}
+                >
+                  <i className="fa-solid fa-rotate-right"></i>
                 </button>
-              )}
-              <button onClick={() => onRestart && onRestart(a)} style={{ marginTop: '0.25rem', marginLeft: '0.25rem' }}>
-                restart
-              </button>
+              </div>
             </div>
           );
         };
