@@ -305,7 +305,7 @@ function AgentStatusBar({ agents, graHealth, stats, onViewLogs }) {
               </div>
               {a.public_url && (
                 <button onClick={() => onViewLogs && onViewLogs(a)} style={{ marginTop: '0.25rem' }}>
-                  Voir les logs
+                  logs
                 </button>
               )}
             </div>
