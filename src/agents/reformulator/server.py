@@ -73,9 +73,7 @@ async def lifespan(app_param: Starlette):
     logger.info(f"[{AGENT_NAME}] Serveur en cours d'arrêt.")
 
 def create_app_instance() -> Starlette:
-    agent_executor = ReformulatorAgentExecutor()
-    task_store = InMemoryTaskStore()
-    request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
+
     
     agent_card = get_reformulator_agent_card()
     a2a_app = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
@@ -98,7 +96,9 @@ def create_app_instance() -> Starlette:
     app.router.lifespan_context = lifespan
     
     return app
-
+agent_executor = ReformulatorAgentExecutor()
+task_store = InMemoryTaskStore()
+request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 app = create_app_instance()
 
 if __name__ == "__main__":

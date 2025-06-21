@@ -1,5 +1,6 @@
 import logging
 import json
+from typing import Dict, Any, Tuple
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
@@ -19,18 +20,64 @@ class TestingAgentLogic(BaseAgentLogic):
         self.logger.info("Logique du TestingAgent initialisée.")
 
     async def process(self, input_data_str: str, context_id: str | None = None) -> str:
-        """Détermine la prochaine action de test à entreprendre."""
         try:
             input_payload = json.loads(input_data_str)
             objective = input_payload.get("objective", "Objectif de test non spécifié.")
             local_instructions = input_payload.get("local_instructions", [])
             acceptance_criteria = input_payload.get("acceptance_criteria", [])
-            environment_id = input_payload.get("environment_id")
-            current_environment_state = input_payload.get(
-                "current_state",
-                "L'environnement est vide ou inconnu. Aucune information préalable sur l'état."
-            )
+            assigned_skill = input_payload.get("assigned_skill")
+            
+            input_artifacts_content = input_payload.get("input_artifacts_content", {})
 
+        except json.JSONDecodeError as e:
+            self.logger.error(f"TestingAgent: Input JSON invalide: {input_data_str}. Erreur: {e}")
+            return json.dumps({
+                "test_status": "error", "summary": "Input JSON invalide pour TestingAgent", 
+                "details": input_data_str, "generated_test_cases": [], 
+                "passed_criteria": [], "failed_criteria": [], "identified_issues_or_bugs": []
+            })
+
+        self.logger.info(f"TestingAgent - Tâche (Objectif: '{objective}', Compétence: {assigned_skill}) reçue (contexte: {context_id})")
+        self.logger.debug(f"TestingAgent - Payload d'input complet reçu: {json.dumps(input_payload, indent=2)}")
+
+
+        if assigned_skill == AGENT_SKILL_TEST_CASE_GENERATION:
+            self.logger.info(f"TestingAgent: Mode '{AGENT_SKILL_TEST_CASE_GENERATION}' pour l'objectif: '{objective}'")
+            feature_spec_content = input_artifacts_content.get("feature_spec_id", "")
+            
+            system_prompt_tcg = (
+                "Tu es un ingénieur QA expert en création de cas de test. "
+                "Ta mission est de générer une suite de cas de test pertinents et exhaustifs (mais concis) "
+                "basée sur un objectif, des instructions, des critères d'acceptation et potentiellement des spécifications de fonctionnalité fournies. "
+                "Tu peux effectuer les actions suivantes :\n"
+                "1. **Pour générer et écrire un fichier de test :**\n"
+                "   `{ \"action\": \"generate_test_code_and_write_file\", \"file_path\": \"/app/tests/test_something.py\", \"objective\": \"description des tests\", \"local_instructions\": [], \"acceptance_criteria\": [] }`\n"
+                "2. **Pour exécuter une commande :**\n"
+                "   `{ \"action\": \"execute_command\", \"command\": \"votre commande\", \"workdir\": \"/app\" }`\n"
+                "3. **Pour lire un fichier :**\n"
+                "   `{ \"action\": \"read_file\", \"file_path\": \"/app/chemin/fichier\" }`\n"
+                "4. **Pour lister un répertoire :**\n"
+                "   `{ \"action\": \"list_directory\", \"path\": \"/app/chemin/dossier\" }`\n"
+                "5. **Pour terminer la tâche :**\n"
+                "   `{ \"action\": \"complete_task\", \"summary\": \"Résumé des tests effectués et résultats.\" }`\n"
+                "Ton processus doit être itératif : génère des tests, exécute-les, analyse les résultats, répète si nécessaire. "
+                "Retourne les cas de test sous forme d'une liste de descriptions textuelles dans un objet JSON."
+            )
+            prompt_tcg = (
+                f"Objectif de la fonctionnalité pour laquelle générer des cas de test : {objective}\n\n"
+                f"Instructions spécifiques pour la fonctionnalité (si fournies dans l'objectif) :\n"
+                f"{'- ' + chr(10) + '- '.join(local_instructions) if local_instructions else 'Basé sur l objectif général.'}\n\n"
+                f"Critères d'acceptation de la fonctionnalité (que les tests devront vérifier) :\n"
+                f"{'- ' + chr(10) + '- '.join(acceptance_criteria) if acceptance_criteria else 'Basé sur l objectif général.'}\n\n"
+            )
+            if feature_spec_content:
+                prompt_tcg += f"Spécifications/Code de la fonctionnalité à considérer pour la génération des tests:\n```\n{feature_spec_content}\n```\n\n"
+
+            prompt_tcg += (
+                "Génère une liste de cas de test. Chaque cas de test doit être une description actionnable. "
+                "Retourne ta réponse UNIQUEMENT sous la forme d'un objet JSON avec une seule clé : "
+                "'generated_test_cases' (une liste de strings)."
+            )
             try:
                 llm_response_tcg_str = await call_llm(prompt_tcg, system_prompt_tcg, json_mode=True)
                 parsed_llm_response = json.loads(llm_response_tcg_str)
@@ -100,12 +147,46 @@ class TestingAgentLogic(BaseAgentLogic):
                 "par rapport à son objectif, ses instructions de développement et ses critères d'acceptation. "
                 "Tu dois déterminer si le livrable est conforme. Identifie les points de succès et les échecs ou bugs potentiels. "
                 "Fournis un rapport de test concis au format JSON."
+            )
+            prompt_st = (
+                f"Objectif du développement qui a produit ce livrable : {objective}\n\n"
+                f"Critères d'acceptation généraux de la tâche de test actuelle :\n"
+                f"{'- ' + chr(10) + '- '.join(acceptance_criteria) if acceptance_criteria else 'Non spécifiés.'}\n\n"
+                f"{test_cases_prompt_section}"
+                f"Livrable de code à tester :\n"
+                f"```python\n{deliverable_code}\n```\n\n"
+                "Ta mission est d'analyser rigoureusement le 'Livrable de code à tester'.\n"
+                "1. Évalue si le code respecte les 'Critères d'acceptation généraux'.\n"
+                "2. Si des 'Cas de test spécifiques' sont fournis, évalue le code par rapport à CHACUN d'eux. Indique clairement pour chaque cas de test spécifique s'il passe ou échoue, et pourquoi.\n"
+                "3. Identifie les bugs ou les non-conformités.\n"
+                "Retourne ton évaluation UNIQUEMENT sous forme d'un objet JSON avec les clés suivantes : "
+                "'test_status' ('passed', 'failed', ou 'partial_success' - basé sur l'ensemble), "
+                "'summary' (un résumé global), "
+                "'acceptance_criteria_status': {{'passed': [liste des critères généraux passés], 'failed': [liste des critères généraux échoués]}}, "
+                "'specific_test_cases_results': [{{'test_case': 'description du cas de test fourni', 'status': 'passed'/'failed', 'details': 'explication si failed'}}] (une liste, vide si aucun cas de test spécifique n'a été fourni), "
+                "et 'identified_issues_or_bugs' (liste de descriptions des problèmes ou bugs)."
+            )
 
-            )
-            return json.dumps({"status": "error", "action": "llm_error", "message": f"LLM returned invalid JSON: {e}. Raw: {llm_response_str}"})
-        except Exception as e:
-            self.logger.error(
-                f"TestingAgentLogic - Échec lors de la décision de l'action par le LLM: {e}",
-                exc_info=True,
-            )
-            return json.dumps({"status": "error", "action": "internal_error", "message": f"Internal error during LLM action decision: {str(e)}"})
+            try:
+                llm_response_str = await call_llm(prompt_st, system_prompt_st, json_mode=True) 
+                test_report = json.loads(llm_response_str)
+                if not all(k in test_report for k in ["test_status", "summary"]):
+                    self.logger.error(f"Rapport de test LLM malformé: {test_report}")
+                    raise ValueError("Le rapport de test du LLM n'a pas la structure attendue.")
+                self.logger.info(f"TestingAgent (software_testing) - Rapport de test généré: {test_report.get('test_status')}, Summary: {test_report.get('summary')}")
+                return json.dumps(test_report, ensure_ascii=False)
+
+            except Exception as e:
+                self.logger.error(f"TestingAgent (software_testing) - Échec: {e}", exc_info=True)
+                return json.dumps({
+                    "test_status": "error", "summary": f"Erreur lors de la génération du rapport de test: {str(e)}",
+                    "passed_criteria": [], "failed_criteria": acceptance_criteria,
+                    "identified_issues_or_bugs": [f"Erreur interne de l'agent de test: {str(e)}"]
+                })
+        else:
+            self.logger.warning(f"TestingAgent: Compétence assignée '{assigned_skill}' non reconnue ou non gérée explicitement pour l'objectif: '{objective}'")
+            return json.dumps({
+                "test_status": "error", "summary": f"Compétence '{assigned_skill}' non gérée par TestingAgent.",
+                "generated_test_cases": [], 
+                "passed_criteria": [], "failed_criteria": acceptance_criteria, "identified_issues_or_bugs": []
+            })
