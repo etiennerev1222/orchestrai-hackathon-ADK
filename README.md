@@ -368,3 +368,22 @@ Several helper scripts are provided for deployment and maintenance tasks.
 * Stabilize communication between the agents and the resource manager.
 * Add processing status indicators (e.g., *In Progress*, *IDLE*) to the agent monitoring dashboard.
 * Stabilize the file manager component.
+
+---
+
+# OrchestrAI Hackathon Project
+
+© 2025 Étienne Revol - Licensed under GPLv3
+
+## About
+
+This software is part of the OrchestrAI Hackathon project. It is distributed under the GNU General Public License v3 (GPLv3).
+No part of this software may be reused in proprietary or security-critical systems without the explicit written consent of Étienne Revol.
+
+## License
+
+This project is licensed under the GNU General Public License v3. See the LICENSE file or https://www.gnu.org/licenses/gpl-3.0.html for details.
+
+## Disclaimer
+
+This software is provided "as is", without warranty of any kind. Use at your own risk.
