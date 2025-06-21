@@ -322,46 +322,51 @@ function AgentStatusBar({ agents, graHealth, stats }) {
 
 function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) {
   if (!plan) return null;
-  const renderStats = (title, counts) => {
+
+  const renderStatSection = (title, counts) => {
     if (!counts) return null;
     return (
-      <div className="plan-card stat-card">
+      <div className="stat-section">
         <div className="card-header">{title}</div>
         <div className="card-content">
           {Object.entries(counts).map(([state, count]) => {
             const failed = state === 'failed' || state === 'unable_to_complete';
             return (
-              <span key={state} className={`stat-pill ${failed ? 'failed' : ''}`}>
-                {state}: {count}
-              </span>
+              <span key={state} className={`stat-pill ${failed ? 'failed' : ''}`}>{state}: {count}</span>
             );
           })}
         </div>
       </div>
     );
   };
+
   return (
     <div className="plan-cards">
-      <div className="plan-card">
-        <div className="card-header">Plan ID</div>
-        <div className="card-content">{plan.global_plan_id}</div>
-      </div>
-      {plan.environment_id && (
-        <div className="plan-card">
-          <div className="card-header">Environment ID</div>
-          <div className="card-content">{plan.environment_id}</div>
+      <details className="plan-meta" open>
+        <summary>Plan details</summary>
+        <div className="plan-cards">
+          <div className="plan-card">
+            <div className="card-header">Plan ID</div>
+            <div className="card-content">{plan.global_plan_id}</div>
+          </div>
+          {plan.environment_id && (
+            <div className="plan-card">
+              <div className="card-header">Environment ID</div>
+              <div className="card-content">{plan.environment_id}</div>
+            </div>
+          )}
+          <div className="plan-card">
+            <div className="card-header">Raw Objective</div>
+            <div className="card-content">{plan.raw_objective}</div>
+          </div>
+          {plan.clarified_objective && (
+            <div className="plan-card">
+              <div className="card-header">Clarified Objective</div>
+              <div className="card-content">{plan.clarified_objective}</div>
+            </div>
+          )}
         </div>
-      )}
-      <div className="plan-card">
-        <div className="card-header">Raw Objective</div>
-        <div className="card-content">{plan.raw_objective}</div>
-      </div>
-      {plan.clarified_objective && (
-        <div className="plan-card">
-          <div className="card-header">Clarified Objective</div>
-          <div className="card-content">{plan.clarified_objective}</div>
-        </div>
-      )}
+      </details>
       <div className="plan-card important">
         <div className="card-header">Current State</div>
         <div className="card-content">{plan.current_supervisor_state}</div>
@@ -370,8 +375,12 @@ function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) 
         <div className="card-header">Flow Running</div>
         <div className="card-content">{flowRunning ? '🟢 Yes' : '🏁 Finished'}</div>
       </div>
-      {renderStats('TEAM 1 Stats', team1Counts)}
-      {renderStats('TEAM 2 Stats', team2Counts)}
+      {(team1Counts || team2Counts) && (
+        <div className="plan-card stat-card combined-stats">
+          {renderStatSection('TEAM 1 Stats', team1Counts)}
+          {renderStatSection('TEAM 2 Stats', team2Counts)}
+        </div>
+      )}
       {hasFailures && (
         <div className="plan-info-failure">❌ Some tasks have failed</div>
       )}
