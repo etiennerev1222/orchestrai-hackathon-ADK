@@ -108,6 +108,9 @@ def create_app_instance() -> Starlette:
     app.router.routes.append(
         Route("/logs", endpoint=logs_endpoint, methods=["GET"])
     )
+    app.router.routes.append(
+        Route("/restart", endpoint=restart_endpoint, methods=["POST"])
+    )
     app.router.lifespan_context = lifespan
 
     return app
@@ -119,6 +122,12 @@ request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_stor
 async def logs_endpoint(request):
     """Retourne les dernières lignes de log de l'agent."""
     return JSONResponse(content=in_memory_log_handler.get_logs())
+
+async def restart_endpoint(request):
+    """Arrête le processus pour forcer un redémarrage de l'agent."""
+    logger.warning(f"[{AGENT_NAME}] Restart requested via /restart")
+    asyncio.get_event_loop().call_later(0.1, os._exit, 0)
+    return JSONResponse({"status": "restarting"})
 app = create_app_instance()
 
 if __name__ == "__main__":

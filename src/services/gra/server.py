@@ -1107,6 +1107,38 @@ async def get_agent_logs(agent_name: str):
         logger.error(f"Error retrieving logs for agent {agent_name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch agent logs")
 
+
+@app.post("/v1/agents/{agent_name}/restart")
+async def restart_agent_endpoint(agent_name: str):
+    """Trigger a restart on the specified agent via its /restart endpoint."""
+    try:
+        doc_ref = db.collection(GRA_SERVICE_REGISTRY_COLLECTION).document(agent_name)
+        doc = await asyncio.to_thread(doc_ref.get)
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+
+        agent_data = doc.to_dict()
+        agent_url = agent_data.get("public_url") or agent_data.get("internal_url")
+        if not agent_url:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' has no URL")
+
+        restart_url = f"{agent_url.rstrip('/')}/restart"
+        async with httpx.AsyncClient(auth=GoogleIDTokenAuth(), timeout=5.0) as client:
+            resp = await client.post(restart_url)
+            if resp.status_code >= 400:
+                try:
+                    err = resp.json()
+                except Exception:
+                    err = {"detail": f"HTTP {resp.status_code}"}
+                raise HTTPException(status_code=resp.status_code, detail=err.get("detail"))
+
+        return {"status": "restart_requested", "agent": agent_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error restarting agent {agent_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to restart agent")
+
 if __name__ == "__main__":
     
     
