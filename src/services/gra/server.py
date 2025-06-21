@@ -1014,6 +1014,8 @@ async def update_agent_status(status_update: Dict[str, Any]):
     if not agent_name:
         return {"status": "error", "message": "agent name is missing"}
 
+    logger.debug(f"[GRA] Update reçu de {agent_name}: {status_update}")
+
     # Récupérer les infos existantes de l'agent dans le cache, ou un dict vide
     current_agent_info = agent_statuses.get(agent_name, {})
 

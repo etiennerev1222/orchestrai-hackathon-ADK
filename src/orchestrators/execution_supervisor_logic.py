@@ -595,6 +595,23 @@ class ExecutionSupervisorLogic:
                 agent_url, input_for_agent_text, self.execution_plan_id
             )
 
+            if a2a_task_result:
+                try:
+                    raw_result = (
+                        a2a_task_result.model_dump_json(indent=2)
+                        if hasattr(a2a_task_result, "model_dump_json")
+                        else str(a2a_task_result)
+                    )
+                except Exception:
+                    raw_result = str(a2a_task_result)
+                self.logger.debug(
+                    f"[{self.execution_plan_id}] Résultat brut de l'agent {agent_name_from_gra} pour la tâche {task_node.id}: {raw_result}"
+                )
+            else:
+                self.logger.warning(
+                    f"[{self.execution_plan_id}] Aucun résultat A2A reçu de {agent_name_from_gra} pour la tâche {task_node.id}"
+                )
+
             if a2a_task_result and a2a_task_result.status:
                 a2a_state_val = a2a_task_result.status.state.value
                 gra_persisted_artifact_id: Optional[str] = None
@@ -727,6 +744,9 @@ class ExecutionSupervisorLogic:
                         artifact_ref=gra_persisted_artifact_id,
                         summary=error_summary,
                     )
+                    self.logger.debug(
+                        f"[{self.execution_plan_id}] Marquage FAILED pour la tâche {task_node.id} suite à l'état 'failed' renvoyé par l'agent"
+                    )
                     self.task_graph.update_task_state(
                         task_node.id, ExecutionTaskState.FAILED, error_summary
                     )
@@ -744,12 +764,18 @@ class ExecutionSupervisorLogic:
                         artifact_ref=gra_persisted_artifact_id,
                         summary=unexpected_state_summary,
                     )
+                    self.logger.debug(
+                        f"[{self.execution_plan_id}] Marquage FAILED pour la tâche {task_node.id} à cause d'un état A2A inattendu: {a2a_state_val}"
+                    )
                     self.task_graph.update_task_state(
                         task_node.id,
                         ExecutionTaskState.FAILED,
                         f"État A2A inattendu: {a2a_state_val}",
                     )
             else:
+                self.logger.debug(
+                    f"[{self.execution_plan_id}] Marquage FAILED pour la tâche {task_node.id} car aucune réponse A2A valide n'a été reçue"
+                )
                 self.task_graph.update_task_state(
                     task_node.id,
                     ExecutionTaskState.FAILED,
