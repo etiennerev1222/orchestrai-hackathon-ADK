@@ -32,16 +32,17 @@ class DevelopmentAgentLogic(BaseAgentLogic):
             "\n   `{ \"action\": \"read_file\", \"file_path\": \"/app/main.py\" }`"
             "\n4. **list_directory**: Pour lister le contenu d'un répertoire."
             "\n   `{ \"action\": \"list_directory\", \"path\": \"/app\" }`"
+            "\n- Si une erreur se produit, lis le fichier de code, corrige-le (en le ré-écrivant), et ré-exécute."
             "\n5. **complete_task**: Quand tu estimes que l'objectif est entièrement atteint et vérifié."
-            "\n   `{ \"action\": \"complete_task\", \"summary\": \"Le code a été écrit, installé et testé avec succès. Le livrable est prêt.\" }`"
+                "\n   `{ \"action\": \"complete_task\", \"summary\": \"Le code a été écrit, installé et testé avec succès. Le livrable est prêt.\","
+                " \"details\": { \"fichiers_generes\": [\"/app/main.py\"], \"commandes_executees\": [\"pip install ...\"], "
+                "\"résultats_des_tests\": \"Tous les tests ont réussi\", \"log_final\": \"...\" } }`"
             "\n\n**Ton processus de raisonnement est itératif :**"
             "\n- Écris le code initial."
             "\n- Exécute-le."
             "\n- Lis la sortie (stdout/stderr)."
-            "\n- Si une erreur se produit, lis le fichier de code, corrige-le (en le ré-écrivant), et ré-exécute."
-            "\n- Une fois que tout fonctionne, utilise `complete_task`."
-        )
-
+            )            
+     
     async def process(self, input_data_str: str, context_id: str | None = None) -> str:
         """
         Génère la prochaine action JSON que l'agent de développement devrait entreprendre.
@@ -66,9 +67,9 @@ class DevelopmentAgentLogic(BaseAgentLogic):
             f"Résultat de la dernière action exécutée : {json.dumps(last_action_result, indent=2)}\n\n"
             "En te basant sur l'objectif et le résultat de la dernière action, "
             "quelle est la **PROCHAINE action unique et atomique que tu dois planifier** ? "
-            "Réponds UNIQUEMENT avec l'objet JSON correspondant à l'action choisie."
+            "Quand tu choisis `complete_task`, fournis un résumé structuré (avec fichiers générés, commandes exécutées, résultats des tests)."
+            " Réponds UNIQUEMENT avec l'objet JSON correspondant à l'action choisie."
         )
-
         try:
             llm_response_str = await call_llm(prompt, system_prompt, json_mode=True) #
             self.logger.info(f"DevelopmentAgentLogic - Réponse LLM (prochaine action): {llm_response_str}")
