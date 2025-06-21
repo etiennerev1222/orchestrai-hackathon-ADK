@@ -421,10 +421,29 @@ class EnvironmentManager:
     async def safe_execute_command_in_environment(
         self, environment_id: str, command: str, workdir: str = "/app"
     ) -> dict:
-        """Alias combinant execute_command_in_environment et safe_tool_call."""
-        return await self.safe_tool_call(
+        """Execute a command safely and format errors for the calling agent."""
+        result = await self.safe_tool_call(
             self.execute_command_in_environment(environment_id, command, workdir),
             description=f"execute_command_in_environment: {command}"
+        )
+
+        if (
+            isinstance(result, dict)
+            and result.get("exit_code")
+            and result.get("exit_code") != 0
+            and "error" not in result
+        ):
+            stderr_snippet = result.get("stderr", "").strip()
+            msg = stderr_snippet or f"Command failed with exit code {result['exit_code']}"
+            result["error"] = msg
+
+        return result
+
+    async def safe_read_file_from_environment(self, environment_id: str, file_path: str) -> dict:
+        """Read a file safely and always return a dictionary."""
+        return await self.safe_tool_call(
+            self.read_file_from_environment(environment_id, file_path),
+            description=f"read_file_from_environment: {file_path}"
         )
 
     async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:

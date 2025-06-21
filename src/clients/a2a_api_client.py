@@ -176,8 +176,17 @@ async def call_a2a_agent(
                     logger.info(f"Agent {agent_url} - Tâche {task_id} - Essai {attempt + 1} - Statut: {current_task.status.state}")
                     
                     # --- CORRECTION DE LA CONDITION DE SORTIE DE BOUCLE ---
-                    # On ne vérifie que les états 'en cours' valides.
-                    if current_task.status.state not in [TaskState.submitted, TaskState.working]:
+                    # On ne vérifie que les états réellement « en cours ».
+                    # Certains serveurs A2A renvoient l'état ``pending`` avant
+                    # ``submitted``. On l'ajoute donc à la liste des états à
+                    # surveiller pour éviter de sortir trop tôt de la boucle
+                    # d'attente.
+                    active_states = [
+                        TaskState.submitted,
+                        TaskState.working,
+                        getattr(TaskState, "pending", None),
+                    ]
+                    if current_task.status.state not in [s for s in active_states if s]:
                         final_task_result = current_task
                         break
                 else:

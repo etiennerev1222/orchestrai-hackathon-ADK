@@ -296,11 +296,8 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     await self._notify_gra_of_status_change()
 
                     try:
-                        tool_result = await self.environment_manager.safe_tool_call(
-                            self.environment_manager.read_file_from_environment(
-                                self.current_environment_id, file_path
-                            ),
-                            f"Lecture du fichier {file_path}",
+                        tool_result = await self.environment_manager.safe_read_file_from_environment(
+                            self.current_environment_id, file_path
                         )
                     except Exception as e:
                         self.logger.error(
