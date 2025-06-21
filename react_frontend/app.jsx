@@ -224,7 +224,7 @@ function Graph({
   );
 }
 
-function AgentStatusBar({ agents, graHealth, stats }) {
+function AgentStatusBar({ agents, graHealth, stats, onViewLogs }) {
     // Ce composant ne gère plus son propre état, il reçoit tout via les props.
     // C'est une meilleure pratique dans React.
 
@@ -303,6 +303,11 @@ function AgentStatusBar({ agents, graHealth, stats }) {
                   );
                 })()}
               </div>
+              {a.public_url && (
+                <button onClick={() => onViewLogs && onViewLogs(a)} style={{ marginTop: '0.25rem' }}>
+                  Voir les logs
+                </button>
+              )}
             </div>
           );
         };
@@ -776,6 +781,7 @@ function App() {
   const [showFileBrowser, setShowFileBrowser] = React.useState(false);
   const [team1Counts, setTeam1Counts] = React.useState(null);
   const [team2Counts, setTeam2Counts] = React.useState(null);
+  const [logModal, setLogModal] = React.useState(null); // {agentName, logs}
 
   
   // --- 2. EFFETS (Hooks pour le cycle de vie) ---
@@ -1010,6 +1016,26 @@ function App() {
       .catch(err => console.error('Error retrying failed tasks', err));
   }
 
+  async function openLogs(agent) {
+    if (!agent?.public_url) {
+      setLogModal({ agentName: agent.name, logs: ['No public URL'] });
+      return;
+    }
+    const base = agent.public_url.replace(/\/?$/, '');
+    try {
+      const res = await fetch(`${base}/logs`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const logs = Array.isArray(data) ? data : [JSON.stringify(data)];
+      setLogModal({ agentName: agent.name, logs });
+    } catch (err) {
+      setLogModal({ agentName: agent.name, logs: [`Error: ${err.message}`] });
+    }
+  }
+
 
   function showArtifactForNode(nodeId, isTeam1, coords) {
     const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
@@ -1194,7 +1220,7 @@ function App() {
       </div>
       <div className="content">
         {/* On passe les états en props aux composants enfants */}
-        <AgentStatusBar agents={agents} graHealth={graHealth} stats={stats} />
+        <AgentStatusBar agents={agents} graHealth={graHealth} stats={stats} onViewLogs={openLogs} />
         <div style={{ marginBottom: '0.5rem' }}>
           <button
             onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)}
@@ -1281,6 +1307,15 @@ function App() {
             planId={selectedPlanId}
             environmentId={activeEnvironmentId}
           />
+        )}
+        {logModal && (
+          <div className="log-modal-overlay" onClick={() => setLogModal(null)}>
+            <div className="log-modal" onClick={e => e.stopPropagation()}>
+              <span className="log-modal-close" onClick={() => setLogModal(null)}>×</span>
+              <h4>Logs – {logModal.agentName}</h4>
+              <pre>{logModal.logs.join('\n')}</pre>
+            </div>
+          </div>
         )}
       </div>
     </div>
