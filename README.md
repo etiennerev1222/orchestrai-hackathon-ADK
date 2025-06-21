@@ -23,6 +23,7 @@ OrchestrAI turns any vague user goal into a detailed action plan and concrete de
 - **Full audit trail**: Every decision, correction and outcome is persisted in Firestore for transparency.
 - **Isolated dev environments**: Generated code runs in Kubernetes pods managed by the `EnvironmentManager` for safety (see `docs/environment_manager.md`). Environment metadata lives in Firestore and, when no dedicated pod can be created, the manager reuses a shared `exec_default` environment (see `scripts/create_fallback_environment.py`).
 - **Real-time agent status**: The GRA exposes `/gra_status` and `/ws/status` endpoints so the dashboard can display each agent's operational state (Idle, Busy, Working, etc.).
+- **Agent logs**: Each agent exposes a `/logs` route and the GRA proxies it via `/v1/agents/<name>/logs` so the dashboard can fetch runtime logs securely.
 
 ---
 
