@@ -177,7 +177,7 @@ graph LR
 * **Inter-Service Communication**: A2A protocol (via `src/clients/a2a_api_client.py`).
 * **Front End**: React served from Firebase Hosting.
 * **Asynchronous Task Handling**: Extensive use of `asyncio`.
-* **Environment Manager**: Creates and manages isolated Kubernetes pods to run the generated code.
+* **Environment Manager**: Creates and manages isolated Kubernetes pods to run the generated code. A dedicated API allows deleting a pod via `DELETE /api/environments/{env_id}`.
 
 ## ⚙️ Installation & Prerequisites
 
