@@ -72,6 +72,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
         input_json_str = self._extract_input_from_message(message)
 
         if input_json_str is None:
+
             await event_queue.enqueue_event(
                 TaskStatusUpdateEvent(
                     status=TaskStatus(
@@ -95,6 +96,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
         try:
             input_payload = json.loads(input_json_str)
             provided_env = input_payload.get("environment_id")
+
 
             if not provided_env:
                 raise ValueError("Environment ID missing in task input.")
@@ -309,9 +311,10 @@ class TestingAgentExecutor(BaseAgentExecutor):
             )
 
             await event_queue.enqueue_event(TaskArtifactUpdateEvent(
-                append=False, contextId=current_context_id, taskId=current_task_id,
-                artifact=artifact, lastChunk=True
+                append=False, contextId=current_context_id, taskId=current_task_id, lastChunk=True,
+                artifact=artifact
             ))
+
 
             self.status_detail = action_summary
             await self._notify_gra_of_status_change()
@@ -332,7 +335,10 @@ class TestingAgentExecutor(BaseAgentExecutor):
             )
             self._update_stats(success=(final_state == TaskState.completed))
 
+            self._update_stats(success=final_state != TaskState.failed)
+
         except Exception as e:
+
             self.logger.error(
                 f"Erreur lors de l'exécution : {e}", exc_info=True
             )
@@ -363,3 +369,4 @@ class TestingAgentExecutor(BaseAgentExecutor):
             self.status_detail = None
             await self._notify_gra_of_status_change()
    
+
