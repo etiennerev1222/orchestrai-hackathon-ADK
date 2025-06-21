@@ -994,6 +994,35 @@ async def upload_file(environment_id: str, path: Optional[str] = Form(None), fil
         logging.error(f"Error uploading file for env '{environment_id}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred during file upload.")
 
+
+@app.delete("/api/environments/{environment_id}")
+async def delete_environment(environment_id: str):
+    """Delete a Kubernetes environment (pod and PVC)."""
+    if not environment_manager:
+        raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
+    try:
+        env_id = EnvironmentManager.normalize_environment_id(environment_id)
+        await environment_manager.destroy_environment(env_id)
+        return {"message": f"Environment '{env_id}' deletion requested."}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        logging.error(f"Runtime error deleting environment '{environment_id}': {e}", exc_info=True)
+        status = 404 if "does not exist" in str(e) else 503
+        raise HTTPException(status_code=status, detail=str(e))
+    except (client.ApiException, ConnectionError, OSError, asyncio.TimeoutError) as e:
+        logging.error(
+            f"External connection error deleting environment '{environment_id}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to communicate with environment: {e}",
+        )
+    except Exception as e:
+        logging.error(f"Error deleting environment '{environment_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while deleting the environment.")
+
 # --- NOUVEAU : Endpoint pour que les frontends se connectent ---
 @app.websocket("/ws/status")
 async def websocket_endpoint(websocket: WebSocket):

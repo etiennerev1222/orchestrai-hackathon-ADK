@@ -325,7 +325,7 @@ function AgentStatusBar({ agents, graHealth, stats, onViewLogs }) {
     );
 }
 
-function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) {
+function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts, onDeleteEnvironment }) {
   if (!plan) return null;
 
   const renderStatSection = (title, counts) => {
@@ -357,7 +357,18 @@ function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts }) 
           {plan.environment_id && (
             <div className="plan-card">
               <div className="card-header">Environment ID</div>
-              <div className="card-content">{plan.environment_id}</div>
+              <div className="card-content">
+                {plan.environment_id}
+                {onDeleteEnvironment && (
+                  <button
+                    style={{ marginLeft: '0.5rem' }}
+                    onClick={() => onDeleteEnvironment(plan.environment_id)}
+                    title="Delete this environment"
+                  >
+                    🗑
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <div className="plan-card">
@@ -782,6 +793,7 @@ function App() {
   const [team1Counts, setTeam1Counts] = React.useState(null);
   const [team2Counts, setTeam2Counts] = React.useState(null);
   const [logModal, setLogModal] = React.useState(null); // {agentName, logs}
+  const [envModal, setEnvModal] = React.useState(null); // environment id to delete
 
   
   // --- 2. EFFETS (Hooks pour le cycle de vie) ---
@@ -1034,6 +1046,23 @@ function App() {
     }
   }
 
+  function confirmDeleteEnvironment(envId) {
+    if (!envId) return;
+    fetch(`${BACKEND_API_URL}/api/environments/${envId}`, { method: 'DELETE' })
+      .then(res => {
+        if (!res.ok) return res.json().then(d => Promise.reject(d));
+        return res.json();
+      })
+      .then(() => {
+        setEnvModal(null);
+        if (selectedPlanId) refreshPlanDetails(selectedPlanId);
+      })
+      .catch(err => {
+        console.error('Error deleting environment', err);
+        setEnvModal(null);
+      });
+  }
+
 
   function showArtifactForNode(nodeId, isTeam1, coords) {
     const nodeInfo = (isTeam1 ? team1NodesMap : team2NodesMap)?.[nodeId];
@@ -1251,6 +1280,7 @@ function App() {
           hasFailures={hasFailures}
           team1Counts={team1Counts}
           team2Counts={team2Counts}
+          onDeleteEnvironment={envId => setEnvModal(envId)}
         />
         {planDetails?.team2_execution_plan_id &&
           planDetails.current_supervisor_state !== 'TEAM2_EXECUTION_COMPLETED' && (
@@ -1312,6 +1342,23 @@ function App() {
               <span className="log-modal-close" onClick={() => setLogModal(null)}>×</span>
               <h4>Logs – {logModal.agentName}</h4>
               <pre>{logModal.logs.join('\n')}</pre>
+            </div>
+          </div>
+        )}
+        {envModal && (
+          <div className="log-modal-overlay" onClick={() => setEnvModal(null)}>
+            <div className="log-modal" onClick={e => e.stopPropagation()}>
+              <span className="log-modal-close" onClick={() => setEnvModal(null)}>×</span>
+              <h4>Delete environment {envModal}?</h4>
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  onClick={() => confirmDeleteEnvironment(envModal)}
+                  style={{ marginRight: '1rem' }}
+                >
+                  Delete
+                </button>
+                <button onClick={() => setEnvModal(null)}>Cancel</button>
+              </div>
             </div>
           </div>
         )}
