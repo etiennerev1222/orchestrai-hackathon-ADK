@@ -16,12 +16,22 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.responses import JSONResponse
 
+# --- 1. Import du nouveau handler ---
+from src.shared.log_handler import InMemoryLogHandler
+
 from src.shared.service_discovery import register_self_with_gra
 from .executor import ValidatorAgentExecutor
 
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# --- 2. Initialisation et configuration du logging ---
+in_memory_log_handler = InMemoryLogHandler(maxlen=200)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+in_memory_log_handler.setFormatter(formatter)
+logging.getLogger().addHandler(in_memory_log_handler)
+logging.getLogger().setLevel(logging.INFO)
 
 AGENT_NAME = "ValidatorAgentServer"
 
@@ -58,6 +68,11 @@ def get_validator_agent_card() -> AgentCard:
 agent_executor = ValidatorAgentExecutor()
 task_store = InMemoryTaskStore()
 request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
+
+# --- 3. Création de l'endpoint /logs ---
+async def logs_endpoint(request):
+    """Retourne les dernières lignes de log de l'agent."""
+    return JSONResponse(content=in_memory_log_handler.get_logs())
 
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
@@ -100,9 +115,14 @@ def create_app_instance() -> Starlette:
     )
     app.router.routes.append(
         Route("/status", endpoint=status_endpoint, methods=["GET"])
-    )    
+    )
+
+    # --- 4. Ajout de la nouvelle route ---
+    app.router.routes.append(
+        Route("/logs", endpoint=logs_endpoint, methods=["GET"])
+    )
     app.router.lifespan_context = lifespan
-    
+
     return app
 
 app = create_app_instance()

@@ -15,8 +15,18 @@ from src.shared.service_discovery import register_self_with_gra
 from .executor import TestingAgentExecutor
 from .logic import AGENT_SKILL_SOFTWARE_TESTING, AGENT_SKILL_TEST_CASE_GENERATION
 
+# --- 1. Import du nouveau handler ---
+from src.shared.log_handler import InMemoryLogHandler
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# --- 2. Initialisation et configuration du logging ---
+in_memory_log_handler = InMemoryLogHandler(maxlen=200)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+in_memory_log_handler.setFormatter(formatter)
+logging.getLogger().addHandler(in_memory_log_handler)
+logging.getLogger().setLevel(logging.INFO)
 
 AGENT_NAME = "TestingAgentServer"
 
@@ -62,6 +72,11 @@ agent_executor = TestingAgentExecutor(environment_manager=env_manager)
 task_store = InMemoryTaskStore()
 request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_store=task_store)
 
+# --- 3. Création de l'endpoint /logs ---
+async def logs_endpoint(request):
+    """Retourne les dernières lignes de log de l'agent."""
+    return JSONResponse(content=in_memory_log_handler.get_logs())
+
 @contextlib.asynccontextmanager
 async def lifespan(app_param: Starlette):
     logger.info(f"[{AGENT_NAME}] Démarrage du cycle de vie (lifespan)...")
@@ -104,9 +119,14 @@ def create_app_instance() -> Starlette:
     )
     app.router.routes.append(
         Route("/status", endpoint=status_endpoint, methods=["GET"])
-    )    
+    )
+
+    # --- 4. Ajout de la nouvelle route ---
+    app.router.routes.append(
+        Route("/logs", endpoint=logs_endpoint, methods=["GET"])
+    )
     app.router.lifespan_context = lifespan
-    
+
     return app
 
 app = create_app_instance()
