@@ -350,6 +350,14 @@ with main_col:
         
         plan = st.session_state.active_global_plan_details
         if plan:
+            if st.button("🔄 Rafraîchir le plan", key="refresh_active_plan"):
+                with st.spinner("Mise à jour du plan..."):
+                    st.session_state.active_global_plan_details = asyncio.run(
+                        get_global_plan_details_from_api(
+                            st.session_state.active_global_plan_id
+                        )
+                    )
+                    plan = st.session_state.active_global_plan_details
             st.markdown(
                 f"**Plan ID** : `{plan.get('global_plan_id')}`\n\n"
                 f"**Objectif brut** : {plan.get('raw_objective')}\n\n"
@@ -357,14 +365,13 @@ with main_col:
                 + f"**État actuel** : `{plan.get('current_supervisor_state')}`"
             )
 
-            finished_states = [
-                GlobalPlanState.TEAM2_EXECUTION_COMPLETED,
-                GlobalPlanState.TEAM2_EXECUTION_FAILED,
-                GlobalPlanState.TEAM1_PLANNING_FAILED,
-                GlobalPlanState.FAILED_MAX_CLARIFICATION_ATTEMPTS,
-                GlobalPlanState.FAILED_AGENT_ERROR,
+            running_states = [
+                GlobalPlanState.OBJECTIVE_BEING_CLARIFIED_BY_AGENT,
+                GlobalPlanState.TEAM1_PLANNING_INITIATED,
+                GlobalPlanState.TEAM2_EXECUTION_INITIATING,
+                GlobalPlanState.TEAM2_EXECUTION_IN_PROGRESS,
             ]
-            flow_running = plan.get("current_supervisor_state") not in finished_states
+            flow_running = plan.get("current_supervisor_state") in running_states
             st.markdown(f"**Flux en cours** : {'🟢 Oui' if flow_running else '🏁 Terminé'}")
 
             team1_counts = None
