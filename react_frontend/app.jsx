@@ -1017,13 +1017,11 @@ function App() {
   }
 
   async function openLogs(agent) {
-    if (!agent?.public_url) {
-      setLogModal({ agentName: agent.name, logs: ['No public URL'] });
-      return;
-    }
-    const base = agent.public_url.replace(/\/?$/, '');
+    if (!agent?.name) return;
     try {
-      const res = await fetch(`${base}/logs`);
+      const res = await fetch(
+        `${BACKEND_API_URL}/v1/agents/${encodeURIComponent(agent.name)}/logs`
+      );
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);

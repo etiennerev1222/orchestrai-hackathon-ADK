@@ -1047,6 +1047,37 @@ async def update_agent_status(status_update: Dict[str, Any]):
     await manager.broadcast(json.dumps(payload, default=json_serializer))
     return {"status": "received"}
 
+
+@app.get("/v1/agents/{agent_name}/logs")
+async def get_agent_logs(agent_name: str):
+    """Retrieve the latest log lines from a registered agent."""
+    try:
+        doc_ref = db.collection(GRA_SERVICE_REGISTRY_COLLECTION).document(agent_name)
+        doc = await asyncio.to_thread(doc_ref.get)
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+
+        agent_data = doc.to_dict()
+        agent_url = agent_data.get("public_url") or agent_data.get("internal_url")
+        if not agent_url:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' has no URL")
+
+        logs_url = f"{agent_url.rstrip('/')}/logs"
+        async with httpx.AsyncClient(auth=GoogleIDTokenAuth(), timeout=10.0) as client:
+            resp = await client.get(logs_url)
+            if resp.status_code >= 400:
+                try:
+                    err = resp.json()
+                except Exception:
+                    err = {"detail": f"HTTP {resp.status_code}"}
+                raise HTTPException(status_code=resp.status_code, detail=err.get("detail"))
+            return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving logs for agent {agent_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch agent logs")
+
 if __name__ == "__main__":
     
     
