@@ -221,6 +221,20 @@ input {
 .chat-item {
   margin-bottom: 0.25rem;
 }
+.plan-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.plan-meta > .plan-cards {
+  margin-top: 0.5rem;
+}
+.plan-meta summary {
+  cursor: pointer;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
 .plan-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -275,6 +289,20 @@ input {
   background: var(--error-bg);
   color: var(--error-text);
   font-weight: bold;
+}
+.combined-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.stat-section {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.stat-section .card-header {
+  min-width: auto;
 }
 
 .plan-card.important {
