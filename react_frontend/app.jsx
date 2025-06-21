@@ -224,7 +224,7 @@ function Graph({
   );
 }
 
-function AgentStatusBar({ agents, graHealth, stats, onViewLogs }) {
+function AgentStatusBar({ agents, graHealth, stats, onViewLogs, onRestart }) {
     // Ce composant ne gère plus son propre état, il reçoit tout via les props.
     // C'est une meilleure pratique dans React.
 
@@ -308,6 +308,9 @@ function AgentStatusBar({ agents, graHealth, stats, onViewLogs }) {
                   logs
                 </button>
               )}
+              <button onClick={() => onRestart && onRestart(a)} style={{ marginTop: '0.25rem', marginLeft: '0.25rem' }}>
+                restart
+              </button>
             </div>
           );
         };
@@ -1046,6 +1049,14 @@ function App() {
     }
   }
 
+  function restartAgent(agent) {
+    if (!agent?.name) return;
+    fetch(`${BACKEND_API_URL}/v1/agents/${encodeURIComponent(agent.name)}/restart`, {
+      method: 'POST'
+    })
+      .catch(err => console.error('Error restarting agent', err));
+  }
+
   function confirmDeleteEnvironment(envId) {
     if (!envId) return;
     fetch(`${BACKEND_API_URL}/api/environments/${envId}`, { method: 'DELETE' })
@@ -1247,7 +1258,7 @@ function App() {
       </div>
       <div className="content">
         {/* On passe les états en props aux composants enfants */}
-        <AgentStatusBar agents={agents} graHealth={graHealth} stats={stats} onViewLogs={openLogs} />
+        <AgentStatusBar agents={agents} graHealth={graHealth} stats={stats} onViewLogs={openLogs} onRestart={restartAgent} />
         <div style={{ marginBottom: '0.5rem' }}>
           <button
             onClick={() => selectedPlanId && refreshPlanDetails(selectedPlanId)}

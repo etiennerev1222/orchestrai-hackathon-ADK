@@ -81,6 +81,12 @@ async def logs_endpoint(request):
     """Retourne les dernières lignes de log de l'agent."""
     return JSONResponse(content=in_memory_log_handler.get_logs())
 
+async def restart_endpoint(request):
+    """Arrête le processus pour forcer un redémarrage de l'agent."""
+    logger.warning(f"[{AGENT_NAME}] Restart requested via /restart")
+    asyncio.get_event_loop().call_later(0.1, os._exit, 0)
+    return JSONResponse({"status": "restarting"})
+
 def create_app_instance() -> Starlette:
     agent_card = get_evaluator_agent_card()
     a2a_server_app_instance = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
@@ -105,6 +111,9 @@ def create_app_instance() -> Starlette:
     # --- 4. Ajout de la nouvelle route ---
     app.router.routes.append(
         Route("/logs", endpoint=logs_endpoint, methods=["GET"])
+    )
+    app.router.routes.append(
+        Route("/restart", endpoint=restart_endpoint, methods=["POST"])
     )
 
     app.router.lifespan_context = lifespan
