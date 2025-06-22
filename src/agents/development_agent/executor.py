@@ -61,11 +61,11 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
         self, context: RequestContext, event_queue: EventQueue
     ) -> None:  #
 
-        self.state = AgentOperationalState.WORKING
-        self.current_task_id = context.current_task.id if context.current_task else None
-        self.last_activity_time = time.time()
-        self.status_detail = "Préparation de la tâche"
-        await self._notify_gra_of_status_change()  # notifier le début
+        #self.state = AgentOperationalState.WORKING
+        #self.current_task_id = context.current_task.id if context.current_task else None
+        #self.last_activity_time = time.time()
+        #self.status_detail = "Préparation de la tâche"
+        #await self._notify_gra_of_status_change()  # notifier le début
 
         # --- Initialisation de la tâche ---
         task_context_id_for_log = context.context_id or (
@@ -219,15 +219,15 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         self.failure_count += 1
                         if self.failure_count >= 3:
                             action_summary = f"Abandon après {self.failure_count} échecs consécutifs sur {action_type}."
-                            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                                status=TaskStatus(
-                                    state=TaskState.failed,
-                                    message=new_agent_text_message(text=action_summary)
-                                ),
-                                final=True,
-                                contextId=current_context_id,
-                                taskId=current_task_id
-                            ))
+                            #await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                            #    status=TaskStatus(
+                            #        state=TaskState.failed,
+                            #        message=new_agent_text_message(text=action_summary)
+                            #    ),
+                            #    final=True,
+                            #    contextId=current_context_id,
+                            #    taskId=current_task_id
+                            #))
                             break  # Ou return                        
                     elif isinstance(tool_result, dict) and "error" in tool_result:
                         action_summary = tool_result["error"]
@@ -236,15 +236,15 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         self.failure_count += 1
                         if self.failure_count >= 3:
                             action_summary = f"Abandon après {self.failure_count} échecs consécutifs sur {action_type}."
-                            await event_queue.enqueue_event(TaskStatusUpdateEvent(
-                                status=TaskStatus(
-                                    state=TaskState.failed,
-                                    message=new_agent_text_message(text=action_summary)
-                                ),
-                                final=True,
-                                contextId=current_context_id,
-                                taskId=current_task_id
-                            ))
+                            #await event_queue.enqueue_event(TaskStatusUpdateEvent(
+                            #    status=TaskStatus(
+                            #        state=TaskState.failed,
+                            #        message=new_agent_text_message(text=action_summary)
+                            #    ),
+                            #    final=True,
+                            #    contextId=current_context_id,
+                            #    taskId=current_task_id
+                            #))
                             break  # Ou return                        
 
                     else:
@@ -257,8 +257,8 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 elif action_type == "execute_command":
                     command = llm_action_payload.get("command")
                     workdir = llm_action_payload.get("workdir", "/app")
-                    self.status_detail = f"Exécution de la commande: {command}"
-                    await self._notify_gra_of_status_change()
+                    #self.status_detail = f"Exécution de la commande: {command}"
+                    #await self._notify_gra_of_status_change()
 
                     try:
                         tool_result = await self.environment_manager.safe_execute_command_in_environment(
@@ -293,7 +293,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 elif action_type == "read_file":
                     file_path = llm_action_payload.get("file_path")
                     self.status_detail = f"Lecture du fichier {file_path}"
-                    await self._notify_gra_of_status_change()
+                    #await self._notify_gra_of_status_change()
 
                     try:
                         tool_result = await self.environment_manager.safe_read_file_from_environment(
@@ -324,7 +324,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 elif action_type == "list_directory":
                     path = llm_action_payload.get("path", "/app")
                     self.status_detail = f"Listing du répertoire {path}"
-                    await self._notify_gra_of_status_change()
+                    #await self._notify_gra_of_status_change()
 
                     try:
                         tool_result = await self.environment_manager.safe_tool_call(
@@ -362,8 +362,8 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         "status": "completed",
                     }
 
-                    self.status_detail = "Tâche de développement terminée"
-                    await self._notify_gra_of_status_change()
+                    #self.status_detail = "Tâche de développement terminée"
+                    #await self._notify_gra_of_status_change()
 
                     continue_loop = False  # Stopper la boucle
 
@@ -399,7 +399,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     )
                     action_result_details = {"error": action_summary}
                     self.status_detail = action_summary
-                    await self._notify_gra_of_status_change()
+                    #await self._notify_gra_of_status_change()
 
                 # Préparer un retour intermédiaire si la boucle continue
                 if continue_loop:
@@ -409,12 +409,12 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         "details": action_result_details,
                     }
                     self.status_detail = action_summary
-                    await self._notify_gra_of_status_change()
+                    #await self._notify_gra_of_status_change()
                     await event_queue.enqueue_event(
                         TaskStatusUpdateEvent(
                             status=TaskStatus(
                                 state=TaskState.working,
-                                message=new_agent_text_message(text=action_summary),
+                                message=new_agent_text_message(text=json.dumps(last_action_result)),
                             ),
                             final=False,
                             contextId=current_context_id,

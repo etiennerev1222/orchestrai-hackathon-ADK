@@ -153,7 +153,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
 
                 code = await call_llm(prompt, system_prompt, json_mode=False)
                 self.status_detail = f"Génération du fichier {file_path}"
-                await self._notify_gra_of_status_change()
+                #await self._notify_gra_of_status_change()
 
                 try:
                     tool_result = await self.environment_manager.safe_tool_call(
@@ -196,9 +196,10 @@ class TestingAgentExecutor(BaseAgentExecutor):
                         self.logger.warning(
                             f"Tâche échouée contrôlée : {tool_result['error']}"
                         )
-                        await self._update_task_state(
-                            TaskState.FAILED, details=tool_result["error"]
-                        )
+                        #await self._update_task_state(
+                        #    TaskState.FAILED, details=tool_result["error"]
+                        #)
+                        
                 except Exception as e:
                     self.logger.error(
                         f"Erreur inattendue non capturée par safe_tool_call : {e}",
@@ -220,13 +221,14 @@ class TestingAgentExecutor(BaseAgentExecutor):
                     )
                     action_result_details = tool_result
                     if tool_result["exit_code"] != 0:
-                        final_state = TaskState.failed
-                        is_final = True
+                        #final_state = TaskState.failed
+                        #is_final = True
+                        action_summary = tool_result["error"] if "error" in tool_result else action_summary
 
             elif action_type == "read_file":
                 file_path = llm_action.get("file_path")
                 self.status_detail = f"Lecture du fichier {file_path}"
-                await self._notify_gra_of_status_change()
+                #await self._notify_gra_of_status_change()
 
                 try:
                     tool_result = await self.environment_manager.safe_tool_call(
@@ -260,7 +262,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
             elif action_type == "list_directory":
                 path = llm_action.get("path", "/app")
                 self.status_detail = f"Listing du répertoire {path}"
-                await self._notify_gra_of_status_change()
+                #await self._notify_gra_of_status_change()
 
                 try:
                     tool_result = await self.environment_manager.safe_tool_call(
