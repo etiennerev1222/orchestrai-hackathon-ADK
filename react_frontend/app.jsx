@@ -372,30 +372,32 @@ function PlanInfo({ plan, flowRunning, hasFailures, team1Counts, team2Counts, on
       <details className="plan-meta" open>
         <summary>Plan details</summary>
         <div className="plan-cards">
-          <div className="plan-card">
-            <div className="card-header">Plan ID</div>
-            <div className="card-content">{plan.global_plan_id}</div>
-          </div>
-          {plan.environment_id && (
-            <div className="plan-card">
-              <div className="card-header">Environment ID</div>
-              <div className="card-content">
-                {plan.environment_id}
-                {onDeleteEnvironment && (
-                  <button
-                    style={{ marginLeft: '0.5rem' }}
-                    onClick={() => onDeleteEnvironment(plan.environment_id)}
-                    title="Delete this environment"
-                  >
-                    🗑
-                  </button>
-                )}
-              </div>
+          <div className="plan-card grouped-info">
+            <div className="info-row">
+              <div className="card-header">Plan ID</div>
+              <div className="card-content">{plan.global_plan_id}</div>
             </div>
-          )}
-          <div className="plan-card">
-            <div className="card-header">Raw Objective</div>
-            <div className="card-content">{plan.raw_objective}</div>
+            {plan.environment_id && (
+              <div className="info-row">
+                <div className="card-header">Environment ID</div>
+                <div className="card-content">
+                  {plan.environment_id}
+                  {onDeleteEnvironment && (
+                    <button
+                      style={{ marginLeft: '0.5rem' }}
+                      onClick={() => onDeleteEnvironment(plan.environment_id)}
+                      title="Delete this environment"
+                    >
+                      🗑
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="info-row">
+              <div className="card-header">Raw Objective</div>
+              <div className="card-content">{plan.raw_objective}</div>
+            </div>
           </div>
           {plan.clarified_objective && (
             <div className="plan-card">

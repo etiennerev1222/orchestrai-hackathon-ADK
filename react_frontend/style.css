@@ -280,6 +280,17 @@ input {
   gap: 0.5rem;
 }
 
+.plan-card.grouped-info {
+  flex-direction: column;
+}
+
+.plan-card.grouped-info .info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
 .card-header {
   font-weight: bold;
   min-width: 140px;
