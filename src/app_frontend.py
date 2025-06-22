@@ -446,6 +446,19 @@ with main_col:
             team2_exec_id = plan.get("team2_execution_plan_id")
             if team2_exec_id:
                 st.subheader(f"📈 Graphe d'Exécution (TEAM 2 : `{team2_exec_id}`)")
+                with st.container():
+                    st.markdown("Mettre en évidence les états :")
+                    cb_cols = st.columns(3)
+                    hl_failed = cb_cols[0].checkbox("Échec", key="t2_highlight_failed")
+                    hl_working = cb_cols[1].checkbox("En cours", key="t2_highlight_working")
+                    hl_completed = cb_cols[2].checkbox("Terminé", key="t2_highlight_completed")
+                    highlight_states = []
+                    if hl_failed:
+                        highlight_states.append(ExecutionTaskState.FAILED.value)
+                    if hl_working:
+                        highlight_states.append(ExecutionTaskState.WORKING.value)
+                    if hl_completed:
+                        highlight_states.append(ExecutionTaskState.COMPLETED.value)
                 if st.session_state.current_execution_graph_id_loaded != team2_exec_id:
                     st.session_state.current_execution_graph_details = asyncio.run(get_execution_task_graph_details_from_api(team2_exec_id))
                     st.session_state.current_execution_graph_id_loaded = team2_exec_id
@@ -458,13 +471,24 @@ with main_col:
                         for node_id, node_info in nodes_data_t2.items():
                             node_state_val = node_info.get("state")
                             color = {"background": "#D3D3D3", "border": "#808080"}
-                            if node_state_val == ExecutionTaskState.COMPLETED.value: color = {"background": "#D4EDDA", "border": "#155724"}
-                            elif node_state_val == ExecutionTaskState.FAILED.value: color = {"background": "#F8D7DA", "border": "#721C24"}
-                            elif node_state_val == ExecutionTaskState.WORKING.value: color = {"background": "#FFF3CD", "border": "#856404"}
-                            
+                            if node_state_val == ExecutionTaskState.COMPLETED.value:
+                                color = {"background": "#D4EDDA", "border": "#155724"}
+                            elif node_state_val == ExecutionTaskState.FAILED.value:
+                                color = {"background": "#F8D7DA", "border": "#721C24"}
+                            elif node_state_val == ExecutionTaskState.WORKING.value:
+                                color = {"background": "#FFF3CD", "border": "#856404"}
+
+                            size = 25
+                            if highlight_states:
+                                if node_state_val in highlight_states:
+                                    size = 40
+                                else:
+                                    color = {"background": "#EFEFEF", "border": "#C0C0C0"}
+                                    size = 15
+
                             label = node_info.get("objective", node_id)[:35]
                             title = f"ID: {node_id}\nÉtat: {node_state_val}\nObjectif: {node_info.get('objective', 'N/A')}"
-                            a_nodes.append(Node(id=node_id, label=label, title=title, shape="box", color=color, font={"color": "black"}))
+                            a_nodes.append(Node(id=node_id, label=label, title=title, shape="box", color=color, font={"color": "black"}, size=size))
 
                             for dep_id in node_info.get("dependencies", []):
                                 if dep_id in nodes_data_t2:
