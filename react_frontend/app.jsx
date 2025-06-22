@@ -917,7 +917,11 @@ function App() {
     if (highlightFailed) states.push('failed');
     if (highlightWorking) states.push('working');
     if (highlightCompleted) states.push('completed');
-    setTeam2Graph(parseTaskGraph(team2NodesMap, false, states));
+    if (team2NodesMap && Object.keys(team2NodesMap).length > 0) {
+      setTeam2Graph(parseTaskGraph(team2NodesMap, false, states));
+    } else {
+      setTeam2Graph(null);
+    }
   }, [team2NodesMap, highlightFailed, highlightWorking, highlightCompleted]);
 
   // --- 3. FONCTIONS MEMOIZED et HANDLERS ---
@@ -1398,7 +1402,9 @@ function App() {
             />
           </div>
         )}
-        {team2NodesMap && <FinalArtifactsHistory nodes={team2NodesMap} />}
+        {team2NodesMap && Object.keys(team2NodesMap).length > 0 && (
+          <FinalArtifactsHistory nodes={team2NodesMap} />
+        )}
         {activeEnvironmentId && showFileBrowser && (
           <FileBrowser
             key={selectedPlanId}
