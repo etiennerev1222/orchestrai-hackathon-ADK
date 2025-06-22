@@ -805,6 +805,9 @@ function App() {
   const [showFileBrowser, setShowFileBrowser] = React.useState(false);
   const [team1Counts, setTeam1Counts] = React.useState(null);
   const [team2Counts, setTeam2Counts] = React.useState(null);
+  const [highlightFailed, setHighlightFailed] = React.useState(false);
+  const [highlightWorking, setHighlightWorking] = React.useState(false);
+  const [highlightCompleted, setHighlightCompleted] = React.useState(false);
   const [logModal, setLogModal] = React.useState(null); // {agentName, logs}
   const [envModal, setEnvModal] = React.useState(null); // environment id to delete
 
@@ -880,7 +883,8 @@ function App() {
         }
         if (plan.team2_execution_plan_id) {
           fetch(`${BACKEND_API_URL}/v1/execution_task_graphs/${plan.team2_execution_plan_id}`).then(r => r.json()).then(d => {
-            setTeam2NodesMap(d.nodes || {}); setTeam2Graph(parseTaskGraph(d.nodes, false)); setTeam2Counts(computeStateCounts(d.nodes));
+            setTeam2NodesMap(d.nodes || {});
+            setTeam2Counts(computeStateCounts(d.nodes));
           });
         }
     }).catch(err => console.error('Error loading plan details', err));
@@ -908,6 +912,14 @@ function App() {
     }
   }, [planDetails]);
 
+  React.useEffect(() => {
+    const states = [];
+    if (highlightFailed) states.push('failed');
+    if (highlightWorking) states.push('working');
+    if (highlightCompleted) states.push('completed');
+    setTeam2Graph(parseTaskGraph(team2NodesMap, false, states));
+  }, [team2NodesMap, highlightFailed, highlightWorking, highlightCompleted]);
+
   // --- 3. FONCTIONS MEMOIZED et HANDLERS ---
   const uniqueStates = React.useMemo(() => Array.from(new Set(plans.map(p => p.current_supervisor_state))).sort(), [plans]);
   const filteredPlans = React.useMemo(() => {
@@ -929,7 +941,7 @@ function App() {
   // Toutes vos autres fonctions doivent être déclarées ici...) showArtifactForNode(info.edge.from, isTeam1, { x: info.x, y: info.y }); };
   
  
-  function parseTaskGraph(nodesObj, isTeam1) {
+  function parseTaskGraph(nodesObj, isTeam1, highlightStates = []) {
     const nodes = [];
     const edges = [];
     if (!nodesObj) return { nodes, edges };
@@ -952,6 +964,16 @@ function App() {
       } else {
         nodeData.color = { background: bgColor, border: borderColor };
         nodeData.borderWidth = info.sub_task_ids && info.sub_task_ids.length > 0 ? 3 : 1;
+        let size = 25;
+        if (highlightStates.length) {
+          if (highlightStates.includes(state)) {
+            size = 40;
+          } else {
+            nodeData.color = { background: '#EFEFEF', border: '#C0C0C0' };
+            size = 15;
+          }
+        }
+        nodeData.size = size;
       }
       nodes.push(nodeData);
 
@@ -1336,6 +1358,33 @@ function App() {
         {team2Graph && (
           <div>
             <h4>Team 2 execution graph</h4>
+            <div style={{ marginBottom: '0.5rem' }}>
+              Highlight states:
+              <label style={{ marginLeft: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={highlightFailed}
+                  onChange={e => setHighlightFailed(e.target.checked)}
+                />
+                failed
+              </label>
+              <label style={{ marginLeft: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={highlightWorking}
+                  onChange={e => setHighlightWorking(e.target.checked)}
+                />
+                working
+              </label>
+              <label style={{ marginLeft: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={highlightCompleted}
+                  onChange={e => setHighlightCompleted(e.target.checked)}
+                />
+                completed
+              </label>
+            </div>
             <Team2Legend />
             <Graph
               id="team2"
