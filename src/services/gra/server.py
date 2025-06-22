@@ -28,8 +28,15 @@ from google.oauth2 import id_token
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from starlette.applications import Starlette
+from src.shared.log_handler import InMemoryLogHandler
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+in_memory_log_handler = InMemoryLogHandler(maxlen=200)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+in_memory_log_handler.setFormatter(formatter)
+logging.getLogger().addHandler(in_memory_log_handler)
+logging.getLogger().setLevel(logging.INFO)
 def json_serializer(obj):
     """
     Traducteur JSON robuste pour les objets non sérialisables par défaut.
@@ -1106,6 +1113,12 @@ async def get_agent_logs(agent_name: str):
     except Exception as e:
         logger.error(f"Error retrieving logs for agent {agent_name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch agent logs")
+
+
+@app.get("/v1/gra/logs")
+async def get_gra_logs():
+    """Return recent GRA server log lines."""
+    return in_memory_log_handler.get_logs()
 
 
 @app.post("/v1/agents/{agent_name}/restart")

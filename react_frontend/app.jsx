@@ -265,6 +265,15 @@ function AgentStatusBar({ agents, graHealth, stats, onViewLogs, onRestart }) {
           {graHealth === 'online' ? '✅ Online' : '⚠️ Offline'}
         </div>
       </div>
+      <div className="agent-actions">
+        <button
+          className="icon-btn"
+          title="View logs"
+          onClick={() => onViewLogs && onViewLogs('gra')}
+        >
+          <i className="fa-solid fa-file-lines"></i>
+        </button>
+      </div>
     </div>
   );
   const supervisorsNames = ['GlobalSupervisorLogic', 'ExecutionSupervisorLogic'];
@@ -1067,21 +1076,26 @@ function App() {
       .catch(err => console.error('Error retrying failed tasks', err));
   }
 
-  async function openLogs(agent) {
-    if (!agent?.name) return;
+  async function openLogs(target) {
+    const name = typeof target === 'string' ? target : target?.name;
+    if (!name) return;
+    const url =
+      name === 'gra'
+        ? `${BACKEND_API_URL}/v1/gra/logs`
+        : `${BACKEND_API_URL}/v1/agents/${encodeURIComponent(name)}/logs`;
     try {
-      const res = await fetch(
-        `${BACKEND_API_URL}/v1/agents/${encodeURIComponent(agent.name)}/logs`
-      );
+      const res = await fetch(url);
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
       }
       const data = await res.json();
       const logs = Array.isArray(data) ? data : [JSON.stringify(data)];
-      setLogModal({ agentName: agent.name, logs });
+      const displayName = name === 'gra' ? 'GRA Server' : name;
+      setLogModal({ agentName: displayName, logs });
     } catch (err) {
-      setLogModal({ agentName: agent.name, logs: [`Error: ${err.message}`] });
+      const displayName = name === 'gra' ? 'GRA Server' : name;
+      setLogModal({ agentName: displayName, logs: [`Error: ${err.message}`] });
     }
   }
 
