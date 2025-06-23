@@ -693,7 +693,7 @@ function FileBrowser({ environmentId, planId }) {
     <div className="file-browser">
       <h3>File Explorer (ID: {environmentId})</h3>
       <div className="path-bar">
-        <span>Path: /workspace/{currentPath}</span>
+        <span>Path: /app/{currentPath}</span>
         <div className="file-actions">
           <input
             type="file"
