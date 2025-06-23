@@ -423,6 +423,11 @@ Several helper scripts are provided for deployment and maintenance tasks.
 * Harden API security and permission management.
 * Provide metrics per agent and better monitoring dashboards.
 * Offer additional tools and integrations for specialized tasks.
+* "Team 2 plan re-evalution loop" with validator
+* Handle restart scenario for Team2
+* link enrironement manager for user upload at begining
+* Task management: manage human feedback 
+* ...
 
 ---
 
