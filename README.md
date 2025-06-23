@@ -49,6 +49,7 @@ The functional architecture describes the flow from the user's idea all the way 
 **View the diagram on [mermaidchart.com](https://www.mermaidchart.com/app/projects/f16a002d-be5d-43d1-bdfb-c095ee3316f6/diagrams/b4c8f941-5b8a-469c-a670-a87c37b12923/version/v0.1/edit)**
 
 ```mermaid
+flowchart TB
 
 subgraph "Infrastructure & Services"
   direction LR
@@ -178,6 +179,20 @@ graph LR
 * **Front End**: React served from Firebase Hosting.
 * **Asynchronous Task Handling**: Extensive use of `asyncio`.
 * **Environment Manager**: Creates and manages isolated Kubernetes pods to run the generated code. A dedicated API allows deleting a pod via `DELETE /api/environments/{env_id}`.
+
+## Key Concepts
+
+The project implements a multi-level orchestration pattern with persistent state and dynamic agent discovery.
+
+* **Microservice Architecture** with one directory per agent under `src/agents/`.
+* **Global, Planning and Execution supervisors** coordinate the clarification, planning and execution phases.
+* **UserInteractionAgent** keeps a human in the loop during goal clarification.
+* **TaskGraph** and **ExecutionTaskGraph** manage dependencies for TEAM&nbsp;1 and TEAM&nbsp;2.
+* **DecompositionAgent** converts the textual plan into executable tasks.
+* **Specialized execution agents** (Development, Research, Testing) handle concrete actions.
+* **Service discovery via the GRA** stores agent metadata in Firestore.
+* **Iterative planning** allows plan revisions until validation.
+* **LLM-powered logic** relies on Gemini models through `llm_client.py`.
 
 ## ⚙️ Installation & Prerequisites
 
@@ -312,21 +327,48 @@ The `deployment.sh` script automates the entire deployment process.
 ```
 The script automatically injects the correct environment variables (`GCP_PROJECT_ID`, `GCP_REGION`, service URLs) into the deployed containers. API key authentication is no longer required.
 
+## How to Add Your Agent
+
+1. **Create a folder** under `src/agents/<your_agent>`.
+2. Add `logic.py`, `executor.py` and `server.py` implementing the agent logic.
+3. Make the server register itself to the GRA using the `/v1/agents/register` endpoint.
+4. Add a Dockerfile and update `deployment.sh` to build and deploy your new image.
+5. Deploy with `./deployment.sh deploy-one <your_agent>` once the image is built.
+
 ## Project Structure
-```Markdown
+```text
 orchestrai-hackathon-ADK/
 ├── src/
 │   ├── agents/
-│   │   ├── ... (8 specialized agents)
-│   ├── clients/
+│   │   ├── user_interaction_agent/
+│   │   ├── decomposition_agent/
+│   │   ├── reformulator/
+│   │   ├── evaluator/
+│   │   ├── validator/
+│   │   ├── development_agent/
+│   │   ├── research_agent/
+│   │   └── testing_agent/
 │   ├── orchestrators/
+│   │   ├── global_supervisor_logic.py
+│   │   ├── planning_supervisor_logic.py
+│   │   └── execution_supervisor_logic.py
 │   ├── services/
-│   │   ├── gra/
-│   │   └── environment_manager/
-│   └── shared/
-├── react_frontend/                   # Lightweight React interface
-├── deployment.sh                     # Cloud Run deployment script
-└── requirements_py311.txt            # Dependency list for Python 3.11
+│   │   ├── gra/server.py
+│   │   └── environment_manager/environment_manager.py
+│   ├── shared/
+│   │   ├── task_graph_management.py
+│   │   ├── execution_task_graph_management.py
+│   │   └── llm_client.py
+│   ├── clients/a2a_api_client.py
+│   ├── app_frontend.py
+│   └── run_orchestrator.py
+├── docs/                  # Documentation and diagrams
+├── react_frontend/        # React dashboard
+├── scripts/               # Helper and deployment scripts
+├── tests/                 # Unit and integration tests
+├── deployment.sh          # Cloud Run deployment
+├── build_and_deploy.sh    # Docker build helper
+└── requirements_py311.txt
 ```
 
 ## Utility Scripts
@@ -372,6 +414,13 @@ Several helper scripts are provided for deployment and maintenance tasks.
 * Stabilize communication between the agents and the resource manager.
 * Add processing status indicators (e.g., *In Progress*, *IDLE*) to the agent monitoring dashboard.
 * Stabilize the file manager component.
+
+## Roadmap & Perspectives
+
+* Advanced re-planning logic once execution errors are detected.
+* Harden API security and permission management.
+* Provide metrics per agent and better monitoring dashboards.
+* Offer additional tools and integrations for specialized tasks.
 
 ---
 
