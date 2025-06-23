@@ -1,5 +1,5 @@
-# OrchestrAI – From Idea to Action via LLM Agent Collaboration
-*OrchestrAI – From Idea to Action with LLM-Driven Agent Collaboration*
+# OrchestrAI Multi-Agent Planner
+*A strategic orchestration engine for multi-agent systems.*
 
 ---
 
@@ -9,7 +9,7 @@
 
 ## ✨ Pitch
 
-OrchestrAI turns any vague user goal into a detailed action plan and concrete deliverables thanks to a dynamically orchestrated team of specialized AI agents. Clarification, planning and execution are fully automated, supervised, recoverable and logged while keeping the user in the loop for relevance and quality.
+A strategic orchestration engine for multi-agent systems. OrchestrAI turns vague user requests into robust, adaptive, and validated action plans.
 
 ---
 
