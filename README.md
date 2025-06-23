@@ -31,18 +31,64 @@ A strategic orchestration engine for multi-agent systems. OrchestrAI turns vague
 
 ## 🏗️ Table of Contents
 
-1. [Functional Architecture](#functional-architecture)
-2. [Technical Architecture](#technical-architecture)
-3. [Key Concepts](#key-concepts)
-4. [Installation & Prerequisites](#installation--prerequisites)
-5. [Usage](#usage)
-6. [Project Structure](#project-structure)
-7. [Utility Scripts](#utility-scripts)
-8. [Cloud / Firebase Deployment](#cloud--firebase-deployment)
-9. [How to Add Your Agent](#how-to-add-your-agent)
-10. [Roadmap & Perspectives](#roadmap--perspectives)
+1. [The Problem: From Chaos to Coordination](#1-the-problem-from-chaos-to-coordination)
+2. [Our Solution: OrchestrAI in Action](#2-our-solution-orchestrai-in-action)
+3. [Architecture and Technology: How It Works](#3-architecture-and-technology-how-it-works)
+4. [Challenges and Solutions](#4-challenges-and-solutions)
+5. [Functional Architecture](#functional-architecture)
+6. [Technical Architecture](#technical-architecture)
+7. [Key Concepts](#key-concepts)
+8. [Installation & Prerequisites](#installation--prerequisites)
+9. [Usage](#usage)
+10. [Project Structure](#project-structure)
+11. [Utility Scripts](#utility-scripts)
+12. [Cloud / Firebase Deployment](#cloud--firebase-deployment)
+13. [How to Add Your Agent](#how-to-add-your-agent)
+14. [Roadmap & Perspectives](#roadmap--perspectives)
 
 ---
+
+## 1. The Problem: From Chaos to Coordination
+
+Multi-agent systems are powerful but often chaotic. Without intelligent supervision, they struggle to collaborate on complex tasks, fail to adapt to errors, and require constant manual intervention.
+
+How can a simple user request, like "Deploy a new web application for a client," be turned into a robust action plan, executed by a team of specialized agents, and supervised from end to end to guarantee success?
+
+**OrchestrAI** is our answer: an orchestration engine that transforms vague objectives into concrete, validated outcomes.
+
+## 2. Our Solution: OrchestrAI in Action
+
+OrchestrAI takes a user's request and transforms it into an intelligent, supervised, and adaptive action plan. Here’s how:
+
+1. **Intelligent Planning**: A global supervisor decomposes the initial request into a logical task graph (e.g., "create the code," "write tests," "deploy").
+2. **Dynamic Assignment**: Tasks are assigned to specialized agents (Developer, Tester, Deployment Expert) discovered in real-time via a service registry.
+3. **Secure & Supervised Execution**: An execution supervisor deploys each agent in a secure and isolated Kubernetes (GKE) environment, monitors its progress, and validates the result.
+4. **Resilience & Self-Correction**: If a task fails, the system can retry it, reformulate it, or even trigger a validation loop to correct the course, all while keeping the user informed.
+5. **Human-in-the-Loop**: The user remains central to the process, able to validate critical steps and provide input through a clear React interface.
+
+The result is a system that doesn't just execute tasks but **solves problems collaboratively**.
+
+## 3. Architecture and Technology: How It Works
+
+OrchestrAI is built on a robust microservices architecture, fully hosted on **Google Cloud Platform (GCP)**.
+
+* **Central Orchestrator (Cloud Run)**: The brain of the operation. A serverless service hosting the supervisor logic (Global, Planning, Execution). It is built with Python and the **Google Agent2Agent (ADK)** framework.
+* **Specialized Agents (GKE)**: Each agent (Decomposition, Development, Research, etc.) is a **Docker**-containerized application. They are deployed on-demand as Pods in a **Google Kubernetes Engine (GKE)** cluster, ensuring isolated and scalable execution.
+* **Intelligence (Vertex AI)**: Our agents' reasoning (planning, code generation, evaluation) is powered by advanced models from **Google Vertex AI (Gemini)**.
+* **State Management (Firestore)**: The state of plans, tasks, and agents is persisted in real-time in **Firestore**, enabling asynchronous communication and fault tolerance.
+* **Frontend (Firebase Hosting)**: A **React** user interface allows users to launch plans and monitor their execution in real-time.
+* **Security (IAM & Kubernetes RBAC)**: Security is granular. The Cloud Run service has specific IAM permissions to manage GKE resources. Within the cluster, strict Kubernetes `ClusterRoles` and `RoleBindings` ensure that each agent only has access to the resources it absolutely needs.
+
+## 4. Challenges and Solutions
+
+* **Challenge: Securing agent execution.** An agent must not be able to interfere with others.
+    * **Solution**: Using GKE to instantiate each agent in its own Pod with a dedicated Kubernetes Service Account. YAML-defined `ClusterRoles` enforce strict permissions (e.g., the right to list pods, but not delete them).
+
+* **Challenge: Asynchronous and resilient communication.** Agents run for long periods and can fail.
+    * **Solution**: Firestore acts as the single source of truth. Supervisors and agents communicate by updating documents, which decouples communication and allows a plan to be resumed from where it left off.
+
+* **Challenge: Providing agents with the right tools.** A development agent needs to be able to write code and version it on GitHub.
+    * **Solution**: We created an *Environment Manager* that mounts a persistent volume (PVC) for each agent and securely injects the necessary secrets (like an SSH key for GitHub).
 
 ## 🧭 Functional Architecture
 
