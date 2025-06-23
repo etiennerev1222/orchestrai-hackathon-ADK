@@ -49,7 +49,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
         self.current_task_id = context.current_task.id if context.current_task else None
         self.last_activity_time = time.time()
         self.status_detail = "Préparation de la tâche"
-        await self._notify_gra_of_status_change()
+        #await self._notify_gra_of_status_change()
 
         current_task_id = context.current_task.id if context.current_task else "N/A"
         current_context_id = context.context_id or (context.message.contextId if context.message else "N/A")
@@ -72,6 +72,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
         input_json_str = self._extract_input_from_message(message)
 
         if input_json_str is None:
+            self.logger.error("Aucune entrée JSON trouvée dans le message.")
             await event_queue.enqueue_event(
                 TaskStatusUpdateEvent(
                     status=TaskStatus(
@@ -88,7 +89,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 )
             )
             self.status_detail = "Input invalide"
-            await self._notify_gra_of_status_change()
+            #await self._notify_gra_of_status_change()
             self._update_stats(success=False)
             return
 
@@ -101,7 +102,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
 
             self.current_environment_id = EnvironmentManager.normalize_environment_id(provided_env)
             self.status_detail = "Création de l'environnement"
-            await self._notify_gra_of_status_change()
+            #await self._notify_gra_of_status_change()
             try:
                 create_result = await self.environment_manager.safe_tool_call(
                     self.environment_manager.create_isolated_environment(self.current_environment_id),
@@ -121,7 +122,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
                     exc_info=True,
                 )
                 await self._update_task_state(TaskState.FAILED, details=str(e))
-            await self._notify_gra_of_status_change()
+                #await self._notify_gra_of_status_change()
 
 
             llm_action_str = await self.agent_logic.process(input_json_str, current_context_id)
@@ -141,7 +142,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
 
                 from src.shared.llm_client import call_llm
                 system_prompt = (
-                    "Tu es un ingénieur QA expert en Python. Génère un fichier de test Python fonctionnel, "
+                    "Tu es un ingénieur QA expert en Python. Génère un fichier Python fonctionnel, "
                     "clair et directement exécutable, basé sur les spécifications fournies. "
                     "Retourne UNIQUEMENT le code Python."
                 )
@@ -152,6 +153,16 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 )
 
                 code = await call_llm(prompt, system_prompt, json_mode=False)
+                # on nettoye si cela commence par "```python" ou "```"
+                if code.startswith("```python"):
+                    code = code[9:].strip()
+                elif code.startswith("```"):
+                    code = code[3:].strip()
+                if code.endswith("```"):
+                    code = code[:-3].strip()
+                if not code.endswith("\n"):
+                    code += "\n"
+                
                 self.status_detail = f"Génération du fichier {file_path}"
                 #await self._notify_gra_of_status_change()
 
@@ -186,7 +197,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 command = llm_action.get("command")
                 workdir = llm_action.get("workdir", "/app")
                 self.status_detail = f"Exécution de la commande: {command}"
-                await self._notify_gra_of_status_change()
+                #await self._notify_gra_of_status_change()
 
                 try:
                     tool_result = await self.environment_manager.safe_execute_command_in_environment(
@@ -316,7 +327,7 @@ class TestingAgentExecutor(BaseAgentExecutor):
             ))
 
             self.status_detail = action_summary
-            await self._notify_gra_of_status_change()
+            #await self._notify_gra_of_status_change()
             await event_queue.enqueue_event(
                 TaskStatusUpdateEvent(
                     status=TaskStatus(
@@ -339,23 +350,23 @@ class TestingAgentExecutor(BaseAgentExecutor):
                 f"Erreur lors de l'exécution : {e}", exc_info=True
             )
             self.status_detail = f"Erreur: {e}"
-            await self._notify_gra_of_status_change()
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    status=TaskStatus(
-                        state=TaskState.failed,
-                        message=new_agent_text_message(
-                            text=f"Erreur interne : {str(e)}",
-                            context_id=current_context_id,
-                            task_id=current_task_id,
-                        ),
-                    ),
-                    final=True,
-                    contextId=current_context_id,
-                    taskId=current_task_id,
-                )
-            )
-            self._update_stats(success=False)
+            #await self._notify_gra_of_status_change()
+            #await event_queue.enqueue_event(
+            #    TaskStatusUpdateEvent(
+            #        status=TaskStatus(
+            #            state=TaskState.failed,
+            #            message=new_agent_text_message(
+            #                text=f"Erreur interne : {str(e)}",
+            #                context_id=current_context_id,
+            #                task_id=current_task_id,
+            #            ),
+            #        ),
+            #        final=True,
+            #        contextId=current_context_id,
+            #        taskId=current_task_id,
+            #    )
+            #)
+            #self._update_stats(success=False)
         finally:
             self.state = AgentOperationalState.IDLE
             self.current_task_id = (
@@ -363,5 +374,5 @@ class TestingAgentExecutor(BaseAgentExecutor):
             )
             self.last_activity_time = time.time()
             self.status_detail = None
-            await self._notify_gra_of_status_change()
+            #await self._notify_gra_of_status_change()
    

@@ -116,7 +116,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 provided_env
             )  #
             self.status_detail = "Création de l'environnement"
-            await self._notify_gra_of_status_change()
+            #await self._notify_gra_of_status_change()
             try:
                 create_result = await self.environment_manager.safe_tool_call(
                     self.environment_manager.create_isolated_environment(
@@ -138,7 +138,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     exc_info=True,
                 )
                 await self._update_task_state(TaskState.FAILED, details=str(e))
-            await self._notify_gra_of_status_change()
+            #await self._notify_gra_of_status_change()
 
             # --- Début de la boucle Pensée-Action ---
             last_action_result: dict | None = None  #
@@ -181,7 +181,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
 
                 self.logger.info(f"Action décidée par le LLM: {action_type}")
                 self.status_detail = f"Action décidée: {action_type}"
-                await self._notify_gra_of_status_change()
+                #await self._notify_gra_of_status_change()
 
                 action_result_details = {}
                 action_summary = f"Action '{action_type}' exécutée."  #
@@ -193,7 +193,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         llm_action_payload
                     )
                     self.status_detail = f"Génération du fichier {file_path}"
-                    await self._notify_gra_of_status_change()
+                    #await self._notify_gra_of_status_change()
 
                     try:
                         tool_result = await self.environment_manager.safe_tool_call(
@@ -427,7 +427,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                 f"Erreur majeure dans l'exécuteur de développement pour la tâche {current_task_id}: {e}",
                 exc_info=True,
             )  #
-            await event_queue.enqueue_event(
+            """await event_queue.enqueue_event(
                 TaskStatusUpdateEvent(  #
                     status=TaskStatus(
                         state=TaskState.failed,
@@ -438,10 +438,12 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     final=True,
                     contextId=current_context_id,
                     taskId=current_task_id,
+               
                 )
             )  #
+            """
             self.status_detail = f"Erreur: {e}"
-            await self._notify_gra_of_status_change()
+            #await self._notify_gra_of_status_change()
             self._update_stats(success=False)  #
         finally:  #
             self.state = AgentOperationalState.IDLE
@@ -450,7 +452,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             )
             self.last_activity_time = time.time()
             self.status_detail = None
-            await self._notify_gra_of_status_change()  # Notifier la fin
+            #await self._notify_gra_of_status_change()  # Notifier la fin
 
     async def _generate_code_from_specs(self, specs: dict) -> str:
         """Méthode privée pour appeler le LLM spécifiquement pour la génération de code."""
