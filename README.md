@@ -3,7 +3,7 @@
 
 ---
 
-[![Cloud Run Ready](https://img.shields.io/badge/cloud--run-ready-brightgreen)](https://cloud.google.com/run) [![Python](https://img.shields.io/badge/python-3.11-blue)](https://python.org/) [![Google ADK](https://img.shields.io/badge/ADK-Google%20Agent2Agent-blueviolet)](https://developers.google.com/agent-framework) [![Platform](https://img.shields.io/badge/platform-Google%20Cloud-lightgrey)](https://cloud.google.com/)
+[![Cloud Run Ready](https://img.shields.io/badge/cloud--run-ready-brightgreen)](https://cloud.google.com/run) [![Python](https://img.shields.io/badge/python-3.11-blue)](https://python.org/) [![Google ADK](https://img.shields.io/badge/ADK-Google%20Agent2Agent-blueviolet)](https://developers.google.com/agent-framework) [![Platform](https://img.shields.io/badge/platform-Google%20Cloud-lightgrey)](https://cloud.google.com/) [![Frontend](https://img.shields.io/badge/frontend-React-61DAFB)](https://react.dev/) [![Environments](https://img.shields.io/badge/env-Kubernetes-blue)](https://kubernetes.io/) [![Database](https://img.shields.io/badge/database-Firestore-orange)](https://firebase.google.com/docs/firestore) [![LLM](https://img.shields.io/badge/LLM-Vertex%20AI-blueviolet)](https://cloud.google.com/vertex-ai)
 
 ---
 
@@ -23,7 +23,9 @@ OrchestrAI turns any vague user goal into a detailed action plan and concrete de
 - **Full audit trail**: Every decision, correction and outcome is persisted in Firestore for transparency.
 - **Isolated dev environments**: Generated code runs in Kubernetes pods managed by the `EnvironmentManager` for safety (see `docs/environment_manager.md`). Environment metadata lives in Firestore and, when no dedicated pod can be created, the manager reuses a shared `exec_default` environment (see `scripts/create_fallback_environment.py`).
 - **Real-time agent status**: The GRA exposes `/gra_status` and `/ws/status` endpoints so the dashboard can display each agent's operational state (Idle, Busy, Working, etc.).
-- **Agent logs**: Each agent exposes a `/logs` route and the GRA proxies it via `/v1/agents/<name>/logs` so the dashboard can fetch runtime logs securely. The GRA server itself exposes `/v1/gra/logs`.
+- **Agent logs (syslog)**: Each agent exposes a `/logs` route and the GRA proxies it via `/v1/agents/<name>/logs` so the dashboard can fetch runtime logs securely. The GRA server itself exposes `/v1/gra/logs`.
+- **Agent restart**: The dashboard provides a restart button calling `/v1/agents/<name>/restart` which relays to each agent's own `/restart` endpoint.
+- **Pod file browser**: Files generated inside an isolated environment can be listed, downloaded and uploaded via `/api/environments/<id>/files` and related routes.
 
 ---
 
