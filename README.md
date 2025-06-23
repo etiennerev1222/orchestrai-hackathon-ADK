@@ -428,12 +428,12 @@ Several helper scripts are provided for deployment and maintenance tasks.
 
 # OrchestrAI Hackathon Project
 
-© 2025 Étienne Revol - Licensed under GPLv3
+© 2025 Etienne Revol - Licensed under GPLv3
 
 ## About
 
 This software is part of the OrchestrAI Hackathon project. It is distributed under the GNU General Public License v3 (GPLv3).
-No part of this software may be reused in proprietary or security-critical systems without the explicit written consent of Étienne Revol.
+No part of this software may be reused in proprietary or security-critical systems without the explicit written consent of Etienne Revol.
 
 ## License
 
