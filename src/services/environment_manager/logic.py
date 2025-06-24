@@ -7,7 +7,7 @@ from typing import Optional
 from src.shared.firebase_init import db
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 
-from .environment_manager import EnvironmentManager as BaseEnvironmentManager
+from .k8s_environment_manager import KubernetesEnvironmentManager as BaseEnvironmentManager
 
 logger = logging.getLogger(__name__)
 
