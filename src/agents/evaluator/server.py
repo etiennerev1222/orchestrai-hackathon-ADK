@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse
 from src.shared.log_handler import InMemoryLogHandler
 
 from src.shared.service_discovery import get_gra_base_url, register_self_with_gra
+from src.shared.stats_utils import increment_agent_restart
 from .executor import EvaluatorAgentExecutor
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ async def logs_endpoint(request):
 async def restart_endpoint(request):
     """Arrête le processus pour forcer un redémarrage de l'agent."""
     logger.warning(f"[{AGENT_NAME}] Restart requested via /restart")
+    increment_agent_restart(AGENT_NAME)
     asyncio.get_event_loop().call_later(0.1, os._exit, 0)
     return JSONResponse({"status": "restarting"})
 
