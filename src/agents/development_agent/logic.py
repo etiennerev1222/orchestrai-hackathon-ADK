@@ -5,6 +5,8 @@ from src.shared.llm_client import call_llm
 
 logger = logging.getLogger(__name__)
 
+AGENT_SKILL_CODING_PYTHON = "coding_python"
+
 class DevelopmentAgentLogic(BaseAgentLogic):
     """Simple logic to generate Python code and write it to a file."""
 
@@ -24,6 +26,6 @@ class DevelopmentAgentLogic(BaseAgentLogic):
 
         if not self.environment_manager:
             raise RuntimeError("Environment manager not configured")
-        await self.environment_manager.write_file_to_environment(environment_id, file_path, code)
+        await self.environment_manager.upload_to_environment(environment_id, file_path, code)
 
         return json.dumps({"file_path": file_path, "code": code})
