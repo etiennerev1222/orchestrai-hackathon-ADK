@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
-from src.services.environment_manager.environment_manager import EnvironmentManager
+from src.services.environment_manager import EnvironmentManager
 from kubernetes import client
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -897,7 +897,7 @@ async def get_agent_stats():
 
 @app.get("/api/environments/{environment_id}/files")
 async def list_files(environment_id: str, path: Optional[str] = "."):
-    """Liste les fichiers dans un environnement. Le chemin est relatif à /workspace."""
+    """Liste les fichiers dans un environnement. Le chemin est relatif à /app."""
     if not environment_manager:
         raise HTTPException(status_code=503, detail="EnvironmentManager is not available.")
     try:
