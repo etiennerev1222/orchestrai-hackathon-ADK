@@ -12,7 +12,6 @@ from starlette.routing import Route
 from starlette.responses import JSONResponse
 from src.services.environment_manager.environment_manager import EnvironmentManager
 from src.shared.service_discovery import register_self_with_gra
-from src.shared.stats_utils import increment_agent_restart
 from .executor import TestingAgentExecutor
 from .logic import AGENT_SKILL_SOFTWARE_TESTING, AGENT_SKILL_TEST_CASE_GENERATION
 
@@ -81,7 +80,6 @@ async def logs_endpoint(request):
 async def restart_endpoint(request):
     """Arrête le processus pour forcer un redémarrage de l'agent."""
     logger.warning(f"[{AGENT_NAME}] Restart requested via /restart")
-    increment_agent_restart(AGENT_NAME)
     asyncio.get_event_loop().call_later(0.1, os._exit, 0)
     return JSONResponse({"status": "restarting"})
 

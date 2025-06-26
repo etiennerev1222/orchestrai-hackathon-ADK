@@ -1,13 +1,13 @@
 
 import asyncio
-from src.services.environment_manager import KubernetesEnvironmentManager
+from src.services.environment_manager.environment_manager import EnvironmentManager
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 async def create_test_env():
-    env_manager = KubernetesEnvironmentManager()
+    env_manager = EnvironmentManager()
     test_env_id = "my-test-env-001"
     
     logger.info(f"Attempting to create environment '{test_env_id}'...")
