@@ -26,3 +26,18 @@ def update_agent_stats(agent_name: str, success: bool):
         logger.error(
             f"Impossible de mettre à jour les statistiques pour {agent_name}: {e}"
         )
+
+
+def increment_agent_restart(agent_name: str):
+    """Increment restart counter for the given agent."""
+    if not db:
+        logger.error(
+            "Client Firestore (db) non initialisé, impossible de mettre à jour le compteur de redémarrages."
+        )
+        return
+    try:
+        stats_ref = db.collection("agent_stats").document(agent_name)
+        stats_ref.set({"restarts": firestore.Increment(1)}, merge=True)
+        logger.info(f"Redémarrage enregistré pour {agent_name}")
+    except Exception as e:
+        logger.error(f"Impossible de mettre à jour le compteur de redémarrages pour {agent_name}: {e}")

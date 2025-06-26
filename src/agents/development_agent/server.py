@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import uvicorn
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -15,6 +16,7 @@ from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 
 from src.shared.log_handler import InMemoryLogHandler
 from src.shared.service_discovery import register_self_with_gra
+from src.shared.stats_utils import increment_agent_restart
 
 from .executor import DevelopmentAgentExecutor
 
@@ -56,6 +58,13 @@ request_handler = DefaultRequestHandler(agent_executor=agent_executor, task_stor
 async def logs_endpoint(request):
     return JSONResponse(in_memory_log_handler.get_logs())
 
+async def restart_endpoint(request):
+    """Terminate the process to trigger a restart by the platform."""
+    logger.warning(f"[{AGENT_NAME}] Restart requested via /restart")
+    increment_agent_restart(AGENT_NAME)
+    asyncio.get_event_loop().call_later(0.1, os._exit, 0)
+    return JSONResponse({"status": "restarting"})
+
 
 @contextlib.asynccontextmanager
 async def lifespan(app: Starlette):
@@ -83,9 +92,13 @@ def create_app() -> FastAPI:
 
     async def status_endpoint(request):
         return JSONResponse(agent_executor.get_status())
+    async def health_check_endpoint(request):
+        return JSONResponse({"status": "ok"})
 
+    starlette_app.router.routes.append(Route("/health", endpoint=health_check_endpoint, methods=["GET"]))
     starlette_app.router.routes.append(Route("/status", endpoint=status_endpoint, methods=["GET"]))
     starlette_app.router.routes.append(Route("/logs", endpoint=logs_endpoint, methods=["GET"]))
+    starlette_app.router.routes.append(Route("/restart", endpoint=restart_endpoint, methods=["POST"]))
     starlette_app.router.lifespan_context = lifespan
 
     app = FastAPI()
@@ -96,8 +109,6 @@ def create_app() -> FastAPI:
 app = create_app()
 
 if __name__ == "__main__":
-    import uvicorn
-
     port = int(os.environ.get("PORT", 8080))
     logger.info(f"Starting {AGENT_NAME} on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
