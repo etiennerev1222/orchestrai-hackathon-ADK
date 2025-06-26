@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = "DevelopmentAgentServer"
 
 in_memory_log_handler = InMemoryLogHandler(maxlen=200)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+in_memory_log_handler.setFormatter(formatter)
 logging.getLogger().addHandler(in_memory_log_handler)
 logging.getLogger().setLevel(logging.INFO)
 
