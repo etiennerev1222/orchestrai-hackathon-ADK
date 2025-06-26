@@ -14,8 +14,7 @@ from a2a.types import (
 from a2a.utils import new_text_artifact, new_agent_text_message, new_task
 
 from src.shared.base_agent_executor import BaseAgentExecutor
-from src.services.environment_manager.logic import EnvironmentManager
-from .environment_helper import EnvironmentHelper
+from src.services.environment_manager.environment_manager import EnvironmentManager
 from src.shared.task_graph_management import TaskGraph
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 from src.shared.agent_state import AgentOperationalState
@@ -33,8 +32,8 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             default_artifact_name="development_action_result",
             default_artifact_description="Résultat de l'action de développement (écriture/exécution/lecture).",
         )
-        self.env_helper = EnvironmentHelper()
-        logic.set_environment_manager(self.env_helper)
+        self.environment_manager = EnvironmentManager()
+        logic.set_environment_manager(self.environment_manager)
         self.current_environment_id: str | None = None
         self.execution_plan_id: str | None = None
 

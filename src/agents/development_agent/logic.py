@@ -2,7 +2,6 @@
 
 import logging
 import json
-from typing import Dict, Any
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
@@ -12,10 +11,7 @@ logger = logging.getLogger(__name__)
 AGENT_SKILL_CODING_PYTHON = "coding_python"
 
 class DevelopmentAgentLogic(BaseAgentLogic):
-    """Simple logic to generate Python code and write it to a file."""
-
-
-class DevelopmentAgentLogic(BaseAgentLogic):
+    """Logic handling the reasoning of the development agent."""
     def __init__(self):
         super().__init__()
         self.logger = logging.getLogger(f"{__name__}.DevelopmentAgentLogic")
@@ -47,18 +43,22 @@ class DevelopmentAgentLogic(BaseAgentLogic):
         )
 
     async def process(self, input_data_str: str, context_id: str | None = None) -> str:
-        """Génère la prochaine action JSON que l'agent de développement devrait entreprendre."""
+        """Return the next JSON action the development agent should perform."""
 
-        if not self.environment_manager:
-            raise RuntimeError("Environment manager not configured")
-        await self.environment_manager.upload_to_environment(environment_id, file_path, code)
         try:
             input_payload = json.loads(input_data_str)
             objective = input_payload.get("objective", "Objectif non spécifié.")
             last_action_result = input_payload.get("last_action_result", {})
         except json.JSONDecodeError:
-            self.logger.error(f"DevelopmentAgentLogic: Input JSON invalide: {input_data_str}")
-            return json.dumps({"action": "complete_task", "summary": "Erreur: L'input de la tâche était mal formaté."})
+            self.logger.error(
+                f"DevelopmentAgentLogic: Input JSON invalide: {input_data_str}"
+            )
+            return json.dumps(
+                {
+                    "action": "complete_task",
+                    "summary": "Erreur: L'input de la tâche était mal formaté.",
+                }
+            )
 
         self.logger.info(f"DevelopmentAgentLogic - Décision d'action pour l'objectif: '{objective}'")
         if last_action_result:
