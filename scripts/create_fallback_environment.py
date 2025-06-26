@@ -1,11 +1,11 @@
 import asyncio
 import logging
-from src.services.environment_manager.environment_manager import EnvironmentManager, FALLBACK_ENV_ID
+from src.services.environment_manager import KubernetesEnvironmentManager, FALLBACK_ENV_ID
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 async def main():
-    manager = EnvironmentManager()
+    manager = KubernetesEnvironmentManager()
     env_id = FALLBACK_ENV_ID
     logging.info(f"Creating fallback environment '{env_id}' if needed...")
     created = await manager.create_isolated_environment(env_id)

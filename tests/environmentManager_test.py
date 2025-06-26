@@ -1,12 +1,15 @@
 import asyncio
 import logging
-from src.services.environment_manager.environment_manager import EnvironmentManager
+import pytest
+from src.services.environment_manager import KubernetesEnvironmentManager
+
+pytest.skip("requires Kubernetes cluster", allow_module_level=True)
 
 # Configuration du logger pour bien voir les messages
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 async def test_environment_manager():
-    manager = EnvironmentManager()
+    manager = KubernetesEnvironmentManager()
     import uuid
     hex_id = uuid.uuid4().hex[:12]
     test_global_plan_id = f"gplan_{hex_id}"
