@@ -130,7 +130,10 @@ class ExecutionTaskGraph:
                 "nodes": {},
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat(),
-                "overall_status": "PENDING"
+                "overall_status": "PENDING",
+                "edit_mode": False,
+                "last_edit_by": None,
+                "edit_started_at": None,
             }
             self.doc_ref.set(initial_data)
             return initial_data
@@ -246,4 +249,129 @@ class ExecutionTaskGraph:
 
     def as_dict(self) -> Dict[str, Any]:
         return self._get_graph_data()
+
+    # --- New methods for interactive edition ---
+
+    def set_edit_mode(self, enabled: bool, user_id: Optional[str] = None):
+        graph_data = self._get_graph_data()
+        graph_data["edit_mode"] = enabled
+        if enabled:
+            graph_data["last_edit_by"] = user_id
+            graph_data["edit_started_at"] = datetime.utcnow().isoformat()
+        else:
+            graph_data["edit_started_at"] = None
+        self._save_graph_data(graph_data)
+
+    def get_edit_mode(self) -> bool:
+        graph_data = self._get_graph_data()
+        return bool(graph_data.get("edit_mode", False))
+
+    def edit_task(self, task_id: str, updates: Dict[str, Any]):
+        graph_data = self._get_graph_data()
+        nodes = graph_data.get("nodes", {})
+        node_data = nodes.get(task_id)
+        if not node_data:
+            raise ValueError(f"Tâche {task_id} introuvable pour édition")
+        if node_data.get("state") == ExecutionTaskState.COMPLETED.value:
+            raise ValueError("Impossible de modifier une tâche complétée")
+
+        allowed_fields = {
+            "objective",
+            "task_type",
+            "assigned_agent_type",
+            "meta",
+        }
+        for key, val in updates.items():
+            if key in allowed_fields:
+                if key == "task_type":
+                    val = ExecutionTaskType(val).value
+                node_data[key] = val
+        nodes[task_id] = node_data
+        graph_data["nodes"] = nodes
+        self._save_graph_data(graph_data)
+        return ExecutionTaskNode.from_dict(node_data)
+
+    def _recursive_delete(self, task_id: str, nodes: Dict[str, Any], graph_data: Dict[str, Any]):
+        node_data = nodes.get(task_id)
+        if not node_data:
+            return
+        for sub_id in list(node_data.get("sub_task_ids", [])):
+            self._recursive_delete(sub_id, nodes, graph_data)
+        for other_id, other_data in nodes.items():
+            deps = other_data.get("dependencies", [])
+            if task_id in deps:
+                deps.remove(task_id)
+                other_data["dependencies"] = deps
+        parent_id = node_data.get("parent_id")
+        if parent_id and parent_id in nodes:
+            parent_subs = nodes[parent_id].get("sub_task_ids", [])
+            if task_id in parent_subs:
+                parent_subs.remove(task_id)
+                nodes[parent_id]["sub_task_ids"] = parent_subs
+        if task_id in graph_data.get("root_task_ids", []):
+            graph_data["root_task_ids"].remove(task_id)
+        nodes.pop(task_id, None)
+
+    def delete_task(self, task_id: str):
+        graph_data = self._get_graph_data()
+        nodes = graph_data.get("nodes", {})
+        node_data = nodes.get(task_id)
+        if not node_data:
+            raise ValueError(f"Tâche {task_id} introuvable")
+        if node_data.get("state") == ExecutionTaskState.COMPLETED.value:
+            raise ValueError("Impossible de supprimer une tâche complétée")
+
+        self._recursive_delete(task_id, nodes, graph_data)
+        graph_data["nodes"] = nodes
+        self._save_graph_data(graph_data)
+
+    def link_tasks(self, from_id: str, to_id: str):
+        graph_data = self._get_graph_data()
+        nodes = graph_data.get("nodes", {})
+        if from_id not in nodes or to_id not in nodes:
+            raise ValueError("Tâches introuvables pour liaison")
+        deps = nodes[to_id].get("dependencies", [])
+        if from_id not in deps:
+            deps.append(from_id)
+            nodes[to_id]["dependencies"] = deps
+        self._ensure_acyclic(nodes)
+        graph_data["nodes"] = nodes
+        self._save_graph_data(graph_data)
+
+    def unlink_tasks(self, from_id: str, to_id: str):
+        graph_data = self._get_graph_data()
+        nodes = graph_data.get("nodes", {})
+        if to_id not in nodes:
+            return
+        deps = nodes[to_id].get("dependencies", [])
+        if from_id in deps:
+            deps.remove(from_id)
+            nodes[to_id]["dependencies"] = deps
+        graph_data["nodes"] = nodes
+        self._save_graph_data(graph_data)
+
+    def _ensure_acyclic(self, nodes: Dict[str, Any]):
+        visited: Dict[str, int] = {}
+
+        def dfs(nid: str, stack: List[str]):
+            state = visited.get(nid, 0)
+            if state == 1:
+                raise ValueError("Cycle détecté dans le graphe")
+            if state == 2:
+                return
+            visited[nid] = 1
+            for dep in nodes.get(nid, {}).get("dependencies", []):
+                if dep in nodes:
+                    dfs(dep, stack + [nid])
+            visited[nid] = 2
+
+        for nid in nodes.keys():
+            if visited.get(nid, 0) == 0:
+                dfs(nid, [])
+
+    def validate_graph(self):
+        graph_data = self._get_graph_data()
+        nodes = graph_data.get("nodes", {})
+        self._ensure_acyclic(nodes)
+        return True
     
