@@ -15,29 +15,38 @@ from a2a.utils import new_text_artifact, new_agent_text_message, new_task
 
 from src.shared.base_agent_executor import BaseAgentExecutor
 from src.services.environment_manager.environment_manager import EnvironmentManager
+from src.shared.service_discovery import get_environment_manager_url, get_agent_id_token
+
 from src.shared.task_graph_management import TaskGraph
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 from src.shared.agent_state import AgentOperationalState
-
 from .logic import DevelopmentAgentLogic
 
-logger = logging.getLogger(__name__)
+import os
+import re # Import regex module for stripping markdown
+
+AGENT_NAME = os.environ.get("AGENT_NAME", "DevelopmentAgentGKEv2")
+logger = logging.getLogger(f"{__name__}.{AGENT_NAME}")
 
 
 class DevelopmentAgentExecutor(BaseAgentExecutor):
     def __init__(self) -> None:
+        # Initialisation de la logique de l'agent
         logic = DevelopmentAgentLogic()
         super().__init__(
             agent_logic=logic,
             default_artifact_name="development_action_result",
             default_artifact_description="Résultat de l'action de développement (écriture/exécution/lecture).",
         )
-        self.environment_manager = EnvironmentManager()
-        logic.set_environment_manager(self.environment_manager)
+        # L'EnvironmentManager sera initialisé de manière asynchrone dans la méthode execute
+        self.environment_manager: EnvironmentManager | None = None
+        # Passer None initialement à la logique, elle recevra le manager réel une fois prêt
+        logic.set_environment_manager(None)
         self.current_environment_id: str | None = None
         self.execution_plan_id: str | None = None
 
     def _create_artifact_from_result(self, result_data: str, task) -> any:
+        """Crée un artefact textuel à partir des données de résultat."""
         return new_text_artifact(
             name=self.default_artifact_name,
             description=self.default_artifact_description,
@@ -45,12 +54,26 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
         )
 
     def _reconstruct_environment_id(self) -> str:
+        """Reconstruit ou normalise l'ID de l'environnement."""
         if self.current_environment_id:
             return self.current_environment_id
-        return EnvironmentManager.normalize_environment_id(self.execution_plan_id or "default")
+        if self.environment_manager:
+            return self.environment_manager.normalize_environment_id(self.execution_plan_id or "default")
+        return "exec-default" # Valeur de secours si le manager n'est pas encore prêt
 
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        # Initialisation critique de l'EnvironmentManager ici, où 'await' est possible
+        if self.environment_manager is None:
+            env_url = await get_environment_manager_url() # Récupère l'URL de l'Environment Manager
+            agent_auth_token = await get_agent_id_token() # Récupère le jeton d'authentification de l'agent
+            # Initialise l'EnvironmentManager avec l'URL et le jeton
+            self.environment_manager = EnvironmentManager(base_url=env_url, auth_token=agent_auth_token)
+            # Met à jour l'instance de l'EnvironmentManager dans la logique de l'agent
+            self.agent_logic.set_environment_manager(self.environment_manager)
+            logger.info(f"EnvironmentManager initialisé dans la méthode execute avec base_url: {env_url}")
+
+
         self.state = AgentOperationalState.WORKING
         self.current_task_id = context.current_task.id if context.current_task else None
         self.last_activity_time = time.time()
@@ -87,9 +110,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             self.execution_plan_id = input_payload_from_supervisor.get("execution_plan_id")
             provided_env = input_payload_from_supervisor.get("environment_id")
             if not provided_env:
-                provided_env = EnvironmentManager.normalize_environment_id(self.execution_plan_id or "default")
+                provided_env = self.environment_manager.normalize_environment_id(self.execution_plan_id or "default")
 
-            self.current_environment_id = EnvironmentManager.normalize_environment_id(provided_env)
+            self.current_environment_id = self.environment_manager.normalize_environment_id(provided_env)
 
             self.status_detail = "Création de l'environnement"
             await self._notify_gra_of_status_change()
@@ -111,8 +134,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     taskId=current_task_id,
                 )
             )
-
+            import asyncio
             while continue_loop:
+                await asyncio.sleep(0.25)
                 tool_result = None
 
                 payload_for_logic = {
@@ -141,7 +165,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     code_to_write = await self._generate_code_from_specs(llm_action_payload)
 
                     tool_result = await self.environment_manager.safe_tool_call(
-                        self.environment_manager.write_file_to_environment(self.current_environment_id, file_path, code_to_write),
+                        lambda: self.environment_manager.write_file_to_environment(self.current_environment_id, file_path, code_to_write),
                         f"Écriture du fichier {file_path}",
                     )
 
@@ -178,6 +202,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         action_result_details = {
                             "file_path": file_path,
                             "code_snippet": code_to_write[:150] + "...",
+                            "full_result": tool_result
                         }
 
                 elif action_type == "execute_command":
@@ -207,8 +232,9 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     self.status_detail = f"Lecture du fichier {file_path}"
                     await self._notify_gra_of_status_change()
 
-                    tool_result = await self.environment_manager.safe_read_file_from_environment(
-                        self.current_environment_id, file_path
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        lambda: self.environment_manager.read_file_from_environment(self.current_environment_id, file_path),
+                        f"Lecture du fichier {file_path}",
                     )
 
                     if tool_result is None:
@@ -231,7 +257,7 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                     await self._notify_gra_of_status_change()
 
                     tool_result = await self.environment_manager.safe_tool_call(
-                        self.environment_manager.list_files_in_environment(self.current_environment_id, path),
+                        lambda: self.environment_manager.list_files_in_environment(self.current_environment_id, path),
                         f"Listing du répertoire {path}",
                     )
 
@@ -355,5 +381,11 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             "Génère UNIQUEMENT le code Python correspondant."
         )
 
-        return await call_llm(code_generation_prompt, code_system_prompt, json_mode=False)
+        raw_code = await call_llm(code_generation_prompt, code_system_prompt, json_mode=False)
 
+        # FIX: Strip Markdown code block fences from the generated code
+        # This regex matches lines starting with ``` followed by optional language specifier,
+        # and lines containing only ```
+        stripped_code = re.sub(r'^\s*```(?:[a-zA-Z0-9]+\s*)?\n|\n\s*```\s*$', '', raw_code, flags=re.MULTILINE)
+        
+        return stripped_code.strip() # Remove any leading/trailing whitespace

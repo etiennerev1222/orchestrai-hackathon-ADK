@@ -11,13 +11,20 @@ FALLBACK_ENV_ID = "exec_default"
 
 class EnvironmentManager:
     """HTTP client wrapper for the Environment Manager service."""
-
-    def __init__(self, base_url: Optional[str] = None):
-        self.base_url = base_url or os.environ.get(
-            "ENV_MANAGER_URL",
-            "http://environment-manager.default.svc.cluster.local:8080",
-        )
+    def __init__(self, base_url: Optional[str] = None, auth_token: str | None = None):
+        self.base_url = base_url or os.environ.get("ENV_MANAGER_URL", "http://environment-manager.default.svc.cluster.local:8080")
+        self.auth_token = auth_token # Store the auth_token
         self.client = httpx.AsyncClient()
+
+   # Helper method to get headers, including Authorization
+    def _get_headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+            logger.debug("Authorization header added to request.")
+        else:
+            logger.warning("No auth_token provided for EnvironmentManager. Requests might fail if authentication is required.")
+        return headers
 
     @staticmethod
     def extract_global_plan_id(plan_id: str) -> str:
@@ -43,7 +50,7 @@ class EnvironmentManager:
             logger.error(f"Request to {url} failed: {e}")
             raise
 
-    async def create_isolated_environment(self, environment_id: str, base_image: str = "python:3.11") -> Optional[str]:
+    async def create_isolated_environment(self, environment_id: str, base_image: str | None = None) -> Optional[str]:
         payload = {"environment_id": self.normalize_environment_id(environment_id), "base_image": base_image}
         try:
             data = await self._post("create_environment", payload)
@@ -63,9 +70,9 @@ class EnvironmentManager:
         payload = {"environment_id": self.normalize_environment_id(environment_id), "command": cmd}
         return await self._post("exec_in_environment", payload, timeout=60)
 
-    async def write_file_to_environment(self, environment_id: str, file_path: str, content: str) -> None:
+    async def write_file_to_environment(self, environment_id: str, file_path: str, content: str) -> Dict[str, Any]: # CHANGED RETURN TYPE HINT
         payload = {"environment_id": self.normalize_environment_id(environment_id), "path": file_path, "content": content}
-        await self._post("upload_to_environment", payload, timeout=60)
+        return await self._post("upload_to_environment", payload, timeout=60)
 
     async def read_file_from_environment(self, environment_id: str, file_path: str) -> str:
         payload = {"environment_id": self.normalize_environment_id(environment_id), "path": file_path}
@@ -115,9 +122,12 @@ class EnvironmentManager:
             return fallback_id
         return target_env
 
-    async def safe_tool_call(self, tool_coro, description: str, timeout_sec: int = 60) -> Dict[str, Any]:
+    async def safe_tool_call(self, tool_callable, description: str, timeout_sec: int = 60) -> Dict[str, Any]:
         try:
-            result = await asyncio.wait_for(tool_coro, timeout=timeout_sec)
+            result = await asyncio.wait_for(tool_callable(), timeout=timeout_sec)
+            # --- NOUVELLE LIGNE DE DEBUG ---
+            logger.info(f"DEBUG: safe_tool_call returning: {result} (Type: {type(result)}) for {description}")
+            # --- FIN NOUVELLE LIGNE DE DEBUG ---
             return result
         except asyncio.TimeoutError:
             msg = f"Tool timeout for: {description}"
@@ -130,7 +140,7 @@ class EnvironmentManager:
 
     async def safe_execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> Dict[str, Any]:
         return await self.safe_tool_call(
-            self.execute_command_in_environment(environment_id, command, workdir),
+            lambda: self.execute_command_in_environment(environment_id, command, workdir),
             f"execute_command_in_environment: {command}"
         )
 

@@ -3,7 +3,9 @@
 # === CONFIG ===
 PROJECT_ID="orchestrai-hackathon"  # remplace si nécessaire
 IMAGE_NAME="python-devtools"
-IMAGE_TAG="3.9-full"
+# ✨ CORRECTION DÉFINITIVE : Un tag unique pour chaque build
+TIMESTAMP=$(date +%s)
+IMAGE_TAG="${TIMESTAMP}" # Utilise un timestamp comme tag unique
 GCR_IMAGE="gcr.io/${PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 # === TEMP DIR FOR BUILD ===
@@ -11,19 +13,20 @@ BUILD_DIR="./tmp_python_devtools_image"
 mkdir -p "${BUILD_DIR}"
 
 # === DOCKERFILE ===
+# Assurez-vous que 'jq' est bien dans cette liste
 cat <<EOF > "${BUILD_DIR}/Dockerfile"
-FROM python:3.9-slim-buster
+FROM python:3.11-slim-buster
 
 RUN apt-get update && \\
     apt-get install -y --no-install-recommends \\
         bash \\
-        jq \\
         findutils \\
         git \\
         curl \\
         wget \\
         vim \\
         build-essential \\
+        jq \\
     && apt-get clean && \\
     rm -rf /var/lib/apt/lists/*
 
@@ -44,7 +47,7 @@ rm -rf "${BUILD_DIR}"
 
 # === NEXT STEPS ===
 echo ""
-echo "✅ Image available at: ${GCR_IMAGE}"
+echo "✅ Image disponible à : ${GCR_IMAGE}"
 echo ""
-echo "➡️ Modify your Kubernetes manifest to use:"
-echo "image: ${GCR_IMAGE}"
+echo "➡️ Mettez à jour src/services/environment_manager/k8s_environment_manager.py pour utiliser cette image:"
+echo "base_image: \"${GCR_IMAGE}\""

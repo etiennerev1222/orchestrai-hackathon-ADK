@@ -15,7 +15,8 @@ from src.shared.firebase_init import db
 import re
 from google.oauth2 import service_account
 import google.auth
-
+import tempfile
+import base64
 GKE_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ K8S_ENVIRONMENTS_COLLECTION = "kubernetes_environments"
 FALLBACK_ENV_ID = "exec_default"
 
 
-class EnvironmentManager:
+class KubernetesEnvironmentManager:
     def __init__(self):
         self.api_client = None
         gke_cluster_endpoint = os.environ.get("GKE_CLUSTER_ENDPOINT")
@@ -35,17 +36,28 @@ class EnvironmentManager:
             logger.info(f"GKE_CLUSTER_ENDPOINT found: {gke_cluster_endpoint}. Configuring Kubernetes client for remote GKE cluster.")
             configuration.host = f"https://{gke_cluster_endpoint}"
 
-            # SSL
-            ssl_ca_cert = os.environ.get("GKE_SSL_CA_CERT")
-            if ssl_ca_cert:
-                configuration.ssl_ca_cert = ssl_ca_cert
-                configuration.verify_ssl = True
-                logger.info("SSL verification ENABLED with provided CA certificate.")
+            # ✨ CORRECTION : Gérer correctement la donnée du certificat SSL
+            ssl_ca_cert_data = os.environ.get("GKE_SSL_CA_CERT")
+            if ssl_ca_cert_data:
+                try:
+                    # Décoder la donnée base64 du certificat
+                    decoded_cert = base64.b64decode(ssl_ca_cert_data)
+                    # Créer un fichier temporaire pour stocker le certificat décodé
+                    with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.crt') as cert_file:
+                        cert_file.write(decoded_cert.decode('utf-8'))
+                        # Donner le CHEMIN du fichier temporaire à la configuration
+                        configuration.ssl_ca_cert = cert_file.name
+                    
+                    configuration.verify_ssl = True
+                    logger.info(f"SSL verification ENABLED with CA certificate written to temporary file: {configuration.ssl_ca_cert}")
+                except Exception as e:
+                    logger.error(f"Failed to decode or write the CA certificate. SSL will be disabled. Error: {e}")
+                    configuration.verify_ssl = False
             else:
                 configuration.verify_ssl = False
-                logger.warning("SSL verification is DISABLED because GKE_SSL_CA_CERT is not set. ⚠️ Not recommended for production.")
+                logger.warning("SSL verification is DISABLED because GKE_SSL_CA_CERT is not set. DO NOT USE IN PRODUCTION.")
 
-            # Auth via ADC
+            # La suite de la configuration (authentification) reste la même
             credentials, _ = google.auth.default(scopes=GKE_SCOPES)
             if credentials:
                 try:
@@ -57,9 +69,9 @@ class EnvironmentManager:
                     raise Exception(f"ADC token refresh failed: {e}")
             else:
                 raise Exception("ADC credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS env var or use gcloud auth.")
-
+        
         else:
-            # Fallback local config
+            # Fallback local (inchangé)
             try:
                 config.load_kube_config()
                 logger.info("Kubernetes config loaded from local kube_config.")
@@ -74,15 +86,14 @@ class EnvironmentManager:
         self.environments = {}
         logger.info(f"EnvironmentManager initialized for Kubernetes namespace: {self.namespace}.")
 
-
     @staticmethod
     def normalize_environment_id(plan_id: str) -> str:
         """Return standardized environment ID for a given plan or environment identifier."""
-        return f"exec-{EnvironmentManager.extract_global_plan_id(plan_id)}"
+        return f"exec-{ KubernetesEnvironmentManager.extract_global_plan_id(plan_id)}"
 
     @staticmethod
     def generate_k8s_names(environment_id: str) -> dict:
-        safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
+        safe_env_id = KubernetesEnvironmentManager._make_safe_k8s_name_static(environment_id)
         return {
             "pod_name": f"dev-env-{safe_env_id}",
             "pvc_name": f"dev-env-pvc-{safe_env_id}",
@@ -130,7 +141,7 @@ class EnvironmentManager:
 
         if environment_id in self.environments:
             return
-        names = EnvironmentManager.generate_k8s_names(environment_id)
+        names = KubernetesEnvironmentManager.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
         pvc_name = names["pvc_name"]
 
@@ -172,14 +183,14 @@ class EnvironmentManager:
         except Exception as e:
             logger.error(f"Error during initial Firestore/K8s lookup for environment '{environment_id}': {e}", exc_info=True)
     def _make_safe_k8s_name(self, base: str) -> str:
-        return EnvironmentManager._make_safe_k8s_name_static(base)
+        return KubernetesEnvironmentManager._make_safe_k8s_name_static(base)
     
 
 
 
     async def get_environment_or_fallback(self, plan_id: str, fallback_id: str = FALLBACK_ENV_ID) -> str:
         """Return the environment id for a plan, creating it if needed. If creation fails, use fallback."""
-        target_env = EnvironmentManager.normalize_environment_id(plan_id)
+        target_env = KubernetesEnvironmentManager.normalize_environment_id(plan_id)
         await self._load_existing_environment_details(target_env)
         if target_env not in self.environments:
             created = await self.create_isolated_environment(target_env)
@@ -193,11 +204,14 @@ class EnvironmentManager:
 
    
 
-    async def create_isolated_environment(self, environment_id: str, base_image: str = "gcr.io/orchestrai-hackathon/python-devtools:3.9-full") -> str:
-        environment_id = EnvironmentManager.normalize_environment_id(environment_id)
-        safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
-
-        names = EnvironmentManager.generate_k8s_names(environment_id)
+    async def create_isolated_environment(self, environment_id: str, base_image: str = "gcr.io/orchestrai-hackathon/python-devtools:3.9-full-1") -> str:
+        environment_id = KubernetesEnvironmentManager.normalize_environment_id(environment_id)
+        safe_env_id = KubernetesEnvironmentManager._make_safe_k8s_name_static(environment_id)
+        # Lisez la variable d'environnement si base_image n'est pas fournie
+        logger.info(f"Image de base fournie: {base_image}")
+        effective_base_image = base_image or os.environ.get("DEV_ENV_BASE_IMAGE", "gcr.io/orchestrai-hackathon/python-devtools:1751122256") # Ajoutez une valeur par défaut de secours ici
+        logger.info(f"Using effective base image: {effective_base_image}")
+        names = KubernetesEnvironmentManager.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
         pvc_name = names["pvc_name"]
         volume_name = names.get("volume_name")
@@ -251,7 +265,7 @@ class EnvironmentManager:
                     "containers": [
                         {
                             "name": "developer-sandbox",
-                            "image": base_image,
+                            "image": effective_base_image, 
                             "command": ["/bin/bash", "-c", "tail -f /dev/null"],
                             "workingDir": "/app",
                             "volumeMounts": [
@@ -368,7 +382,7 @@ class EnvironmentManager:
             await asyncio.to_thread(env_doc_ref.set, env_data)
             logger.info(f"Environment '{environment_id}' details stored in Firestore.")
 
-            return environment_id
+            return environment_id # <-- ADDED RETURN HERE
         except client.ApiException as e:
             logger.error(f"Kubernetes API Error creating environment '{environment_id}': Status {e.status}, Reason {e.reason}, Body {e.body}", exc_info=True)
             return None
@@ -405,9 +419,9 @@ class EnvironmentManager:
         await self._ensure_pod_running(pod_name)
 
         return pod_name
-    async def safe_tool_call(self, tool_coro, description: str, timeout_sec: int = 60) -> dict:
+    async def safe_tool_call(self, tool_callable, description: str, timeout_sec: int = 60) -> dict:
         try:
-            result = await asyncio.wait_for(tool_coro, timeout=timeout_sec)
+            result = await asyncio.wait_for(tool_callable(), timeout=timeout_sec) # Call the callable to get the coroutine
             return result
         except asyncio.TimeoutError:
             msg = f"Le délai d'exécution de l'outil a été dépassé pour : {description}"
@@ -423,7 +437,7 @@ class EnvironmentManager:
     ) -> dict:
         """Execute a command safely and format errors for the calling agent."""
         result = await self.safe_tool_call(
-            self.execute_command_in_environment(environment_id, command, workdir),
+            lambda: self.execute_command_in_environment(environment_id, command, workdir),
             description=f"execute_command_in_environment: {command}"
         )
 
@@ -442,7 +456,7 @@ class EnvironmentManager:
     async def safe_read_file_from_environment(self, environment_id: str, file_path: str) -> dict:
         """Read a file safely and always return a dictionary."""
         return await self.safe_tool_call(
-            self.read_file_from_environment(environment_id, file_path),
+            lambda: self.read_file_from_environment(environment_id, file_path),
             description=f"read_file_from_environment: {file_path}"
         )
 
@@ -496,7 +510,7 @@ class EnvironmentManager:
             logger.error(f"Unexpected error executing command '{command}' in '{pod_name}': {e}", exc_info=True)
             return {"stdout": "", "stderr": f"Internal Error: {e}", "exit_code": 1}
 
-    async def write_file_to_environment(self, environment_id: str, file_path: str, content: str) -> None:
+    async def write_file_to_environment(self, environment_id: str, file_path: str, content: str) -> Dict[str, Any]: # Changed return type
         pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"
         dir_name = os.path.dirname(file_path)
@@ -537,6 +551,7 @@ class EnvironmentManager:
                 raise Exception(f"Failed to write file via tar: {stderr.strip()}")
 
             logger.info(f"File '{file_path}' written to Pod '{pod_name}'.")
+            return {"status": "success", "file_path": file_path} # <-- ADDED RETURN HERE
         except client.ApiException as e:
             logger.error(f"Kubernetes API Error writing file '{file_path}' to '{pod_name}': Status {e.status}, Reason {e.reason}, Body {e.body}", exc_info=True)
             raise
@@ -709,9 +724,9 @@ class EnvironmentManager:
             raise
  
     async def destroy_environment(self, environment_id: str) -> None:
-        environment_id = EnvironmentManager.normalize_environment_id(environment_id)
-        safe_env_id = EnvironmentManager._make_safe_k8s_name_static(environment_id)
-        names = EnvironmentManager.generate_k8s_names(environment_id)
+        environment_id = KubernetesEnvironmentManager.normalize_environment_id(environment_id)
+        safe_env_id = KubernetesEnvironmentManager._make_safe_k8s_name_static(environment_id)
+        names = KubernetesEnvironmentManager.generate_k8s_names(environment_id)
         pod_name = names["pod_name"]
         pvc_name = names["pvc_name"]
         
@@ -749,3 +764,4 @@ class EnvironmentManager:
                 logger.error(f"Kubernetes API Error destroying environment '{environment_id}': Status {e.status}, Reason {e.reason}, Body {e.body}", exc_info=True)
         except Exception as e:
             logger.error(f"Error destroying environment '{environment_id}': {e}", exc_info=True)
+

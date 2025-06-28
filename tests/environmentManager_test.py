@@ -14,7 +14,7 @@ async def test_environment_manager():
     hex_id = uuid.uuid4().hex[:12]
     test_global_plan_id = f"gplan_{hex_id}"
     test_global_plan_id ='exec-gplan_baee972ca40f'
-    env_id = EnvironmentManager.normalize_environment_id(test_global_plan_id)
+    env_id = KubernetesEnvironmentManager.normalize_environment_id(test_global_plan_id)
 
     logging.info(f"🌱 Création de l'environnement : {env_id}")
     created_env = await manager.create_isolated_environment(test_global_plan_id)

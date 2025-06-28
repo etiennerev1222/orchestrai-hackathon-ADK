@@ -8,7 +8,7 @@ from src.shared.firebase_init import db
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 
 from .k8s_environment_manager import KubernetesEnvironmentManager as BaseEnvironmentManager
-
+import os
 logger = logging.getLogger(__name__)
 
 class EnvironmentManager(BaseEnvironmentManager):
@@ -28,6 +28,7 @@ class EnvironmentManager(BaseEnvironmentManager):
         storage_client = storage.Client()
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(destination_blob)
+        artifact["agent_name"] = os.environ.get("AGENT_NAME", "EnvironmentManagerGKEv2")
         await asyncio.to_thread(blob.upload_from_string, content.encode("utf-8"))
         artifact = {
             "environment_id": environment_id,

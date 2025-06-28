@@ -1,4 +1,3 @@
 from .environment_manager import EnvironmentManager, FALLBACK_ENV_ID
-from .k8s_environment_manager import EnvironmentManager as KubernetesEnvironmentManager
-
+from .k8s_environment_manager import KubernetesEnvironmentManager
 __all__ = ["EnvironmentManager", "KubernetesEnvironmentManager", "FALLBACK_ENV_ID"]

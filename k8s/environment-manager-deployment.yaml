@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: environment-manager
+  labels:
+    app: environment-manager
 spec:
   replicas: 1
   selector:
@@ -14,35 +16,52 @@ spec:
     spec:
       serviceAccountName: orchestrai-sa
       containers:
-      - name: environment-manager
-        image: gcr.io/PROJECT_ID/environment-manager:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: INTERNAL_URL
-          value: http://environment-manager.default.svc.cluster.local:8080
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: /app/credentials.json
+        - name: environment-manager
+          image: ${IMAGE}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AGENT_NAME
+              value: "EnvironmentManagerGKEv2"
+            - name: GRA_PUBLIC_URL
+              value: "${GRA_PUBLIC_URL}"
+            - name: KUBERNETES_NAMESPACE
+              value: "${KUBERNETES_NAMESPACE}"
+            
+            # ✅ AJOUT DES VARIABLES MANQUANTES
+            - name: PUBLIC_URL
+              value: "http://environment-manager.${KUBERNETES_NAMESPACE}.svc.cluster.local:80"
+            - name: INTERNAL_URL
+              value: "http://environment-manager.${KUBERNETES_NAMESPACE}.svc.cluster.local:8080"
+
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/secrets/sa-key.json"
+            - name: GKE_CLUSTER_ENDPOINT
+              value: "${GKE_CLUSTER_ENDPOINT}"
+            - name: GKE_SSL_CA_CERT
+              value: "${GKE_SSL_CA_CERT}"
+            - name: DEV_ENV_BASE_IMAGE # Le nom de la variable d'environnement que votre Python lit
+              value: "${DEVTOOLS_IMAGE_TAG}" # Cette variable sera substituée par envsubst
+
+          volumeMounts:
+            - name: service-account-volume
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: service-account-volume
+          secret:
+            secretName: gcp-sa-key
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: environment-manager
 spec:
-  type: ClusterIP
   selector:
     app: environment-manager
   ports:
-  - port: 8080
-    targetPort: 8080
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: environment-manager-pvc
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer

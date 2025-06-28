@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: development-agent
+  labels:
+    app: development-agent
 spec:
   replicas: 1
   selector:
@@ -12,43 +14,59 @@ spec:
       labels:
         app: development-agent
     spec:
+      serviceAccountName: orchestrai-sa
       containers:
-      - name: development-agent
-        image: gcr.io/PROJECT_ID/development-agent:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: INTERNAL_URL
-          value: http://development-agent.default.svc.cluster.local:8080
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: /app/credentials.json
-        volumeMounts:
-        - name: code-volume
-          mountPath: /app
+        - name: development-agent
+          # La variable ${IMAGE} sera remplacée par le script
+          image: ${IMAGE}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AGENT_NAME
+              value: "DevelopmentAgentGKEv2" 
+            - name: GRA_PUBLIC_URL
+              value: "${GRA_PUBLIC_URL}"
+            - name: KUBERNETES_NAMESPACE
+              value: "${KUBERNETES_NAMESPACE}"
+
+            # ✅ VARIABLES AJOUTÉES POUR L'ENREGISTREMENT
+            - name: PUBLIC_URL
+              value: "http://development-agent.${KUBERNETES_NAMESPACE}.svc.cluster.local:80"
+            - name: INTERNAL_URL
+              value: "http://development-agent.${KUBERNETES_NAMESPACE}.svc.cluster.local:8080"
+            
+            # URL pour trouver l'Environment Manager
+            - name: ENV_MANAGER_URL
+              value: "http://environment-manager.${KUBERNETES_NAMESPACE}.svc.cluster.local:80"
+
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/secrets/sa-key.json"
+            
+            # Variables GCP pour corriger le WARNING du client LLM
+            - name: GCP_PROJECT_ID
+              value: "${PROJECT_ID}"
+            - name: GCP_REGION
+              value: "${GCP_REGION}"
+
+          volumeMounts:
+            - name: service-account-volume
+              mountPath: /secrets
+              readOnly: true
       volumes:
-      - name: code-volume
-        persistentVolumeClaim:
-          claimName: development-agent-pvc
+        - name: service-account-volume
+          secret:
+            secretName: gcp-sa-key
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: development-agent
 spec:
-  type: ClusterIP
   selector:
     app: development-agent
   ports:
-  - port: 8080
-    targetPort: 8080
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: development-agent-pvc
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: LoadBalancer

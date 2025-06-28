@@ -23,7 +23,7 @@ from .executor import DevelopmentAgentExecutor
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-AGENT_NAME = "DevelopmentAgentServer"
+AGENT_NAME = os.environ.get("AGENT_NAME", "DevelopmentAgentGKEv2")
 
 in_memory_log_handler = InMemoryLogHandler(maxlen=200)
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -33,18 +33,19 @@ logging.getLogger().setLevel(logging.INFO)
 
 
 def get_agent_card() -> AgentCard:
-    agent_url = os.environ.get("PUBLIC_URL", f"http://localhost_placeholder_for_{AGENT_NAME}:8080")
+    agent_url = os.environ.get("PUBLIC_URL") or os.environ.get("INTERNAL_URL") or f"http://{AGENT_NAME}.default.svc.cluster.local:8080"
     capabilities = AgentCapabilities(streaming=False)
     skill = AgentSkill(
-        id="coding_python",
-        name="Python Code Generation",
-        description="Generates Python code and writes it to a shared volume",
-    )
+    id="coding_python",
+    name="Python Code Generation",
+    description="Generates Python code and writes it to a shared volume",
+    tags=["python", "code", "generation"]  # 👈 obligatoire avec Pydantic v2
+)
     return AgentCard(
-        name="Development Agent",
-        description="Generates Python code in an isolated environment",
+        name="Development Agent GKEv2",
+        description="A Kubernetes-native version of the Development Agent specialized in code generation and execution.",
         url=agent_url,
-        version="1.0.0",
+        version="2.0.0",
         defaultInputModes=["application/json"],
         defaultOutputModes=["text/plain"],
         capabilities=capabilities,
@@ -61,30 +62,36 @@ async def logs_endpoint(request):
     return JSONResponse(in_memory_log_handler.get_logs())
 
 async def restart_endpoint(request):
-    """Terminate the process to trigger a restart by the platform."""
     logger.warning(f"[{AGENT_NAME}] Restart requested via /restart")
     increment_agent_restart(AGENT_NAME)
     asyncio.get_event_loop().call_later(0.1, os._exit, 0)
     return JSONResponse({"status": "restarting"})
 
-
 @contextlib.asynccontextmanager
 async def lifespan(app: Starlette):
-    logger.info("Starting Development Agent server ...")
+    # --- DÉBUT BLOC DE DÉBOGAGE ---
+    logger.info("--- [DEBUG] DÉBUT DU LIFESPAN ---")
     public_url = os.environ.get("PUBLIC_URL")
     internal_url = os.environ.get("INTERNAL_URL")
+    logger.info(f"--- [DEBUG] PUBLIC_URL lue depuis l'environnement : '{public_url}'")
+    logger.info(f"--- [DEBUG] INTERNAL_URL lue depuis l'environnement : '{internal_url}'")
+    # --- FIN BLOC DE DÉBOGAGE ---
+
     if public_url and internal_url:
+        logger.info("--- [DEBUG] Condition 'if public_url and internal_url' est VRAIE. Tentative d'enregistrement...")
         try:
             card = get_agent_card()
             skills = [s.id for s in card.skills]
             await register_self_with_gra(AGENT_NAME, public_url, internal_url, skills)
             await agent_executor._notify_gra_of_status_change()
         except Exception as e:
-            logger.error(f"Registration with GRA failed: {e}")
+            logger.error(f"--- [DEBUG] L'enregistrement avec le GRA a échoué : {e}", exc_info=True)
     else:
-        logger.warning("PUBLIC_URL or INTERNAL_URL not set; skipping registration")
+        logger.warning("--- [DEBUG] Condition 'if public_url and internal_url' est FAUSSE. Enregistrement ignoré.")
+    
     yield
-    logger.info("Development Agent server shutdown")
+    
+    logger.info(f"--- [DEBUG] FIN DU LIFESPAN ---")
 
 
 def create_app() -> FastAPI:
@@ -109,6 +116,7 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+app.router.lifespan_context = lifespan  
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

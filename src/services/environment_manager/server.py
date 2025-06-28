@@ -27,7 +27,7 @@ async def notify_state():
     if not gra_url:
         return
     payload = state.copy()
-    payload["name"] = "EnvironmentManager"
+    payload["name"] = os.environ.get("AGENT_NAME", "EnvironmentManagerGKEv2")
     async with httpx.AsyncClient() as client:
         try:
             await client.post(f"{gra_url}/agent_status_update", json=payload, timeout=5.0)
@@ -55,14 +55,55 @@ class CloudUpload(BaseModel):
     execution_plan_id: str | None = None
     task_id: str | None = None
 
-app = FastAPI()
+# New Pydantic model for ListFiles (if needed, or reuse FilePayload for path)
+class ListFiles(BaseModel):
+    environment_id: str
+    path: str = "." # Default to current directory
+
+app = FastAPI(
+    title="Environment Manager GKE",)
+from a2a.types import AgentCard, AgentCapabilities, AgentSkill
+
+def get_agent_card() -> AgentCard:
+    skill = AgentSkill(
+        id="environment_management",
+        name="Environment Management",
+        description="Handles Kubernetes-based environments for execution.",
+        tags=["environment", "kubernetes", "pod", "agent"]
+    )
+    return AgentCard(
+        name="EnvironmentManagerGKEv2",
+        description="Creates and manages execution environments for agents.",
+        url=os.environ.get("PUBLIC_URL", "http://localhost:8080"),
+        capabilities=AgentCapabilities(streaming=False),
+        defaultInputModes=["application/json"],
+        defaultOutputModes=["application/json"],
+        version="0.1.0",
+        skills=[skill]
+    )
+
+
+@app.get("/debug/environments")
+async def list_environments():
+    return list(manager.environments.keys())
+
+
+@app.get("/card", response_model=AgentCard)
+async def card():
+    return get_agent_card()
+
+
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     public_url = os.environ.get("PUBLIC_URL")
     internal_url = os.environ.get("INTERNAL_URL")
     if public_url and internal_url:
-        await register_self_with_gra("EnvironmentManager", public_url, internal_url, ["environment_manager"])
+        AGENT_NAME = os.environ.get("AGENT_NAME", "EnvironmentManagerGKEv2")
+        card = get_agent_card()
+        skills = [s.id for s in card.skills]
+        await register_self_with_gra(AGENT_NAME, public_url, internal_url, skills)
+        logger.info(f"Registered {AGENT_NAME} with GRA at {public_url}")
         await notify_state()
     yield
 
@@ -98,6 +139,12 @@ async def upload_to_environment(data: FilePayload):
 async def download_from_environment(data: FilePayload):
     content = await manager.read_file_from_environment(data.environment_id, data.path)
     return {"content": content}
+
+# NEW ENDPOINT: list_files_in_environment
+@app.post("/list_files_in_environment")
+async def list_files_in_environment(data: ListFiles): # Using ListFiles Pydantic model
+    files = await manager.list_files_in_environment(data.environment_id, data.path)
+    return {"files": files}
 
 @app.post("/upload_to_cloud_and_index")
 async def upload_to_cloud_and_index(data: CloudUpload):
