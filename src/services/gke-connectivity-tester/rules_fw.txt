@@ -1,0 +1,799 @@
+[
+  {
+    "allowed": [
+      {
+        "IPProtocol": "udp",
+        "ports": [
+          "53"
+        ]
+      },
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "53"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-29T01:40:59.006-07:00",
+    "description": "Allow DNS (UDP/53, TCP/53) egress from VPC connector instances to kube-dns",
+    "destinationRanges": [
+      "34.118.224.10/32"
+    ],
+    "direction": "EGRESS",
+    "disabled": false,
+    "id": "1447771884422513397",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "allow-vpc-connector-dns-egress",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 90,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/allow-vpc-connector-dns-egress",
+    "targetTags": [
+      "aet-europewest1-my--vpc--connector"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "udp",
+        "ports": [
+          "53"
+        ]
+      },
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "53"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-29T01:45:16.722-07:00",
+    "description": "Allow DNS (UDP/53, TCP/53) egress from VPC connector instances to kube-dns",
+    "destinationRanges": [
+      "34.118.224.10/32"
+    ],
+    "direction": "EGRESS",
+    "disabled": false,
+    "id": "3839892127958778867",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "allow-vpc-connector-dns-egress1",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 10,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/allow-vpc-connector-dns-egress1",
+    "targetTags": [
+      "aet-europewest1-my--vpc--connector"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-28T18:45:58.345-07:00",
+    "description": "Allow TCP 8080 from VPC Connector to GKE nodes for application traffic",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "9169558032438076473",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "allow-vpc-connector-to-gke-app-ports",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/allow-vpc-connector-to-gke-app-ports",
+    "sourceRanges": [
+      "192.168.99.0/28"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "udp",
+        "ports": [
+          "53"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-28T18:40:16.947-07:00",
+    "description": "Allow UDP 53 from VPC Connector to GKE nodes for DNS resolution",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "5022155448972552047",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "allow-vpc-connector-to-gke-dns",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/allow-vpc-connector-to-gke-dns",
+    "sourceRanges": [
+      "192.168.99.0/28"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "icmp"
+      }
+    ],
+    "creationTimestamp": "2025-06-14T13:33:37.905-07:00",
+    "description": "Allow ICMP from anywhere",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "4210064278186648142",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "default-allow-icmp",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 65534,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/default-allow-icmp",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "0-65535"
+        ]
+      },
+      {
+        "IPProtocol": "udp",
+        "ports": [
+          "0-65535"
+        ]
+      },
+      {
+        "IPProtocol": "icmp"
+      }
+    ],
+    "creationTimestamp": "2025-06-14T13:33:37.842-07:00",
+    "description": "Allow internal traffic on the default network",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "3201550088151261774",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "default-allow-internal",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 65534,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/default-allow-internal",
+    "sourceRanges": [
+      "10.128.0.0/9"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "3389"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-14T13:33:37.884-07:00",
+    "description": "Allow RDP from anywhere",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "8760446634965361230",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "default-allow-rdp",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 65534,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/default-allow-rdp",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "22"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-14T13:33:37.863-07:00",
+    "description": "Allow SSH from anywhere",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "6129830138837230158",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "default-allow-ssh",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 65534,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/default-allow-ssh",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "sctp"
+      },
+      {
+        "IPProtocol": "tcp"
+      },
+      {
+        "IPProtocol": "udp"
+      },
+      {
+        "IPProtocol": "icmp"
+      },
+      {
+        "IPProtocol": "esp"
+      },
+      {
+        "IPProtocol": "ah"
+      }
+    ],
+    "creationTimestamp": "2025-06-14T13:36:54.636-07:00",
+    "description": "",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "2232245406180336521",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "gke-dev-orchestra-cluster-f5e836d0-all",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/gke-dev-orchestra-cluster-f5e836d0-all",
+    "sourceRanges": [
+      "10.8.0.0/14"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "creationTimestamp": "2025-06-14T13:36:54.493-07:00",
+    "denied": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "10255"
+        ]
+      }
+    ],
+    "description": "",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "6987982896843744137",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "gke-dev-orchestra-cluster-f5e836d0-exkubelet",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/gke-dev-orchestra-cluster-f5e836d0-exkubelet",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "10255"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-14T13:36:54.638-07:00",
+    "description": "",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "337557202441102217",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "gke-dev-orchestra-cluster-f5e836d0-inkubelet",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 999,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/gke-dev-orchestra-cluster-f5e836d0-inkubelet",
+    "sourceRanges": [
+      "10.8.0.0/14"
+    ],
+    "sourceTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "1-65535"
+        ]
+      },
+      {
+        "IPProtocol": "udp",
+        "ports": [
+          "1-65535"
+        ]
+      },
+      {
+        "IPProtocol": "icmp"
+      }
+    ],
+    "creationTimestamp": "2025-06-14T13:36:54.854-07:00",
+    "description": "",
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "8990637743656690569",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "gke-dev-orchestra-cluster-f5e836d0-vms",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/gke-dev-orchestra-cluster-f5e836d0-vms",
+    "sourceRanges": [
+      "10.128.0.0/9"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "10256"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T10:30:15.443-07:00",
+    "description": "{\"kubernetes.io/cluster-id\":\"c4f002155d7e0faa\"}",
+    "destinationRanges": [
+      "34.76.202.120"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "3001994766435320648",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-c4f002155d7e0faa-node-http-hc",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-c4f002155d7e0faa-node-http-hc",
+    "sourceRanges": [
+      "130.211.0.0/22",
+      "35.191.0.0/16",
+      "209.85.152.0/22",
+      "209.85.204.0/22"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:14:50.147-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-426d36265ab6-svc\", \"kubernetes.io/service-ip\":\"34.52.235.43\"}",
+    "destinationRanges": [
+      "34.52.235.43"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "2876134632476498645",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-a0fdf5838be4241a58a689ba1aa31f08",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-a0fdf5838be4241a58a689ba1aa31f08",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:21:31.693-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-37795514510f-svc\", \"kubernetes.io/service-ip\":\"35.233.95.119\"}",
+    "destinationRanges": [
+      "35.233.95.119"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "7055178575019105060",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-a8965f6af65fe4b37a2881efd092284c",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-a8965f6af65fe4b37a2881efd092284c",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:31:44.693-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-324e92326ef5-svc\", \"kubernetes.io/service-ip\":\"34.52.232.172\"}",
+    "destinationRanges": [
+      "34.52.232.172"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "7704917108684347103",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-a98095e9bdb6f492189de10f14dd54ed",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-a98095e9bdb6f492189de10f14dd54ed",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T10:30:05.502-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-0ab027e1aa1e-svc\", \"kubernetes.io/service-ip\":\"34.76.202.120\"}",
+    "destinationRanges": [
+      "34.76.202.120"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "3981579787636671346",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-aaab45b5de70c43e5bcb3f4fdb93c1a6",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-aaab45b5de70c43e5bcb3f4fdb93c1a6",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:06:22.936-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-96b2ff56d5fd-svc\", \"kubernetes.io/service-ip\":\"35.240.89.214\"}",
+    "destinationRanges": [
+      "35.240.89.214"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "312170419554999505",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-aac692b26b9bc4a79ba5a2a85e7f12a1",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-aac692b26b9bc4a79ba5a2a85e7f12a1",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:24:05.165-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-444cca88568d-svc\", \"kubernetes.io/service-ip\":\"34.78.225.130\"}",
+    "destinationRanges": [
+      "34.78.225.130"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "7914687352985213066",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-ab97e5e585e9240548b03fa97cd89962",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-ab97e5e585e9240548b03fa97cd89962",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:20:18.004-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-6f50c31c5682-svc\", \"kubernetes.io/service-ip\":\"35.187.7.2\"}",
+    "destinationRanges": [
+      "35.187.7.2"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "883007968746265454",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-acb7849933708440b993d0a53b4345b1",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-acb7849933708440b993d0a53b4345b1",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "80"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-26T18:03:47.298-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/environment-manager\", \"kubernetes.io/service-ip\":\"34.76.126.192\"}",
+    "destinationRanges": [
+      "34.76.126.192"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "3278507831853077276",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-ad942be787ae24ead9a161b8cf59b6ec",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-ad942be787ae24ead9a161b8cf59b6ec",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:33:23.184-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-53ed6154be90-svc\", \"kubernetes.io/service-ip\":\"34.52.169.108\"}",
+    "destinationRanges": [
+      "34.52.169.108"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "217046128128284284",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-ae4ea350dd1094e0fbf9480cbca62d42",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-ae4ea350dd1094e0fbf9480cbca62d42",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "80"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-26T18:11:09.988-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/development-agent\", \"kubernetes.io/service-ip\":\"35.241.135.18\"}",
+    "destinationRanges": [
+      "35.241.135.18"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "3271781337541923138",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-ae92671d4333c475aa0d895fba86031f",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-ae92671d4333c475aa0d895fba86031f",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T13:26:57.627-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-86c7e6b21a05-svc\", \"kubernetes.io/service-ip\":\"34.14.49.20\"}",
+    "destinationRanges": [
+      "34.14.49.20"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "676620694090799614",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-aea8c0c9139144639ba0f2374cfa8000",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-aea8c0c9139144639ba0f2374cfa8000",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  },
+  {
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "8080"
+        ]
+      }
+    ],
+    "creationTimestamp": "2025-06-22T10:55:39.147-07:00",
+    "description": "{\"kubernetes.io/service-name\":\"default/dev-env-exec-gplan-5cb6f875f8b8-svc\", \"kubernetes.io/service-ip\":\"35.195.42.130\"}",
+    "destinationRanges": [
+      "35.195.42.130"
+    ],
+    "direction": "INGRESS",
+    "disabled": false,
+    "id": "4153699751620377972",
+    "kind": "compute#firewall",
+    "logConfig": {
+      "enable": false
+    },
+    "name": "k8s-fw-afa6efb94b938423e832a9ca9a678fc3",
+    "network": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/networks/default",
+    "priority": 1000,
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/orchestrai-hackathon/global/firewalls/k8s-fw-afa6efb94b938423e832a9ca9a678fc3",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "targetTags": [
+      "gke-dev-orchestra-cluster-f5e836d0-node"
+    ]
+  }
+]

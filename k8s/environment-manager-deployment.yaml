@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: environment-manager
+
   labels:
     app: environment-manager
 spec:
@@ -57,6 +58,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: environment-manager
+  annotations:
+    cloud.google.com/neg: '{"ingress":true}'
+    networking.gke.io/load-balancer-type: "Internal" 
 spec:
   selector:
     app: environment-manager

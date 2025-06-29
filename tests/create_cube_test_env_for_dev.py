@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 async def create_test_env():
     env_manager = KubernetesEnvironmentManager()
     test_env_id = "my-test-env-001"
-    
+    test_env_id = "exec-gplan_d68b67c75b22"
     logger.info(f"Attempting to create environment '{test_env_id}'...")
     created_env_id = await env_manager.create_isolated_environment(test_env_id)
     

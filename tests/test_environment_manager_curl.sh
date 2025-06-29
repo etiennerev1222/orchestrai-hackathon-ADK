@@ -7,6 +7,7 @@ ENVIRONMENT_MANAGER_URL="http://localhost:8080"
 
 # Un ID d'environnement unique pour ce test
 TEST_ENV_ID="test-env-$(date +%s)"
+TEST_ENV_ID="exec-gplan_d68b67c75b22"
 TEST_FILE_PATH="/app/test_file.txt"
 TEST_FILE_CONTENT="Ceci est un contenu de test pour le fichier.\nLigne deux."
 TEST_CODE_FILE_PATH="/app/my_script.py"
@@ -99,14 +100,14 @@ echo -e "\n✅ Réponse de listage de répertoire capturée dans list_dir_respon
 sleep 2
 
 # 8. Supprimer l'environnement
-echo -e "\n➡ 8. Suppression de l'environnement '${TEST_ENV_ID}'..."
-ID_TOKEN=$(get_id_token)
-curl -s -X POST -H "Authorization: Bearer ${ID_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{\"environment_id\": \"${TEST_ENV_ID}\"}" \
-    "${ENVIRONMENT_MANAGER_URL}/delete_environment" | tee delete_env_response.json
-echo -e "\n✅ Réponse de suppression d'environnement capturée dans delete_env_response.json"
-sleep 2
+#echo -e "\n➡ 8. Suppression de l'environnement '${TEST_ENV_ID}'..."
+#ID_TOKEN=$(get_id_token)
+#curl -s -X POST -H "Authorization: Bearer ${ID_TOKEN}" \
+#    -H "Content-Type: application/json" \
+#    -d "{\"environment_id\": \"${TEST_ENV_ID}\"}" \
+#    "${ENVIRONMENT_MANAGER_URL}/delete_environment" | tee delete_env_response.json
+#echo -e "\n✅ Réponse de suppression d'environnement capturée dans delete_env_response.json"
+#sleep 2
 
 echo -e "\n--- Fin du script de test ---"
 echo "Vérifiez les fichiers *.json créés pour les réponses détaillées."
