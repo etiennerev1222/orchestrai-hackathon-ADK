@@ -1,0 +1,20 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: dns-test-job
+  namespace: default
+  labels:
+    cloud.googleapis.com/location: europe-west1
+spec:
+  template:
+    spec:
+      containers:
+        - image: gcr.io/orchestrai-hackathon/dns-test-job
+          command: ["curl"]
+          args: ["-v", "http://dev-agent.internal.orchestrai.ai/.well-known/agent.json"]
+      vpcAccess:
+        connector: my-vpc-connector
+        egress: ALL_TRAFFIC
+      maxRetries: 1
+      timeoutSeconds: 60
+

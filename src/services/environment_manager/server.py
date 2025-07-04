@@ -11,7 +11,7 @@ import asyncio
 from src.shared.agent_state import AgentOperationalState
 from src.shared.service_discovery import get_gra_base_url, register_self_with_gra
 from .logic import EnvironmentManager
-
+from .k8s_environment_manager import KubernetesEnvironmentManager
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -74,7 +74,7 @@ def get_agent_card() -> AgentCard:
     return AgentCard(
         name="EnvironmentManagerGKEv2",
         description="Creates and manages execution environments for agents.",
-        url=os.environ.get("PUBLIC_URL", "http://localhost:8080"),
+        url=os.environ.get("PUBLIC_URL", "http://localhostenv:8080"),
         capabilities=AgentCapabilities(streaming=False),
         defaultInputModes=["application/json"],
         defaultOutputModes=["application/json"],
@@ -158,6 +158,10 @@ async def health():
 @app.get("/status")
 async def status():
     return state
+
+@app.on_event("startup")
+async def on_startup():
+    await manager.start_background_tasks()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

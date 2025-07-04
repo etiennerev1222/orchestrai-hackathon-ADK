@@ -1,3 +1,5 @@
+# src/agents/development_agent/executor.py
+
 import json
 import logging
 import time
@@ -141,6 +143,12 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
 
                 payload_for_logic = {
                     "objective": input_payload_from_supervisor.get("objective"),
+                    "local_instructions": input_payload_from_supervisor.get("local_instructions", []),
+                    "acceptance_criteria": input_payload_from_supervisor.get("acceptance_criteria", []),
+                    "task_type": input_payload_from_supervisor.get("task_type"),
+                    "assigned_skill": input_payload_from_supervisor.get("assigned_skill"),
+                    "deliverable": input_payload_from_supervisor.get("deliverable"),
+                    "input_artifacts_content": input_payload_from_supervisor.get("input_artifacts_content", {}),
                     "last_action_result": last_action_result,
                 }
 
@@ -204,6 +212,34 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                             "code_snippet": code_to_write[:150] + "...",
                             "full_result": tool_result
                         }
+                
+                # Handling "generate_test_code_and_write_file" action for Testing Agent capabilities
+                elif action_type == "generate_test_code_and_write_file":
+                    self.state = AgentOperationalState.TOOLSCALL
+                    self.status_detail = "Génération du fichier de test"
+                    await self._notify_gra_of_status_change()
+
+                    file_path = llm_action_payload.get("file_path", "/app/test.py")
+                    code_to_write = await self._generate_test_code_from_specs(llm_action_payload)
+
+                    tool_result = await self.environment_manager.safe_tool_call(
+                        lambda: self.environment_manager.write_file_to_environment(
+                            self.current_environment_id, file_path, code_to_write
+                        ),
+                        f"Écriture du fichier de test {file_path}",
+                    )
+
+                    if tool_result is None:
+                        action_summary = (
+                            f"L'appel à l'outil pour {action_type} n'a rien retourné."
+                        )
+                        action_result_details = {"error": action_summary}
+                    elif isinstance(tool_result, dict) and "error" in tool_result:
+                        action_summary = tool_result["error"]
+                        action_result_details = tool_result
+                    else:
+                        action_summary = f"Code de test généré et écrit dans {file_path}."
+                        action_result_details = {"file_path": file_path}
 
                 elif action_type == "execute_command":
                     self.state = AgentOperationalState.TOOLSCALL
@@ -223,8 +259,11 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         action_summary = tool_result["error"]
                         action_result_details = tool_result
                     else:
-                        action_summary = f"Commande '{command}' exécutée."
+                        action_summary = f"Commande '{command}' exécutée. Exit: {tool_result.get('exit_code')}"
                         action_result_details = tool_result
+                        if tool_result.get("exit_code", 0) != 0:
+                            action_summary = tool_result.get("stderr", "Command failed with non-zero exit code") # Use stderr as summary if command failed
+
 
                 elif action_type == "read_file":
                     self.state = AgentOperationalState.TOOLSCALL
@@ -278,6 +317,12 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
                         "final_summary": action_summary,
                         "status": "completed",
                     }
+                    if "test_status" in llm_action_payload: # If it's a testing task, include test results
+                        final_artifact_content["test_status"] = llm_action_payload["test_status"]
+                        final_artifact_content["passed_criteria"] = llm_action_payload.get("passed_criteria", [])
+                        final_artifact_content["failed_criteria"] = llm_action_payload.get("failed_criteria", [])
+                        final_artifact_content["identified_issues_or_bugs"] = llm_action_payload.get("identified_issues_or_bugs", [])
+
                     self.status_detail = "Tâche de développement terminée"
                     await self._notify_gra_of_status_change()
 
@@ -376,8 +421,8 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
         )
         code_generation_prompt = (
             f"Objectif du code : {specs.get('objective', '')}\n\n"
-            f"Instructions spécifiques : {specs.get('local_instructions', [])}\n\n"
-            f"Critères d'acceptance : {specs.get('acceptance_criteria', [])}\n\n"
+            f"Instructions spécifiques : {specs.get('local_instructions', [])}\\n\\n"
+            f"Critères d'acceptance : {specs.get('acceptance_criteria', [])}\\n\\n"
             "Génère UNIQUEMENT le code Python correspondant."
         )
 
@@ -389,3 +434,31 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
         stripped_code = re.sub(r'^\s*```(?:[a-zA-Z0-9]+\s*)?\n|\n\s*```\s*$', '', raw_code, flags=re.MULTILINE)
         
         return stripped_code.strip() # Remove any leading/trailing whitespace
+
+    async def _generate_test_code_from_specs(self, specs: dict) -> str:
+        from src.shared.llm_client import call_llm
+
+        system_prompt = (
+            "Tu es un ingénieur QA expert en Python. Génère un fichier Python fonctionnel, "
+            "clair et directement exécutable, basé sur les spécifications fournies. "
+            "Retourne UNIQUEMENT le code Python."
+        )
+        prompt = (
+            f"Objectif des tests : {specs.get('objective', '')}\n"
+            f"Instructions : {', '.join(specs.get('local_instructions', [])) if specs.get('local_instructions') else 'Aucune'}\n"
+            f"Critères d'acceptation : {', '.join(specs.get('acceptance_criteria', [])) if specs.get('acceptance_criteria') else 'Non spécifiés'}\n"
+        )
+        # Add deliverable if present for testing context
+        if specs.get("deliverable"):
+            prompt += f"Livrable à considérer pour la génération des tests:\n```\n{specs['deliverable']}\n```\n\n"
+        
+        # Add input_artifacts_content if present for testing context
+        if specs.get("input_artifacts_content"):
+            prompt += f"Contenu des artefacts d'entrée pour la génération des tests:\n```json\n{json.dumps(specs['input_artifacts_content'], indent=2)}\n```\n\n"
+
+
+        raw_code = await call_llm(prompt, system_prompt, json_mode=False)
+        
+        # Strip Markdown code block fences
+        stripped_code = re.sub(r'^\s*```(?:[a-zA-Z0-9]+\s*)?\n|\n\s*```\s*$', '', raw_code, flags=re.MULTILINE)
+        return stripped_code.strip()

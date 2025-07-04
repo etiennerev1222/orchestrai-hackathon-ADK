@@ -6,6 +6,7 @@ import os
 import asyncio
 from kubernetes import client, config, watch
 from kubernetes.stream import stream
+import kubernetes.client.exceptions
 from google.oauth2 import credentials
 from google.auth.transport.requests import Request
 import google.auth
@@ -24,68 +25,27 @@ logger = logging.getLogger(__name__)
 K8S_ENVIRONMENTS_COLLECTION = "kubernetes_environments"
 
 FALLBACK_ENV_ID = "exec_default"
-
+from google.cloud.firestore import AsyncClient as FirestoreClient
 
 class KubernetesEnvironmentManager:
-    def __init__(self):
-        self.api_client = None
-        gke_cluster_endpoint = os.environ.get("GKE_CLUSTER_ENDPOINT")
-        configuration = client.Configuration()
-
-        if gke_cluster_endpoint:
-            logger.info(f"GKE_CLUSTER_ENDPOINT found: {gke_cluster_endpoint}. Configuring Kubernetes client for remote GKE cluster.")
-            configuration.host = f"https://{gke_cluster_endpoint}"
-
-            # ✨ CORRECTION : Gérer correctement la donnée du certificat SSL
-            ssl_ca_cert_data = os.environ.get("GKE_SSL_CA_CERT")
-            if ssl_ca_cert_data:
-                try:
-                    # Décoder la donnée base64 du certificat
-                    decoded_cert = base64.b64decode(ssl_ca_cert_data)
-                    # Créer un fichier temporaire pour stocker le certificat décodé
-                    with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.crt') as cert_file:
-                        cert_file.write(decoded_cert.decode('utf-8'))
-                        # Donner le CHEMIN du fichier temporaire à la configuration
-                        configuration.ssl_ca_cert = cert_file.name
-                    
-                    configuration.verify_ssl = True
-                    logger.info(f"SSL verification ENABLED with CA certificate written to temporary file: {configuration.ssl_ca_cert}")
-                except Exception as e:
-                    logger.error(f"Failed to decode or write the CA certificate. SSL will be disabled. Error: {e}")
-                    configuration.verify_ssl = False
-            else:
-                configuration.verify_ssl = False
-                logger.warning("SSL verification is DISABLED because GKE_SSL_CA_CERT is not set. DO NOT USE IN PRODUCTION.")
-
-            # La suite de la configuration (authentification) reste la même
-            credentials, _ = google.auth.default(scopes=GKE_SCOPES)
-            if credentials:
-                try:
-                    credentials.refresh(Request())
-                    configuration.api_key = {"authorization": f"Bearer {credentials.token}"}
-                    logger.info("Kubernetes client authentication configured with refreshed ADC token.")
-                except Exception as e:
-                    logger.error(f"Failed to refresh ADC token: {e}")
-                    raise Exception(f"ADC token refresh failed: {e}")
-            else:
-                raise Exception("ADC credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS env var or use gcloud auth.")
-        
+    def __init__(self, namespace="default", service_account_name="default", load_incluster_config=True):
+        self.namespace = namespace
+        self.service_account_name = service_account_name
+        if load_incluster_config:
+            config.load_incluster_config()
         else:
-            # Fallback local (inchangé)
-            try:
-                config.load_kube_config()
-                logger.info("Kubernetes config loaded from local kube_config.")
-            except config.ConfigException as e:
-                raise Exception(f"Kubernetes config load failed: {e}")
-
-        client.Configuration.set_default(configuration)
-        self.api_client = client.ApiClient(configuration)
-        self.v1 = client.CoreV1Api(self.api_client)
-        self.apps_v1 = client.AppsV1Api(self.api_client)
-        self.namespace = os.environ.get("KUBERNETES_NAMESPACE", "default")
+            config.load_kube_config()
+        self.v1 = client.CoreV1Api()
+        self.api_client = client.ApiClient()
         self.environments = {}
-        logger.info(f"EnvironmentManager initialized for Kubernetes namespace: {self.namespace}.")
+        self.namespace = os.environ.get("KUBERNETES_NAMESPACE", "default")
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("✅ K8sEnvironmentManager initialized with in-cluster config.")
 
+
+        self.apps_v1 = client.AppsV1Api()        
+
+               
     @staticmethod
     def normalize_environment_id(plan_id: str) -> str:
         """Return standardized environment ID for a given plan or environment identifier."""
@@ -120,20 +80,21 @@ class KubernetesEnvironmentManager:
           return "default"  # Valeur par défaut si aucun match trouvé
           # raise ValueError(f"Cannot extract global_plan_id from plan_id: {plan_id}")
         return match.group(0)
-
+    
     async def _ensure_pod_running(self, pod_name: str):
         try:
+            logger.debug(f"🔍 Vérification de l'état du pod '{pod_name}' dans le namespace '{self.namespace}'")
             pod = await asyncio.to_thread(self.v1.read_namespaced_pod, pod_name, self.namespace)
-            if pod.status.phase != 'Running':
-                raise RuntimeError(f"Pod '{pod_name}' is not in Running state: {pod.status.phase}")
-        except client.ApiException as e:
-            if e.status == 404:
-                raise RuntimeError(f"Pod '{pod_name}' does not exist (404).")
-            else:
-                raise
+            logger.debug(f"✅ Pod '{pod_name}' status: {pod.status.phase}")
+        except kubernetes.client.exceptions.ApiException as e:
+            logger.error(f"[K8s API Error] Impossible de lire le pod '{pod_name}': {e}")
+            raise RuntimeError(f"Erreur API Kubernetes (read_namespaced_pod): {e}")
         except Exception as e:
-            logger.error(f"Connection error while verifying pod '{pod_name}': {e}", exc_info=True)
-            raise RuntimeError(f"Failed to connect to Kubernetes API for pod '{pod_name}'.")
+            logger.exception(f"💥 Exception non prévue lors de l'accès au pod '{pod_name}'")
+            raise RuntimeError(f"Erreur inattendue (read_namespaced_pod): {e}")
+
+        if pod.status.phase != "Running":
+            raise RuntimeError(f"❌ Pod '{pod_name}' trouvé mais n'est pas en état 'Running' (status = {pod.status.phase})")
 
     async def _load_existing_environment_details(self, environment_id: str):
         """Tente de charger les détails d'un environnement depuis Firestore et K8s API."""
@@ -461,6 +422,7 @@ class KubernetesEnvironmentManager:
         )
 
     async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> dict:
+        logger.info(f"Init Executing command in environment '{environment_id}': {command} (workdir: {workdir})")
         pod_name = await self._get_valid_pod_name(environment_id)
         container_name = "developer-sandbox"
         try:

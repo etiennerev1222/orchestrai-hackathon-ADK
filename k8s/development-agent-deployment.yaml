@@ -17,59 +17,69 @@ spec:
       serviceAccountName: orchestrai-sa
       containers:
         - name: development-agent
-          # La variable ${IMAGE} sera remplacée par le script
           image: ${IMAGE}
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"          
           env:
             - name: AGENT_NAME
-              value: "DevelopmentAgentGKEv2" 
+              value: "${AGENT_NAME}"
             - name: GRA_PUBLIC_URL
               value: "${GRA_PUBLIC_URL}"
             - name: KUBERNETES_NAMESPACE
               value: "${KUBERNETES_NAMESPACE}"
-
-            # ✅ VARIABLES AJOUTÉES POUR L'ENREGISTREMENT
             - name: PUBLIC_URL
-              value: "http://development-agent.${KUBERNETES_NAMESPACE}.svc.cluster.local:80"
+              value: "http://dev-agent.internal.orchestrai.ai:80"
             - name: INTERNAL_URL
-              value: "http://development-agent.${KUBERNETES_NAMESPACE}.svc.cluster.local:8080"
-            
-            # URL pour trouver l'Environment Manager
+              value: "http://dev-agent.internal.orchestrai.ai:80"
             - name: ENV_MANAGER_URL
-              value: "http://environment-manager.${KUBERNETES_NAMESPACE}.svc.cluster.local:80"
-
+              value: "http://env-manager.internal.orchestrai.ai:80"
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: "/secrets/sa-key.json"
-            
-            # Variables GCP pour corriger le WARNING du client LLM
             - name: GCP_PROJECT_ID
               value: "${PROJECT_ID}"
             - name: GCP_REGION
               value: "${GCP_REGION}"
-
           volumeMounts:
             - name: service-account-volume
               mountPath: /secrets
               readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10             
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20            
       volumes:
         - name: service-account-volume
           secret:
             secretName: gcp-sa-key
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: development-agent
   annotations:
-    cloud.google.com/neg: '{"ingress":true}' 
-    networking.gke.io/load-balancer-type: "Internal"
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
+  type: NodePort
   selector:
     app: development-agent
   ports:
-    - protocol: TCP
-      port: 80
+    - name: http
+      port: 8080
       targetPort: 8080
-  type: LoadBalancer

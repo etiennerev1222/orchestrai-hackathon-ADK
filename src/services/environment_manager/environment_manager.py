@@ -66,6 +66,7 @@ class EnvironmentManager:
             pass
 
     async def execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> Dict[str, Any]:
+        logger.debug(f"EnvironementManagerHelper Executing command in environment {environment_id}: {command} (workdir: {workdir})")
         cmd = f"cd {workdir} && {command}" if workdir else command
         payload = {"environment_id": self.normalize_environment_id(environment_id), "command": cmd}
         return await self._post("exec_in_environment", payload, timeout=60)
@@ -139,6 +140,7 @@ class EnvironmentManager:
             return {"error": msg}
 
     async def safe_execute_command_in_environment(self, environment_id: str, command: str, workdir: str = "/app") -> Dict[str, Any]:
+        logger.debug(f"Safe Executing command in environment {environment_id}: {command} (workdir: {workdir})")
         return await self.safe_tool_call(
             lambda: self.execute_command_in_environment(environment_id, command, workdir),
             f"execute_command_in_environment: {command}"

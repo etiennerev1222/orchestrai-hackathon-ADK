@@ -20,5 +20,5 @@ EXPOSE 8080
 # Commande pour démarrer l'application Flask avec Gunicorn
 # Cloud Run injecte la variable d'environnement PORT, qui est 8080 par défaut.
 # Gunicorn doit écouter sur 0.0.0.0:$PORT.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "main:app"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 # Note: "main:app" signifie qu'il cherche l'application Flask nommée 'app' dans le fichier 'main.py'.

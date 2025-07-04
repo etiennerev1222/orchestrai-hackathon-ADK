@@ -6,6 +6,6 @@ PROJECT_ID="orchestrai-hackathon"
 
 echo "🚀 Construction de l'image Docker pour le Cloud Run Test Service..."
 # FIX: Spécifiez le répertoire source où se trouve le Dockerfile
-gcloud builds submit src/services/gke-connectivity-tester --tag gcr.io/${PROJECT_ID}/gke-connectivity-tester4 --project=${PROJECT_ID} 
+gcloud builds submit src/services/cloudRunTestService --tag gcr.io/${PROJECT_ID}/gke-connectivity-tester4 --project=${PROJECT_ID} 
 
 echo "✅ Image construite et poussée : gcr.io/${PROJECT_ID}/gke-connectivity-tester4"

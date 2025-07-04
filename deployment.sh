@@ -14,6 +14,10 @@ AGENTS=(
     "decomposition_agent" "development_agent" "evaluator" "reformulator" 
     "research_agent" "testing_agent" "user_interaction_agent" "validator"
 )
+AGENTS=(
+    "decomposition_agent" "evaluator" "reformulator" 
+    "research_agent" "user_interaction_agent" "validator" # "development_agent" "testing_agent" maintenant dans KDE
+)
 ALL_COMPONENTS=("gra_server" "${AGENTS[@]}")
 
 # ==============================================================================
@@ -225,6 +229,8 @@ function deploy_gcp() {
     local CONNECTOR_NAME="my-vpc-connector" # Assurez-vous que ce nom correspond à votre connecteur VPC
 
     # --- Déploiement du GRA en premier ---
+    echo "🔐 Génération du bearer token GKE"
+    K8S_BEARER_TOKEN=$(gcloud auth print-access-token)    
     echo "    -> Déploiement du 'gra-server'..."
     gcloud run deploy gra-server \
       --image="${GCR_HOSTNAME}/${GCP_PROJECT_ID}/${IMAGE_REPO_NAME}/gra_server:latest" \
@@ -232,9 +238,11 @@ function deploy_gcp() {
       --region=${GCP_REGION} \
       --allow-unauthenticated \
       --port=8000 \
-      --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS}" \
+      --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,K8S_BEARER_TOKEN=${K8S_BEARER_TOKEN},${COMMON_AGENT_ENV_VARS}" \
+
       --project=${GCP_PROJECT_ID} \
       --vpc-connector="${CONNECTOR_NAME}" \
+      --vpc-egress=all
     
     local GRA_CLOUD_RUN_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
     if [ -z "$GRA_CLOUD_RUN_URL" ]; then
@@ -245,8 +253,9 @@ function deploy_gcp() {
     
     gcloud run services update gra-server \
         --region=${GCP_REGION} \
-        --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
-        --project=${GCP_PROJECT_ID}
+        --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,K8S_BEARER_TOKEN=${K8S_BEARER_TOKEN},${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+        --project=${GCP_PROJECT_ID} \
+        --vpc-egress=all
     echo "    -> Mise à jour de 'gra-server' avec ses URLs...Terminée."
             
     # --- Déploiement des agents ---

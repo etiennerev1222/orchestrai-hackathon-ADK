@@ -1,5 +1,5 @@
 # Get the URL of your deployed Cloud Run Test Service
-SERVICE_URL=$(gcloud run services describe gke-connectivity-tester3 --region=europe-west1 --format="value(status.url)")
+SERVICE_URL=$(gcloud run services describe gke-connectivity-tester4 --region=europe-west1 --format="value(status.url)")
 # Get an ID Token to authenticate with your Cloud Run Test Service itself
 ID_TOKEN=$(gcloud auth print-identity-token)
 

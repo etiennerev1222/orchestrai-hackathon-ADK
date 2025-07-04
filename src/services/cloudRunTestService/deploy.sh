@@ -13,15 +13,15 @@ ENV_MANAGER_INTERNAL_URL="http://environment-manager.default.svc.cluster.local:8
 # FIX: Supprimer les variables GKE_NETWORK et GKE_SUBNET car elles ne sont plus utilisées
 # GKE_NETWORK="default"
 # GKE_SUBNET="default"
-cd src/services/gke-connectivity-tester
+cd src/services/cloudRunTestService
 echo "🚀 Déploiement du service Cloud Run 'gke-connectivity-tester4'..."
-gcloud run deploy gke-connectivity-tester3 \
+gcloud run deploy gke-connectivity-tester4 \
   --source=. \
   --region=europe-west1 \
   --platform=managed \
   --vpc-connector=my-vpc-connector \
   --vpc-egress=all-traffic \
-  --set-env-vars=DEV_AGENT_URL="http://development-agent.default.svc.cluster.local:80",ENV_MANAGER_URL="http://environment-manager.default.svc.cluster.local:80" \
+  --set-env-vars=DEV_AGENT_URL="http://dev-agent.internal.example.com80",ENV_MANAGER_URL="http://env-mgr.internal.example.com:80" \
   --allow-unauthenticated # Utile pour les tests, à retirer en prod
 
   cd ../../..

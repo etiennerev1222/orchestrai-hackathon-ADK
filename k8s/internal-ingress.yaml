@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: internal-ingress-orchestrai
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "gce-internal"
+    networking.gke.io/internal-load-balancer-allow-global-access: "true"
+spec:
+  rules:
+    - host: dev-agent.internal.orchestrai.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: development-agent
+                port:
+                  name: http
+    - host: env-manager.internal.orchestrai.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: environment-manager
+                port:
+                  name: http

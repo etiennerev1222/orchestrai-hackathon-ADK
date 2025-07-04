@@ -29,6 +29,7 @@ class EnvironmentHelper:
         return resp.json()
 
     async def exec_in_environment(self, environment_id: str, command: str):
+        logger.debug(f"Executing command in environment {environment_id}: {command}")
         payload = {"environment_id": environment_id, "command": command}
         resp = await self.client.post(f"{self.base_url}/exec_in_environment", json=payload, headers=self._get_headers(), timeout=60)
         resp.raise_for_status()

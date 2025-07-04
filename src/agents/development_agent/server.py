@@ -1,3 +1,5 @@
+# server.py
+
 import asyncio
 import contextlib
 import logging
@@ -33,23 +35,37 @@ logging.getLogger().setLevel(logging.INFO)
 
 
 def get_agent_card() -> AgentCard:
-    agent_url = os.environ.get("PUBLIC_URL") or os.environ.get("INTERNAL_URL") or f"http://{AGENT_NAME}.default.svc.cluster.local:8080"
+    agent_url = os.environ.get("PUBLIC_URL", "http://localhostenv:8080")
     capabilities = AgentCapabilities(streaming=False)
-    skill = AgentSkill(
-    id="coding_python",
-    name="Python Code Generation",
-    description="Generates Python code and writes it to a shared volume",
-    tags=["python", "code", "generation"]  # 👈 obligatoire avec Pydantic v2
-)
+    skills = [
+        AgentSkill(
+            id="coding_python",
+            name="Python Code Generation",
+            description="Generates Python code and writes it to a shared volume",
+            tags=["python", "code", "generation"]
+        ),
+        AgentSkill(
+            id="software_testing",
+            name="Software Testing and Validation",
+            description="Tests software deliverables against specifications and acceptance criteria.",
+            tags=["testing", "qa", "validation", "software_engineering"]
+        ),
+        AgentSkill(
+            id="test_case_generation",
+            name="Test Case Generation",
+            description="Generates test cases based on software specifications.",
+            tags=["testing", "qa", "planning"]
+        )
+    ]
     return AgentCard(
         name="Development Agent GKEv2",
-        description="A Kubernetes-native version of the Development Agent specialized in code generation and execution.",
+        description="A Kubernetes-native version of the Development Agent specialized in code generation, execution, and testing.",
         url=agent_url,
         version="2.0.0",
         defaultInputModes=["application/json"],
         defaultOutputModes=["text/plain"],
         capabilities=capabilities,
-        skills=[skill],
+        skills=skills,
     )
 
 

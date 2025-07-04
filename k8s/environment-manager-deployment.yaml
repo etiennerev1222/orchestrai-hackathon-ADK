@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: environment-manager
-
   labels:
     app: environment-manager
 spec:
@@ -24,48 +23,62 @@ spec:
             - containerPort: 8080
           env:
             - name: AGENT_NAME
-              value: "EnvironmentManagerGKEv2"
+              value: "${AGENT_NAME}"
             - name: GRA_PUBLIC_URL
               value: "${GRA_PUBLIC_URL}"
             - name: KUBERNETES_NAMESPACE
               value: "${KUBERNETES_NAMESPACE}"
-            
-            # ✅ AJOUT DES VARIABLES MANQUANTES
             - name: PUBLIC_URL
-              value: "http://environment-manager.${KUBERNETES_NAMESPACE}.svc.cluster.local:80"
+              value: "http://env-manager.internal.orchestrai.ai:80"
             - name: INTERNAL_URL
-              value: "http://environment-manager.${KUBERNETES_NAMESPACE}.svc.cluster.local:8080"
-
+              value: "http://env-manager.internal.orchestrai.ai:80"
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: "/secrets/sa-key.json"
+            - name: GCP_PROJECT_ID
+              value: "${PROJECT_ID}"
+            - name: GCP_REGION
+              value: "${GCP_REGION}"
             - name: GKE_CLUSTER_ENDPOINT
               value: "${GKE_CLUSTER_ENDPOINT}"
             - name: GKE_SSL_CA_CERT
               value: "${GKE_SSL_CA_CERT}"
-            - name: DEV_ENV_BASE_IMAGE # Le nom de la variable d'environnement que votre Python lit
-              value: "${DEVTOOLS_IMAGE_TAG}" # Cette variable sera substituée par envsubst
-
+            - name: DEV_ENV_BASE_IMAGE
+              value: "${DEVTOOLS_IMAGE_TAG}"
+            - name: INTERNAK_REVISION
+              value: "0.1.0"  
           volumeMounts:
             - name: service-account-volume
               mountPath: /secrets
               readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10             
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
       volumes:
         - name: service-account-volume
           secret:
             secretName: gcp-sa-key
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: environment-manager
   annotations:
-    cloud.google.com/neg: '{"ingress":true}'
-    networking.gke.io/load-balancer-type: "Internal" 
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
+  type: NodePort
   selector:
     app: environment-manager
   ports:
-    - protocol: TCP
-      port: 80
+    - name: http
+      port: 8080
       targetPort: 8080
-  type: LoadBalancer

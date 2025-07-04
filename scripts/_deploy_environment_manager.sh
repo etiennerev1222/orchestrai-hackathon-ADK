@@ -14,6 +14,7 @@ echo "🧠 Déploiement de l'environnement manager sur le projet GCP: $PROJECT_I
 GCP_REGION="${GCP_REGION:-europe-west1}"
 KUBERNETES_NAMESPACE="${KUBERNETES_NAMESPACE:-default}"
 GRA_PUBLIC_URL="${GRA_PUBLIC_URL:-}"
+GKE_CLUSTER_ENDPOINT="${GKE_CLUSTER_ENDPOINT:-}"
 
 # ✨ Découverte du GRA via gcloud run
 if [ -z "$GRA_PUBLIC_URL" ]; then

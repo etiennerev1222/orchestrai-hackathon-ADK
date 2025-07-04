@@ -9,6 +9,9 @@ from google.auth import default
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.auth.exceptions import RefreshError
 from google.oauth2.id_token import fetch_id_token
+from fastapi import FastAPI, Query
+from google.auth.transport.requests import Request
+from google.oauth2 import id_token
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +37,98 @@ KUBE_DNS_IP = "34.118.224.10" # <--- METTRE À JOUR APRÈS LB INTERNE DE KUBE-DN
 @app.route('/')
 def index():
     return "Service de test Cloud Run pour la connectivité GKE. Utilisez /run-tests, /test-dns-lookup, /test-dig, /test-ping, /test-results, /run-direct-ip-tests."
+from fastapi import FastAPI
+import httpx
+import asyncio
+import os
+import uuid
+import datetime
+from google.auth.transport.requests import Request
+from google.oauth2 import id_token
+
+app = FastAPI()
+
+ENV_MGR_URL = os.getenv("ENV_MGR_URL", "http://10.132.0.5")
+DEV_AGENT_URL = os.getenv("DEV_AGENT_URL", "http://10.132.0.6")
+
+async def get_id_token(audience: str) -> str:
+    return id_token.fetch_id_token(Request(), audience)
+@app.get("/test-dev-agent-end2end")
+async def test_dev_agent_e2e(
+    env_mgr_url: str = Query(default="http://environment-manager.default.svc.cluster.local"),
+    dev_agent_url: str = Query(default="http://development-agent.default.svc.cluster.local")
+):
+    environment_id = f"exec-test-{int(datetime.datetime.now().timestamp())}"
+    base_image = "gcr.io/orchestrai-hackathon/python-devtools:1751122256"
+    headers_env = {
+        "Authorization": f"Bearer {await get_id_token(env_mgr_url)}",
+        "Content-Type": "application/json"
+    }
+    headers_dev = {
+        "Authorization": f"Bearer {await get_id_token(dev_agent_url)}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        # 1. Create environment
+        resp_create = await client.post(f"{env_mgr_url}/create_environment", json={
+            "environment_id": environment_id,
+            "base_image": base_image
+        }, headers=headers_env)
+
+        if resp_create.status_code != 200:
+            return {"error": "Failed to create environment", "detail": resp_create.text}
+
+        # 2. Send message to Dev Agent
+        message_payload = {
+            "jsonrpc": "2.0",
+            "method": "message/send",
+            "params": {
+                "message": {
+                    "contextId": f"gplan-{uuid.uuid4().hex[:12]}",
+                    "messageId": f"msg-{uuid.uuid4().hex[:8]}",
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": "{\n  \"action\": \"generate_code_and_write_file\",\n  \"file_path\": \"/app/sum_util.py\",\n  \"objective\": \"Create a Python function named 'sum_numbers' that takes two arguments and returns their sum.\",\n  \"local_instructions\": [\"Ensure it handles both integers and floats.\", \"Add docstrings and type hints.\"],\n  \"acceptance_criteria\": [\"sum_numbers(2, 3) should return 5\", \"sum_numbers(2.5, 3.5) should return 6.0\"],\n  \"environment_id\": \"%s\"\n}" % environment_id
+                        }
+                    ]
+                },
+                "skillId": "coding_python"
+            },
+            "id": "1"
+        }
+
+        resp_dev = await client.post(f"{dev_agent_url}/", json=message_payload, headers=headers_dev)
+
+        # Optional: wait a few seconds
+        await asyncio.sleep(4)
+
+        # 3. Read file back
+        read_resp = await client.post(f"{env_mgr_url}/download_from_environment", json={
+            "environment_id": environment_id,
+            "path": "/app/sum_util.py"
+        }, headers=headers_env)
+
+        # 4. Execute it
+        exec_resp = await client.post(f"{env_mgr_url}/exec_in_environment", json={
+            "environment_id": environment_id,
+            "command": "python -c 'from sum_util import sum_numbers; print(sum_numbers(2, 3))'"
+        }, headers=headers_env)
+
+        # 5. Cleanup
+        await client.post(f"{env_mgr_url}/delete_environment", json={
+            "environment_id": environment_id
+        }, headers=headers_env)
+
+    return {
+        "environment_id": environment_id,
+        "create_env": resp_create.json(),
+        "dev_agent_response": resp_dev.json(),
+        "read_file": read_resp.json(),
+        "exec_result": exec_resp.json(),
+        "cleanup": "done"
+    }
 
 async def _get_id_token_for_audience(audience_url: str) -> str | None:
     try:
@@ -256,6 +351,21 @@ async def test_dns_lookup():
     except Exception as e:
         logger.error(f"Erreur inattendue lors de la résolution DNS pour {hostname}: {e}")
         return jsonify({'error': f"Erreur inattendue: {e}"}), 500
+import requests
+@app.route('/test-internal-call')
+def test_internal_call():
+    try:
+        url = os.environ.get("DEV_AGENT_URL", "http://development-agent.default.svc.cluster.local:80")
+        response = requests.get(url, timeout=3)
+        return jsonify({
+            "url": url,
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "body": response.text[:500]  # On limite à 500 chars
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/test-dig', methods=['GET'])
 async def test_dig():
