@@ -26,7 +26,7 @@ ALL_COMPONENTS=("gra_server" "${AGENTS[@]}")
 function configure() {
     echo "--- ÉTAPE 1: CONFIGURATION DES FICHIERS DE BUILD (Python 3.11) ---"
 
-    local REQUIREMENTS_FILE="requirements_py311.txt" # Assurez-vous que ce fichier existe
+    local REQUIREMENTS_FILE="requirements.txt" # Assurez-vous que ce fichier existe
     if [ ! -f "$REQUIREMENTS_FILE" ]; then
         echo "Erreur : Le fichier de dépendances '$REQUIREMENTS_FILE' n'existe pas."
         exit 1

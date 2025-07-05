@@ -311,7 +311,7 @@ source venv/bin/activate
 
 4. **Install Python Dependencies:**
 ```bash
-pip install -r requirements_py311.txt
+pip install -r requirements.txt
 ```
 
 ### Step 2: Initial Google Cloud Project Setup
@@ -459,7 +459,7 @@ orchestrai-hackathon-ADK/
 ├── tests/                 # Unit and integration tests
 ├── deployment.sh          # Cloud Run deployment
 ├── build_and_deploy.sh    # Docker build helper
-└── requirements_py311.txt
+└── requirements.txt
 ```
 
 ## Utility Scripts
