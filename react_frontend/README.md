@@ -52,3 +52,24 @@ BASIC_AUTH_USERNAME=myuser BASIC_AUTH_PASSWORD=mypass python secure_server.py
 The server exposes the files on port `8080` (modifiable via `PORT` environment
 variable) and requires HTTP Basic authentication with the credentials specified
 via `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD`.
+
+## Testing custom components
+
+You can bundle React components from `frontend/components` for quick testing
+without the full build setup. Run `esbuild` from this directory so the relative
+path resolves correctly:
+
+```bash
+cd react_frontend
+npx esbuild ../frontend/components/TaskGraphEditor.tsx \
+  --bundle --outfile=TaskGraphEditor.bundle.js \
+  --loader:.ts=ts \
+  --external:react --external:react-dom \
+  --external:reactflow --external:axios
+```
+
+The `../frontend/components/...` path assumes you execute the command inside
+`react_frontend`. After bundling, load `TaskGraphEditor.bundle.js` in a test
+HTML page and import React, ReactDOM, ReactFlow and axios from a CDN (e.g.
+unpkg or jsDelivr). This lets you try the component in isolation before
+integrating it into the main dashboard.
