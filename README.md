@@ -21,7 +21,7 @@ A strategic orchestration engine for multi-agent systems. OrchestrAI turns vague
 - **Composable & extensible**: Add new agents or skills anytime—just register with the GRA and they are orchestrated automatically.
 - **A2A protocol & Google ADK compliant**: Ensures interoperability and future-proofing.
 - **Full audit trail**: Every decision, correction and outcome is persisted in Firestore for transparency.
-- **Isolated dev environments**: Generated code runs in Kubernetes pods managed by the `EnvironmentManager` for safety (see `docs/environment_manager.md`). Environment metadata lives in Firestore and, when no dedicated pod can be created, the manager reuses a shared `exec_default` environment (see `scripts/create_fallback_environment.py`).
+- **Isolated dev environments**: The **Development** server now runs inside a *Kubernetes Dev Environment (KDE)* alongside an `EnvironmentManager` that spawns scalable execution pods. Generated code executes in these pods and metadata is stored in Firestore. When no dedicated pod can be created, a shared `exec_default` environment is used (see `scripts/create_fallback_environment.py`).
 - **Real-time agent status**: The GRA exposes `/gra_status` and `/ws/status` endpoints so the dashboard can display each agent's operational state (Idle, Busy, Working, etc.).
 - **Agent logs (syslog)**: Each agent exposes a `/logs` route and the GRA proxies it via `/v1/agents/<name>/logs` so the dashboard can fetch runtime logs securely. The GRA server itself exposes `/v1/gra/logs`.
 - **Agent restart**: The dashboard provides a restart button calling `/v1/agents/<name>/restart` which relays to each agent's own `/restart` endpoint.
@@ -225,8 +225,51 @@ graph LR
     * `global_plans`, `task_graphs`, `execution_task_graphs`, `agents` (registry).
 * **Inter-Service Communication**: A2A protocol (via `src/clients/a2a_api_client.py`).
 * **Front End**: React served from Firebase Hosting.
+
 * **Asynchronous Task Handling**: Extensive use of `asyncio`.
 * **Environment Manager**: Creates and manages isolated Kubernetes pods to run the generated code. A dedicated API allows deleting a pod via `DELETE /api/environments/{env_id}`.
+
+## ☁️ Cloud Infrastructure Overview
+
+The diagram below summarizes the main GCP components used in production. It highlights how the `Development` server and the `EnvironmentManager` share the same **Kubernetes Dev Environment (KDE)** while the rest of the agents remain microservices on **Cloud Run**.
+
+```mermaid
+graph TD
+    subgraph "Firebase Hosting"
+        UI["React Frontend"]
+    end
+    subgraph "Cloud Run Microservices"
+        GRA[GRA / API Gateway]
+        OtherAgents["Other Agents"]
+    end
+    subgraph "Kubernetes Dev Environment (KDE)"
+        DevServer["Development Server"]
+        EnvMgr["Environment Manager"]
+        subgraph "Execution Pods (autoscaled)"
+            Pod1((Pod))
+            Pod2((Pod))
+            PodN((...))
+        end
+    end
+    subgraph "GCP Backbone"
+        Firestore[(Firestore)]
+        DNS[(Cloud DNS)]
+        Artifact[(Artifact Registry)]
+    end
+
+    UI --> GRA
+    GRA --> OtherAgents
+    GRA --> DevServer
+    DevServer --> EnvMgr
+    EnvMgr --> Pod1
+    EnvMgr --> Pod2
+    EnvMgr --> PodN
+    GRA --> Firestore
+    DevServer --> Firestore
+    EnvMgr --> Firestore
+    GRA --> DNS
+    GRA --> Artifact
+```
 
 ## Key Concepts
 
@@ -434,11 +477,15 @@ Several helper scripts are provided for deployment and maintenance tasks.
 - `test_droit.sh` – grant persistent volume claim permissions on Kubernetes.
 - `create_PODimage_and_deploy.sh` – build a `python-devtools` image for isolated environments and push it to GCR.
 - `scripts/create_fallback_environment.py` – create the shared fallback pod used when environment creation fails.
-- `scripts/deploy_test.sh` – deploy agents using an existing GKE cluster and connector.
+- `scripts/deploy_services_GKE.sh` – deploy the development server and environment manager on GKE.
+- `scripts/update_internal_dns.sh` – update the Cloud DNS records for internal services.
+- `scripts/update_run_services.sh` – refresh VPC settings for the Cloud Run services.
+- `scripts/ensure_gcp_sa_key.sh` – generate the service account key used during deployments.
 - `scripts/grant_agent_permissions.sh` – allow inter-service Cloud Run invocations.
 - `scripts/grant_gke_permissions_to_cloudrun_sa.sh` – give the Cloud Run service account access to GKE.
 - `scripts/grant_gclou_kubernet.sh` – example script to set up GCP and Kubernetes roles.
-- `tests/test_development_agent_curl.sh` – send a test request to the development agent.
+- `tests/run_test_development_agent.sh` – run an end‑to‑end test against the development agent pod.
+- `tests/run_test_environment_manager.sh` – test the environment manager API.
 
 ### Python Scripts
 
