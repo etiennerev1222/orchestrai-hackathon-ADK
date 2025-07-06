@@ -238,7 +238,7 @@ function deploy_gcp() {
       --region=${GCP_REGION} \
       --allow-unauthenticated \
       --port=8000 \
-      --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,K8S_BEARER_TOKEN=${K8S_BEARER_TOKEN},${COMMON_AGENT_ENV_VARS}" \
+      --set-env-vars="ENVIRONMENT_MANAGER_INTERNAL_URL=http://env-manager.internal.orchestrai.ai:80","GKE_SSL_CA_CERT=/app/ca.pem,K8S_BEARER_TOKEN=${K8S_BEARER_TOKEN},${COMMON_AGENT_ENV_VARS}" \
       --project=${GCP_PROJECT_ID} \
       --vpc-connector="${CONNECTOR_NAME}" \
       --vpc-egress=all
@@ -252,7 +252,7 @@ function deploy_gcp() {
     
     gcloud run services update gra-server \
         --region=${GCP_REGION} \
-        --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,K8S_BEARER_TOKEN=${K8S_BEARER_TOKEN},${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
+        --set-env-vars="ENVIRONMENT_MANAGER_INTERNAL_URL=http://env-manager.internal.orchestrai.ai:80","GKE_SSL_CA_CERT=/app/ca.pem,K8S_BEARER_TOKEN=${K8S_BEARER_TOKEN},${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL}" \
         --project=${GCP_PROJECT_ID} \
         --vpc-egress=all
     echo "    -> Mise à jour de 'gra-server' avec ses URLs...Terminée."
@@ -297,7 +297,7 @@ function deploy_gcp() {
           --region=${GCP_REGION} \
           --no-allow-unauthenticated \
           --port=8080 \
-          --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
+          --set-env-vars="ENVIRONMENT_MANAGER_INTERNAL_URL=http://env-manager.internal.orchestrai.ai:80","GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
           --vpc-connector="${CONNECTOR_NAME}" \
           --project=${GCP_PROJECT_ID}
         
@@ -311,7 +311,7 @@ function deploy_gcp() {
         
         gcloud run services update ${AGENT_SERVICE_NAME} \
             --region=${GCP_REGION} \
-            --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
+            --set-env-vars="ENVIRONMENT_MANAGER_INTERNAL_URL=http://env-manager.internal.orchestrai.ai:80","GKE_SSL_CA_CERT=/app/ca.pem,${COMMON_AGENT_ENV_VARS},GRA_PUBLIC_URL=${GRA_CLOUD_RUN_URL},PUBLIC_URL=${AGENT_PUBLIC_URL},INTERNAL_URL=${AGENT_PUBLIC_URL},AGENT_NAME=${FULL_AGENT_NAME}" \
             --project=${GCP_PROJECT_ID}
 
         echo "        ✅ '${AGENT_SERVICE_NAME}' déployé et configuré."

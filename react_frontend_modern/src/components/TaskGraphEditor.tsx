@@ -126,7 +126,7 @@ const getLayoutedElements = (nodesToLayout: Node[], edgesToLayout: Edge[], direc
 
 
 // --- Composant Principal de l'Éditeur de Graphe ---
-const TaskGraphEditor = ({ executionPlanId }: { executionPlanId: string }) => {
+const TaskGraphEditor = ({ executionPlanId, availableAgentSkills }: { executionPlanId: string; availableAgentSkills: string[] }) => { // <-- NOUVELLE PROP
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -143,6 +143,31 @@ const TaskGraphEditor = ({ executionPlanId }: { executionPlanId: string }) => {
 
   const { fitView } = useReactFlow();
 
+  // --- Fonction `handleAgentTypeChange` (NOUVELLE) ---
+  const handleAgentTypeChange = useCallback(async (nodeId: string, newAgentType: string) => {
+    setNodes((nds) => {
+      const updatedNodes = nds.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, assigned_agent_type: newAgentType } }
+          : n
+      );
+      const nodeToUpdate = updatedNodes.find(n => n.id === nodeId);
+      if (nodeToUpdate) {
+        api.put(`/v1/execution_task_graphs/${executionPlanId}/nodes/${nodeId}`, {
+            objective: nodeToUpdate.data.objective,
+            task_type: nodeToUpdate.data.task_type,
+            assigned_agent_type: newAgentType, // <-- Inclure le nouveau type d'agent
+            dependencies: nodeToUpdate.data.rawDependencies // Inclure aussi les dépendances
+        }).catch((err: any) => {
+          console.error("Failed to update node agent type on backend:", err);
+          alert(`Erreur lors de la mise à jour de l'agent: ${err.detail || err.message || 'Erreur inconnue'}. Vérifiez la console.`);
+        });
+      }
+      return updatedNodes;
+    });
+  }, [setNodes, executionPlanId]);
+
+
   // --- Chargement Initial du Graphe ---
   useEffect(() => {
     console.log("useEffect for initial graph load is running. Plan ID:", executionPlanId);
@@ -153,9 +178,10 @@ const TaskGraphEditor = ({ executionPlanId }: { executionPlanId: string }) => {
       const rfNodes: Node[] = Object.values(graphData.nodes).map((node: any) => ({
         id: node.id,
         data: {
-          objective: node.objective,
-          task_type: node.task_type,
-          rawDependencies: node.dependencies || [], // 'dependencies' du backend
+          // Copiez TOUTES les propriétés pertinentes du backend ici
+          // Si le backend vous envoie ces propriétés, assurez-vous de les inclure dans 'data'
+          ...node, // <-- Ceci devrait copier toutes les propriétés du noeud backend dans node.data
+          rawDependencies: node.dependencies || [], // Surcharge spécifiquement les dépendances
         },
         position: { x: 0, y: 0 }, // Position temporaire, sera calculée par Dagre
         type: 'customTaskNode', // Utilise le type de nœud personnalisé
@@ -468,6 +494,7 @@ const TaskGraphEditor = ({ executionPlanId }: { executionPlanId: string }) => {
   }, [setNodes, executionPlanId]);
 
 
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -477,8 +504,7 @@ const TaskGraphEditor = ({ executionPlanId }: { executionPlanId: string }) => {
       onConnect={onConnect}
       onNodeClick={(_, node) => setSelectedNodeId(node.id)}
       onEdgeClick={onEdgeClick}
-      // Suppression de la prop fitView ici car elle est appelée manuellement
-      nodeTypes={NODE_TYPES_MAP} // Utilise la constante globale NODE_TYPES_MAP
+      nodeTypes={NODE_TYPES_MAP}
     >
       <MiniMap />
       <Controls />
@@ -489,22 +515,73 @@ const TaskGraphEditor = ({ executionPlanId }: { executionPlanId: string }) => {
       {selectedNode && (
         <Panel position="top-left">
           <h4>Tâche {selectedNode.id}</h4>
+
+          {/* Propriétés en lecture seule (inchangées) */}
+          <div style={{ marginBottom: '10px' }}>
+            <label>État:</label>
+            <input type="text" readOnly value={selectedNode.data.state || 'N/A'} style={{ background: 'var(--sidebar-bg)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+          </div>
+          {/* ... (autres champs en lecture seule : output_artifact_ref, result_summary, created_at, updated_at, parent_id, sub_task_ids) ... */}
+          <div style={{ marginBottom: '10px' }}>
+            <label>Référence Artefact Sortie:</label>
+            <input type="text" readOnly value={selectedNode.data.output_artifact_ref || 'N/A'} style={{ background: 'var(--sidebar-bg)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <label>Résumé Résultat:</label>
+            <textarea readOnly value={selectedNode.data.result_summary || 'N/A'} rows={3} style={{ width: '100%', background: 'var(--sidebar-bg)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <label>Créé le:</label>
+            <input type="text" readOnly value={new Date(selectedNode.data.created_at).toLocaleString() || 'N/A'} style={{ background: 'var(--sidebar-bg)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <label>Mis à jour le:</label>
+            <input type="text" readOnly value={new Date(selectedNode.data.updated_at).toLocaleString() || 'N/A'} style={{ background: 'var(--sidebar-bg)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+          </div>
+          {selectedNode.data.parent_id && (
+            <div style={{ marginBottom: '10px' }}>
+              <label>Parent ID:</label>
+              <input type="text" readOnly value={selectedNode.data.parent_id || 'N/A'} style={{ background: 'var(--sidebar-bg)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+            </div>
+          )}
+          {selectedNode.data.sub_task_ids && selectedNode.data.sub_task_ids.length > 0 && (
+            <div style={{ marginBottom: '10px' }}>
+              <label>Sous-Tâches ID:</label>
+              <textarea readOnly value={selectedNode.data.sub_task_ids.join(', ') || 'N/A'} rows={2} style={{ width: '100%', background: 'var(--sidebar-bg)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+            </div>
+          )}
+
+
           <label>Objectif:</label>
           <input
-            id="taskObjective" // Ajout de l'ID
-            name="taskObjective" // Ajout du nom
+            id="taskObjective"
+            name="taskObjective"
             value={selectedNode.data.objective}
             onChange={(e) => handleObjectiveChange(selectedNode.id, e.target.value)}
           />
           <label>Type:</label>
           <select
-            id="taskType" // Ajout de l'ID
-            name="taskType" // Ajout du nom
+            id="taskType"
+            name="taskType"
             value={selectedNode.data.task_type}
             onChange={(e) => handleTypeChange(selectedNode.id, e.target.value)}
           >
             {Object.keys(TYPE_COLORS).map(type => (
               <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+
+          {/* NOUVEAU : Champ pour 'Agent Assigné' (avec select) */}
+          <label>Agent Assigné:</label>
+          <select
+            id="assignedAgentType"
+            name="assignedAgentType"
+            value={selectedNode.data.assigned_agent_type || ''} // Utilise '' pour éviter undefined
+            onChange={(e) => handleAgentTypeChange(selectedNode.id, e.target.value)}
+          >
+            <option value="">-- Non Assigné --</option> {/* Option vide */}
+            {availableAgentSkills.map(skill => (
+              <option key={skill} value={skill}>{skill}</option>
             ))}
           </select>
 

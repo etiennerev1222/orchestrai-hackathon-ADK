@@ -12,7 +12,7 @@ FALLBACK_ENV_ID = "exec_default"
 class EnvironmentManager:
     """HTTP client wrapper for the Environment Manager service."""
     def __init__(self, base_url: Optional[str] = None, auth_token: str | None = None):
-        self.base_url = base_url or os.environ.get("ENV_MANAGER_URL", "http://environment-manager.default.svc.cluster.local:8080")
+        self.base_url = base_url or os.environ.get("ENVIRONMENT_MANAGER_INTERNAL_URL", "http://env-manager.internal.orchestrai.ai:80")
         self.auth_token = auth_token # Store the auth_token
         self.client = httpx.AsyncClient()
 

@@ -126,3 +126,21 @@ react_frontend/TaskGraphEditor.bundle.js
 /gcp_config/
 /log/
 /tmp/
+
+
+
+# le reste
+clean_Storage_GKE.sh
+create_env.json
+devpost/
+exec_ls.json
+exec_script.json
+final.txt
+list_files.json
+media/
+old/
+read_file.json
+upload_file.json
+upload_script.json
+upload_test.txt.json
+upload_test_script.py.json

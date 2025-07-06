@@ -26,7 +26,12 @@ class ExecutionTaskState(str, Enum):
     FAILED = "failed"
     BLOCKED = "blocked"
     CANCELLED = "cancelled"
-
+TERMINAL_EXECUTION_STATES = [
+    ExecutionTaskState.COMPLETED,
+    ExecutionTaskState.FAILED,
+    ExecutionTaskState.CANCELLED,
+    # Ajoutez d'autres états si vous les considérez terminaux
+]
 class ExecutionTaskNode:
     def __init__(
         self,
@@ -249,7 +254,6 @@ class ExecutionTaskGraph:
 
     def as_dict(self) -> Dict[str, Any]:
         return self._get_graph_data()
-
     # --- New methods for interactive edition ---
 
     def set_edit_mode(self, enabled: bool, user_id: Optional[str] = None):
@@ -272,22 +276,29 @@ class ExecutionTaskGraph:
         node_data = nodes.get(task_id)
         if not node_data:
             raise ValueError(f"Tâche {task_id} introuvable pour édition")
-        if node_data.get("state") == ExecutionTaskState.COMPLETED.value:
-            raise ValueError("Impossible de modifier une tâche complétée")
+        
+        # RÈGLE MÉTIER : Empêcher la modification de tâches terminées
+        current_state = ExecutionTaskState(node_data.get("state"))
+        if current_state in TERMINAL_EXECUTION_STATES:
+            raise ValueError(f"Impossible de modifier une tâche dans l'état terminal '{current_state.value}'.")
 
         allowed_fields = {
             "objective",
             "task_type",
             "assigned_agent_type",
-            "meta",
+            "meta", # Meta contient local_instructions et acceptance_criteria
         }
         for key, val in updates.items():
             if key in allowed_fields:
                 if key == "task_type":
-                    val = ExecutionTaskType(val).value
+                    try:
+                        val = ExecutionTaskType(val).value # Assurer la validité du type
+                    except ValueError:
+                        raise ValueError(f"Type de tâche '{val}' invalide pour la tâche {task_id}.")
                 node_data[key] = val
+            else:
+                logger.warning(f"Tentative de modifier le champ non autorisé '{key}' pour la tâche {task_id}. Ignoré.")
         nodes[task_id] = node_data
-        graph_data["nodes"] = nodes
         self._save_graph_data(graph_data)
         return ExecutionTaskNode.from_dict(node_data)
 
@@ -295,6 +306,14 @@ class ExecutionTaskGraph:
         node_data = nodes.get(task_id)
         if not node_data:
             return
+        
+        # RÈGLE MÉTIER : Vérification de l'état avant suppression récursive
+        current_state = ExecutionTaskState(node_data.get("state"))
+        if current_state in TERMINAL_EXECUTION_STATES:
+            # Cette vérification est déjà faite dans delete_task, mais c'est une sécurité
+            logger.warning(f"Tentative de supprimer la tâche {task_id} en état terminal '{current_state.value}'. Ignoré dans _recursive_delete.")
+            return
+
         for sub_id in list(node_data.get("sub_task_ids", [])):
             self._recursive_delete(sub_id, nodes, graph_data)
         for other_id, other_data in nodes.items():
@@ -318,10 +337,13 @@ class ExecutionTaskGraph:
         node_data = nodes.get(task_id)
         if not node_data:
             raise ValueError(f"Tâche {task_id} introuvable")
-        if node_data.get("state") == ExecutionTaskState.COMPLETED.value:
-            raise ValueError("Impossible de supprimer une tâche complétée")
+        
+        # RÈGLE MÉTIER : Empêcher la suppression de tâches terminées
+        current_state = ExecutionTaskState(node_data.get("state"))
+        if current_state in TERMINAL_EXECUTION_STATES:
+            raise ValueError(f"Impossible de supprimer une tâche dans l'état terminal '{current_state.value}'.")
 
-        self._recursive_delete(task_id, nodes, graph_data)
+        self._recursive_delete(task_id, nodes, graph_data) # _recursive_delete va maintenant vérifier
         graph_data["nodes"] = nodes
         self._save_graph_data(graph_data)
 
@@ -329,12 +351,19 @@ class ExecutionTaskGraph:
         graph_data = self._get_graph_data()
         nodes = graph_data.get("nodes", {})
         if from_id not in nodes or to_id not in nodes:
-            raise ValueError("Tâches introuvables pour liaison")
+            raise ValueError("Tâches source ou cible introuvables pour liaison.")
+        
+        # RÈGLE MÉTIER : Empêcher la liaison de/vers des tâches terminées
+        from_node_state = ExecutionTaskState(nodes[from_id].get("state"))
+        to_node_state = ExecutionTaskState(nodes[to_id].get("state"))
+        if from_node_state in TERMINAL_EXECUTION_STATES or to_node_state in TERMINAL_EXECUTION_STATES:
+            raise ValueError(f"Impossible de lier des tâches si l'une d'entre elles est dans un état terminal (Source: '{from_node_state.value}', Cible: '{to_node_state.value}').")
+
         deps = nodes[to_id].get("dependencies", [])
         if from_id not in deps:
             deps.append(from_id)
             nodes[to_id]["dependencies"] = deps
-        self._ensure_acyclic(nodes)
+        self._ensure_acyclic(nodes) # Vérification de cycle
         graph_data["nodes"] = nodes
         self._save_graph_data(graph_data)
 
@@ -343,6 +372,13 @@ class ExecutionTaskGraph:
         nodes = graph_data.get("nodes", {})
         if to_id not in nodes:
             return
+        
+        # RÈGLE MÉTIER : Empêcher la déliaison de/vers des tâches terminées
+        from_node_state = ExecutionTaskState(nodes[from_id].get("state", ExecutionTaskState.PENDING)) # Fallback pour la source
+        to_node_state = ExecutionTaskState(nodes[to_id].get("state"))
+        if from_node_state in TERMINAL_EXECUTION_STATES or to_node_state in TERMINAL_EXECUTION_STATES:
+            raise ValueError(f"Impossible de délier des tâches si l'une d'entre elles est dans un état terminal (Source: '{from_node_state.value}', Cible: '{to_node_state.value}').")
+
         deps = nodes[to_id].get("dependencies", [])
         if from_id in deps:
             deps.remove(from_id)
@@ -351,19 +387,42 @@ class ExecutionTaskGraph:
         self._save_graph_data(graph_data)
 
     def _ensure_acyclic(self, nodes: Dict[str, Any]):
-        visited: Dict[str, int] = {}
-
-        def dfs(nid: str, stack: List[str]):
+        visited: Dict[str, int] = {} # 0: non visité, 1: en cours de visite, 2: visité
+        
+        def dfs(nid: str, path_stack: List[str]):
             state = visited.get(nid, 0)
-            if state == 1:
-                raise ValueError("Cycle détecté dans le graphe")
-            if state == 2:
+            if state == 1: # Si déjà en cours de visite dans la pile actuelle
+                # Cycle détecté
+                cycle_path = " -> ".join(path_stack + [nid])
+                raise ValueError(f"Cycle détecté dans le graphe lors de la liaison de tâches: {cycle_path}")
+            if state == 2: # Si déjà visité et terminé
                 return
-            visited[nid] = 1
-            for dep in nodes.get(nid, {}).get("dependencies", []):
-                if dep in nodes:
-                    dfs(dep, stack + [nid])
-            visited[nid] = 2
+            
+            visited[nid] = 1 # Marquer comme en cours de visite
+            
+            # Parcourir les dépendances (parents) de ce nœud
+            # Pour vérifier un cycle A -> B, on regarde si B peut revenir à A.
+            # Donc, on parcourt le graphe INVERSÉMENT pour la détection de cycle standard.
+            # Ou, si on suit les flèches (source -> target), on doit vérifier si le target peut atteindre la source.
+            # Ici, `dependencies` signifie `node depends on dep`, donc `dep -> node`.
+            # Pour trouver un cycle `A -> B` si on ajoute `B -> A`, on doit chercher un chemin de `A` vers `B`.
+
+            # Pour le contexte de `link_tasks(from_id, to_id)` qui ajoute `from_id -> to_id`:
+            # Un cycle est créé si `to_id` peut déjà atteindre `from_id`.
+            # Il faut donc parcourir le graphe depuis `to_id` pour voir si `from_id` est un descendant.
+
+            # Pour une détection de cycle générique basée sur les dépendances (parents) :
+            # Construire une liste d'adjacence des enfants (tâches dépendantes) pour le DFS
+            children_adj: Dict[str, List[str]] = {n_id: [] for n_id in nodes.keys()}
+            for child_id, child_data in nodes.items():
+                for parent_id in child_data.get("dependencies", []):
+                    if parent_id in nodes:
+                        children_adj[parent_id].append(child_id) # parent_id -> child_id
+
+            for child_node_id in children_adj.get(nid, []):
+                dfs(child_node_id, path_stack + [nid])
+            
+            visited[nid] = 2 # Marquer comme visité et terminé
 
         for nid in nodes.keys():
             if visited.get(nid, 0) == 0:

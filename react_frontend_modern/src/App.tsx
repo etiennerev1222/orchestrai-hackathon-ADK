@@ -45,6 +45,7 @@ const FINISHED_STATES = [
   'FAILED_AGENT_ERROR'
 ];
 
+
 const TYPE_COLORS = {
   executable: '#007bff',
   exploratory: '#ff9800',
@@ -1063,8 +1064,62 @@ function App() {
   const [envModal, setEnvModal] = useState<string | null>(null); // environment id to delete
  // NOUVEL ÉTAT POUR L'AFFICHAGE DE L'ÉDITEUR
   const [showGraphEditor, setShowGraphEditor] = useState(false); // <-- NOUVEL ÉTAT
+  // NOUVEL ÉTAT POUR LES COMPÉTENCES D'AGENT
+  const [availableAgentSkills, setAvailableAgentSkills] = useState<string[]>([]); // <-- NOUVEL ÉTAT
 
   
+
+    // NOUVEL EFFET : Récupérer les compétences d'agent au démarrage de l'application
+  useEffect(() => {
+    const fetchAgentSkills = async () => {
+      try {
+        const response = await fetch(`${BACKEND_API_URL}/agents_status`); // Endpoint pour les statuts des agents
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        // Extrait les compétences uniques de tous les agents
+        const skills: string[] = [];
+        if (data && Array.isArray(data.agents)) {
+          data.agents.forEach((agent: any) => {
+            if (Array.isArray(agent.skills)) {
+              skills.push(...agent.skills);
+            }
+          });
+        }
+        // Ajoute aussi les types de tâches comme des compétences potentielles pour l'assignation
+        Object.keys(TYPE_COLORS).forEach(type => {
+          if (!skills.includes(type)) { // Évite les doublons
+            skills.push(type);
+          }
+        });
+        // Pour les types d'agents génériques que votre backend peut gérer (ex: general_analysis, web_research, coding_python, document_synthesis, database_design)
+        // Vérifiez votre logique ExecutionSupervisorLogic::_get_all_available_execution_skills_from_gra
+        const backendDefinedSkills = [
+          "general_analysis", "web_research", "web_Browse", "coding_python",
+          "software_testing", "document_synthesis", "database_design", "execution_plan_decomposition"
+        ];
+        backendDefinedSkills.forEach(skill => {
+            if (!skills.includes(skill)) {
+                skills.push(skill);
+            }
+        });
+
+
+        // Retire les compétences exclues de la décomposition ou de la planification
+        const excludedSkills = ["clarify_objective", "reformulation", "evaluation", "validation", "execution_plan_decomposition"];
+        const filteredSkills = skills.filter(skill => !excludedSkills.includes(skill));
+
+        setAvailableAgentSkills(Array.from(new Set(filteredSkills)).sort()); // Trie et déduplique
+      } catch (error) {
+        console.error("Error fetching agent skills:", error);
+      }
+    };
+    fetchAgentSkills();
+  }, [BACKEND_API_URL]); // Se déclenche quand l'URL de l'API change (normalement une seule fois)
+
+
+
   // --- 2. EFFETS (Hooks pour le cycle de vie) ---
   
   // Effet pour les WebSockets (temps réel)
@@ -1364,7 +1419,11 @@ function App() {
             </button>
             {/* Le TaskGraphEditor est rendu ici */}
             <ReactFlowProvider> {/* <-- AJOUTÉ */}
-              <TaskGraphEditor executionPlanId={planDetails.team2_execution_plan_id} />
+            <TaskGraphEditor
+                executionPlanId={planDetails.team2_execution_plan_id}
+                availableAgentSkills={availableAgentSkills} 
+              />
+              
             </ReactFlowProvider> {/* <-- AJOUTÉ */}
           </div>
         </div>
