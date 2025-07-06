@@ -415,12 +415,33 @@ input {
 .messages-history {
   margin-top: 1rem;
 }
+.artifacts-container {
+  border: 1px solid var(--border);
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  background: var(--card-bg);
+}
+.artifacts-container summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
 .artifact-section {
   margin-bottom: 1rem;
 }
 .artifact-section h5 {
   margin: 0 0 0.5rem 0;
   font-size: 1rem;
+}
+.artifact-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+.artifact-title {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
 }
 .message-item {
   border: 1px solid var(--border);
