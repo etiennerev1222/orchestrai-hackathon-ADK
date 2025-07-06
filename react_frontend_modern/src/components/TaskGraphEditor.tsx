@@ -42,7 +42,7 @@ const toPastel = (hex: string) => {
 
 // --- Composant de Nœud Personnalisé (CustomTaskNode) ---
 // Déplacé en dehors du composant principal pour optimisation (éviter React Flow warning #002)
-const CustomTaskNode = ({ id, data, selected }: NodeProps<any>) => {
+const CustomTaskNode = ({ id: _id, data, selected }: NodeProps<any>) => { // <-- CHANGER 'id' en 'id: _id'
   const taskType = data.task_type;
   const objective = data.objective;
   const color = TYPE_COLORS[taskType as keyof typeof TYPE_COLORS] || '#6c757d'; // Fallback grey
@@ -491,11 +491,15 @@ const TaskGraphEditor = ({ executionPlanId }: { executionPlanId: string }) => {
           <h4>Tâche {selectedNode.id}</h4>
           <label>Objectif:</label>
           <input
+            id="taskObjective" // Ajout de l'ID
+            name="taskObjective" // Ajout du nom
             value={selectedNode.data.objective}
             onChange={(e) => handleObjectiveChange(selectedNode.id, e.target.value)}
           />
           <label>Type:</label>
           <select
+            id="taskType" // Ajout de l'ID
+            name="taskType" // Ajout du nom
             value={selectedNode.data.task_type}
             onChange={(e) => handleTypeChange(selectedNode.id, e.target.value)}
           >

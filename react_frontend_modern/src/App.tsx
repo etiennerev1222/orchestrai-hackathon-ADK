@@ -6,8 +6,18 @@ import './styles/main.css'; // Import de ton CSS principal
 
 import { marked } from 'marked'; // Import de marked
 import DOMPurify from 'dompurify'; // Import de dompurify
-import hljs from 'highlight.js'; // Import de highlight.js
+//import hljs from 'highlight.js'; // Import de highlight.js
+import hljs from 'highlight.js/lib/core';
+// Importe les langages que tu vas utiliser
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import python from 'highlight.js/lib/languages/python';
+// Ajoute d'autres langages si nécessaire, ex: xml, css, bash etc.
 
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('python', python);
+// Enregistre d'autres langages ici
 // Importe TaskGraphEditor
 import TaskGraphEditor from './components/TaskGraphEditor'; // <-- IMPORT NOUVEAU
 import { ReactFlowProvider } from 'reactflow'; // <-- IMPORTER ReactFlowProvider ICI
@@ -767,14 +777,16 @@ function FileBrowser({ environmentId, planId }: { environmentId: string | null; 
         </div>
       )
   }
-  return (
+    return (
     <div className="file-browser">
-      <h3>File Explorer (ID: {environmentId})</h3>
+      {/* ... (titre, path-bar) ... */}
       <div className="path-bar">
         <span>Path: {ENV_WORKDIR}/{currentPath}</span>
         <div className="file-actions">
           <input
             type="file"
+            id="uploadFile" // <-- AJOUTÉ : ID pour le champ de fichier
+            name="uploadFile" // <-- AJOUTÉ : NOM pour le champ de fichier
             ref={fileInputRef}
             onChange={handleUpload}
             style={{ display: 'none' }}
@@ -1362,6 +1374,8 @@ function App() {
           <div className="sidebar">
             <h3 title="Enter a new objective to create a plan">New Plan</h3>
             <textarea
+              id="newObjective" // Ajout de l'ID
+              name="newObjective" // Ajout du nom
               value={newObjective}
               onChange={e => setNewObjective(e.target.value)}
               rows={4}
@@ -1382,6 +1396,8 @@ function App() {
                 <label>
                   Filter&nbsp;
                   <select
+                    id="statusFilter" // Ajout de l'ID
+                    name="statusFilter" // Ajout du nom
                     value={statusFilter}
                     onChange={e => setStatusFilter(e.target.value)}
                   >
@@ -1391,10 +1407,12 @@ function App() {
                   </select>
                 </label>
                 <select
+                  id="stateFilter" // Ajout de l'ID
+                  name="stateFilter" // Ajout du nom
                   style={{ marginLeft: '0.5rem' }}
                   value={stateFilter}
                   onChange={e => setStateFilter(e.target.value)}
-                >
+                >             
                   <option value="">State: All</option>
                   {uniqueStates.map(s => (
                     <option key={s} value={s}>
@@ -1427,6 +1445,8 @@ function App() {
               <label style={{ marginLeft: '1rem' }}>
                 <input
                   type="checkbox"
+                  id="autoRefresh" // Ajout de l'ID
+                  name="autoRefresh" // Ajout du nom
                   checked={autoRefresh}
                   onChange={e => setAutoRefresh(e.target.checked)}
                 />
@@ -1435,14 +1455,17 @@ function App() {
               <label style={{ marginLeft: '1rem' }} title="Toggle the file explorer">
                 <input
                   type="checkbox"
+                  id="showFileBrowser" // Ajout de l'ID
+                  name="showFileBrowser" // Ajout du nom
+                
                   checked={showFileBrowser}
                   onChange={e => setShowFileBrowser(e.target.checked)}
                 />
                 Show file explorer
               </label>
             </div>
-            
-            <PlanInfo
+
+             <PlanInfo
               plan={planDetails}
               flowRunning={planDetails && !FINISHED_STATES.includes(planDetails.current_supervisor_state)}
               hasFailures={hasFailures}
@@ -1450,6 +1473,30 @@ function App() {
               team2Counts={team2Counts}
               onDeleteEnvironment={envId => setEnvModal(envId)}
             />
+
+            {/* AJOUTÉ : Section pour afficher PlanStats */}
+            {planDetails && (team1Counts || team2Counts) && (
+                <PlanStats team1Counts={team1Counts} team2Counts={team2Counts} />
+            )}
+
+            {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
+              <ClarificationSection plan={planDetails} refreshPlanDetails={refreshPlanDetails} />
+            )}
+            
+            {/* Déplace le bouton "Modifier le Graphe d'Exécution" ici, EN DEHORS du bloc "Resume/Retry" */}
+            {planDetails?.team2_execution_plan_id && ( // <-- Condition pour l'ID du plan d'exécution
+                <div style={{ marginBottom: '1rem', marginTop: '0.5rem' }}> {/* Ajuste le marginTop */}
+                    <button
+                        onClick={() => setShowGraphEditor(true)}
+                        disabled={!planDetails.team2_execution_plan_id}
+                        style={{ background: 'var(--primary)', color: 'var(--text)' }}
+                    >
+                        Modifier le Graphe d'Exécution
+                    </button>
+                </div>
+            )}
+
+            {/* Le bloc des boutons "Resume/Retry" reste avec sa condition d'état */}
             {planDetails?.team2_execution_plan_id &&
               planDetails.current_supervisor_state !== 'TEAM2_EXECUTION_COMPLETED' && (
                 <div style={{ marginBottom: '0.5rem' }}>
@@ -1463,23 +1510,7 @@ function App() {
                   )}
                 </div>
               )}
-            {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
-              <ClarificationSection plan={planDetails} refreshPlanDetails={refreshPlanDetails} />
-            )}
             
-            {/* DÉPLACER LE BOUTON "Modifier le Graphe d'Exécution" ICI pour qu'il soit toujours visible avec le plan */}
-            {planDetails?.team2_execution_plan_id && (
-                <div style={{ marginBottom: '1rem', marginTop: '1rem' }}> {/* Ajout de marginTop pour espacement */}
-                    <button
-                        onClick={() => setShowGraphEditor(true)}
-                        disabled={!planDetails.team2_execution_plan_id}
-                        style={{ background: 'var(--primary)', color: 'var(--text)' }}
-                    >
-                        Modifier le Graphe d'Exécution
-                    </button>
-                </div>
-            )}
-
             {/* Le reste du contenu, qui s'affiche si l'éditeur n'est PAS ouvert */}
             {team1Graph && (
                 <details className="graph-section" open>

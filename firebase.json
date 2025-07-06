@@ -2,6 +2,17 @@
   "hosting": {
     "public": "react_frontend_modern/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; object-src 'none'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https://unpkg.com; connect-src 'self' https://gra-server-434296769439.europe-west1.run.app wss://gra-server-434296769439.europe-west1.run.app;"
+          }
+        ]
+      }
+    ],
     "rewrites": [
       {
         "source": "/editor_test.html",

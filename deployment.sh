@@ -239,7 +239,6 @@ function deploy_gcp() {
       --allow-unauthenticated \
       --port=8000 \
       --set-env-vars="GKE_SSL_CA_CERT=/app/ca.pem,K8S_BEARER_TOKEN=${K8S_BEARER_TOKEN},${COMMON_AGENT_ENV_VARS}" \
-
       --project=${GCP_PROJECT_ID} \
       --vpc-connector="${CONNECTOR_NAME}" \
       --vpc-egress=all
@@ -424,7 +423,7 @@ function deploy_frontend() {
     GRA_URL=$(gcloud run services describe gra-server --platform=managed --region=${GCP_REGION} --project=${GCP_PROJECT_ID} --format='value(status.url)')
 
     echo "    -> Génération du fichier de configuration pour le front-end..."
-    echo "window.CONFIG = { BACKEND_API_URL: '${GRA_URL}' };" > react_frontend/config.js
+    echo "window.CONFIG = { BACKEND_API_URL: '${GRA_URL}' };" > react_frontend_modern/config.js
 
     echo "    -> Déploiement sur Firebase Hosting..."
     firebase deploy --only hosting --project=${GCP_PROJECT_ID}
