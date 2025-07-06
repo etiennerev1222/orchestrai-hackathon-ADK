@@ -570,12 +570,27 @@ function FinalArtifactsHistory({ nodes }: { nodes: any }) {
       (!n.sub_task_ids || n.sub_task_ids.length === 0) &&
       n.output_artifact_ref
     );
+    const depthCache: { [key: string]: number } = {};
+    const computeDepth = (id: string): number => {
+      if (depthCache[id] !== undefined) return depthCache[id];
+      const node = (nodes as any)[id];
+      if (!node || !node.parent_id) {
+        depthCache[id] = 0;
+        return 0;
+      }
+      depthCache[id] = computeDepth(node.parent_id) + 1;
+      return depthCache[id];
+    };
+
     Promise.all(
       finals.map((n: any) =>
         fetch(`${BACKEND_API_URL}/artifacts/${n.output_artifact_ref}`)
           .then(r => r.json())
           .then(d => ({
-            task: n.objective || n.id,
+            id: n.id,
+            title: n.objective,
+            parent: n.parent_id,
+            depth: computeDepth(n.id),
             content: parseMaybeJson(d.content),
             updated: n.updated_at || ''
           }))
@@ -588,7 +603,9 @@ function FinalArtifactsHistory({ nodes }: { nodes: any }) {
           if (!a || !b) return 0;
           return new Date(a.updated).getTime() - new Date(b.updated).getTime();
         })
-        .map(it => it ? { ...it, type: detectArtifactType(it.content) } : null)
+        .map(it =>
+          it ? { ...it, type: detectArtifactType(it.content) } : null
+        )
         .filter(Boolean);
       setItems(arr);
     });
@@ -612,25 +629,32 @@ function FinalArtifactsHistory({ nodes }: { nodes: any }) {
   };
 
   return (
-    <div className="messages-history">
-      <h4>Final artifacts history</h4>
+    <details className="artifacts-container" open>
+      <summary>📜 Final artifacts history</summary>
       {Object.entries(grouped).map(([type, list]) => (
         list.length ? (
           <div key={type} className="artifact-section">
             <h5>{typeLabels[type]}</h5>
             {list.map((it, idx) => (
-              <div key={idx} className="message-item">
-                <div><strong>Task:</strong> {it.task}</div>
-                {it.updated && (
-                  <div className="msg-date">{new Date(it.updated).toLocaleString()}</div>
-                )}
+              <div
+                key={idx}
+                className="message-item"
+                style={{ marginLeft: `${it.depth * 1.5}rem` }}
+              >
+                <div className="artifact-header">
+                  <span><strong>ID:</strong> {it.id}</span>
+                  {it.updated && (
+                    <span className="msg-date">{new Date(it.updated).toLocaleString()}</span>
+                  )}
+                </div>
+                {it.title && <div className="artifact-title">{it.title}</div>}
                 <FormattedContent data={it.content} open />
               </div>
             ))}
           </div>
         ) : null
       ))}
-    </div>
+    </details>
   );
 }
 
