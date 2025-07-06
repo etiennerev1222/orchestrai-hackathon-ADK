@@ -832,22 +832,31 @@ input:focus {
 /* Cible le panneau spécifique de ReactFlow */
 /* --- Styles spécifiques au panneau d'édition des nœuds de ReactFlow --- */
 /* Cible le panneau spécifique de ReactFlow */
+/* react_frontend_modern/src/styles/main.css */
+
+/* ... (autres styles) ... */
+
 .react-flow__panel {
+  font-size: 0.85rem !important;
   background: var(--card-bg) !important;
   color: var(--text) !important;
   border: 1px solid var(--border) !important;
   box-shadow: 0 2px 6px rgba(0,0,0,0.6) !important;
   border-radius: 8px !important;
   padding: 10px !important;
-  font-size: 0.9rem !important;
+  /* Ajout pour l'ascenseur */
+  max-height: 90vh; /* Définit une hauteur maximale avant le défilement */
+  overflow: auto; /* Active la barre de défilement si le contenu dépasse max-height */
 }
+
+/* ... (autres styles existants pour h4, label, input, select, textarea, p, ul li) ... */
 
 /* Titre principal du panneau (Tâche X) */
 .react-flow__panel h4 {
   color: var(--primary) !important;
   margin-top: 0 !important;
   margin-bottom: 8px !important;
-  font-size: 1.1rem !important;
+  font-size: 1rem !important;
 }
 
 /* Labels des champs (Objectif:, Type:, Dépendances:) */
@@ -880,7 +889,7 @@ input:focus {
 
 /* Texte informatif "Aucune dépendance directe" et "Aucune tâche ne dépend de celle-ci" */
 .react-flow__panel p {
-  font-size: 0.85em !important;
+  font-size: 0.75em !important;
   color: var(--primary-hover) !important; /* <-- CHANGER ICI : Couleur primaire hover (un peu plus sombre) pour le texte informatif */
 }
 
@@ -894,7 +903,7 @@ input:focus {
 .react-flow__panel ul li {
   color: var(--text) !important; /* Couleur du texte des éléments de liste*/
   margin-bottom: 5px;
-  font-size: 0.9em;
+  font-size: 0.8em;
 }
 
 /* Bouton de suppression des dépendances/dépendants (le 'x') */
@@ -906,7 +915,7 @@ input:focus {
   margin-left: 5px !important;
   width: auto !important;
   min-width: unset !important; /* Annule min-width de bouton générique si besoin */
-  font-size: 1em !important;
+  font-size: 0.9em !important;
   margin-top: 0 !important; /* Annule le margin-top du bouton générique */
 }
 
@@ -927,6 +936,21 @@ input:focus {
   margin-top: 10px !important;
   width: 100% !important;
 }
+/* New close button style */
+.close-button {
+  position: absolute; /* Position it relative to the panel */
+  top: 10px;
+  right: 10px;
+  cursor: pointer;
+  font-size: 1.5em; /* Adjust size as needed */
+  color: var(--text); /* Adjust color to fit theme */
+  font-weight: bold;
+  line-height: 1em; /* Align vertically */
+  z-index: 1; /* Ensure it's above other elements */
+}
 
+.close-button:hover {
+  color: var(--primary-hover); /* Change color on hover */
+}
 .react-flow__panel button:hover {
   background: #b91c1c !important;}

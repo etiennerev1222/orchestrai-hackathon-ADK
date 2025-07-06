@@ -514,6 +514,7 @@ const TaskGraphEditor = ({ executionPlanId, availableAgentSkills }: { executionP
       </Panel>
       {selectedNode && (
         <Panel position="top-left">
+          <span className="close-button" onClick={() => setSelectedNodeId(null)} style={{ float: 'right', cursor: 'pointer', fontSize: '1.5em', lineHeight: '1em' }}>&times;</span>
           <h4>Tâche {selectedNode.id}</h4>
 
           {/* Propriétés en lecture seule (inchangées) */}

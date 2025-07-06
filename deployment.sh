@@ -424,7 +424,10 @@ function deploy_frontend() {
 
     echo "    -> Génération du fichier de configuration pour le front-end..."
     echo "window.CONFIG = { BACKEND_API_URL: '${GRA_URL}' };" > react_frontend_modern/config.js
-
+    cd react_frontend_modern
+    echo "    -> Construction du front-end..."
+    npm run build  
+    cd ..
     echo "    -> Déploiement sur Firebase Hosting..."
     firebase deploy --only hosting --project=${GCP_PROJECT_ID}
 
