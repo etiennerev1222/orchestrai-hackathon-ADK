@@ -26,6 +26,7 @@ A strategic orchestration engine for multi-agent systems. OrchestrAI turns vague
 - **Agent logs (syslog)**: Each agent exposes a `/logs` route and the GRA proxies it via `/v1/agents/<name>/logs` so the dashboard can fetch runtime logs securely. The GRA server itself exposes `/v1/gra/logs`.
 - **Agent restart**: The dashboard provides a restart button calling `/v1/agents/<name>/restart` which relays to each agent's own `/restart` endpoint.
 - **Pod file browser**: Files generated inside an isolated environment can be listed, downloaded and uploaded via `/api/environments/<id>/files` and related routes.
+- **Execution graph editor**: A `TaskGraphEditor` component lets you create and modify execution plans directly from the React dashboard through CRUD endpoints.
 
 ---
 
@@ -385,7 +386,13 @@ The `deployment.sh` script can generate a `docker-compose.yml` file to launch al
     ```
     This builds the images and starts the nine containers.
 
-3. **Access the Front End:** the React front end is served by the `user_interaction_agent` service and is available on the port defined in `docker-compose.yml`.
+3. **Access the Front End:**
+   ```bash
+   cd react_frontend_modern
+   npm install
+   npm run dev
+   ```
+   The Vite dev server exposes the dashboard on <http://localhost:5173>. When deployed, the compiled files under `dist/` are served via Firebase Hosting.
 
 ## Cloud / Firebase Deployment
 
@@ -454,7 +461,7 @@ orchestrai-hackathon-ADK/
 │   ├── app_frontend.py
 │   └── run_orchestrator.py
 ├── docs/                  # Documentation and diagrams
-├── react_frontend/        # React dashboard
+├── react_frontend_modern/        # React dashboard (Vite + TypeScript)
 ├── scripts/               # Helper and deployment scripts
 ├── tests/                 # Unit and integration tests
 ├── deployment.sh          # Cloud Run deployment
@@ -484,6 +491,8 @@ Several helper scripts are provided for deployment and maintenance tasks.
 - `scripts/grant_agent_permissions.sh` – allow inter-service Cloud Run invocations.
 - `scripts/grant_gke_permissions_to_cloudrun_sa.sh` – give the Cloud Run service account access to GKE.
 - `scripts/grant_gclou_kubernet.sh` – example script to set up GCP and Kubernetes roles.
+- `scripts/gc_cleanup.sh` – Cloud Run job template to clean old images from GCR.
+- `setup_new_frontend.sh` – helper to bootstrap the Vite/TypeScript frontend from the legacy project.
 - `tests/run_test_development_agent.sh` – run an end‑to‑end test against the development agent pod.
 - `tests/run_test_environment_manager.sh` – test the environment manager API.
 
@@ -492,7 +501,7 @@ Several helper scripts are provided for deployment and maintenance tasks.
 - `scripts/cleanup_firestore_plans.py` – remove unfinished plans from Firestore.
 - `src/run_orchestrator.py` – trigger a planning sequence from the command line.
 - `src/tests/k8s_iam_test_server.py` – FastAPI server to test GKE IAM authentication.
-- `react_frontend/secure_server.py` – run the React front end with HTTPS.
+- `react_frontend_modern/` – run the React front end locally with `npm run dev` or build with `npm run build`.
 - `init_projet.py.initial` – example project scaffolding utility.
 
 ## Future Enhancements
