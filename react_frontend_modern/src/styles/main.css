@@ -652,3 +652,260 @@ input {
   padding: 0.1rem 0.25rem;
   border-radius: 4px;
 }
+
+
+
+/* --- Styles spécifiques à ReactFlow pour thème sombre --- */
+/* --- Styles spécifiques à ReactFlow pour thème sombre --- */
+.graph-editor-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh; /* Utilise 100vh pour la hauteur de la fenêtre */
+  background: rgba(0, 0, 0, 0.8); /* Fond semi-transparent */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999; /* Assure qu'il est au-dessus de tout */
+}
+
+.graph-editor-modal-content {
+  position: relative;
+  background: var(--bg); /* Fond sombre de ton thème */
+  border: 1px solid var(--border); /* Bordure */
+  border-radius: 8px;
+  width: 90%; /* Prend une bonne partie de l'écran */
+  height: 90%; /* Prend 90% de la hauteur de l'overlay */
+  max-width: 1200px; /* Limite la taille sur les grands écrans */
+  max-height: 800px; /* Ajoute une limite de hauteur pour éviter les débordements */
+  padding: 20px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+  display: flex; /* <-- TRÈS IMPORTANT: Active le flexbox pour les enfants */
+  flex-direction: column; /* <-- TRÈS IMPORTANT: Organise les enfants en colonne */
+  min-height: 500px; /* Ajoute un min-height pour s'assurer qu'il y a toujours de la place */
+}
+
+.react-flow { /* C'est la classe par défaut appliquée au composant <ReactFlow> */
+  flex-grow: 1; /* Prend l'espace disponible */
+  height: 100%; /* Laisse flexbox gérer la hauteur */
+}
+
+/* Fond du canvas ReactFlow */
+.react-flow__pane {
+  background-color: var(--bg) !important; /* Utilise ton arrière-plan principal */
+}
+
+/* Nœuds par défaut (fallback si CustomTaskNode ne surcharge pas tout) */
+/* Normalement, ces règles ne s'appliquent pas aux custom nodes, mais les garder pour d'autres cas */
+.react-flow__node {
+  /* Si CustomTaskNode gère toutes les bordures, ces lignes peuvent être commentées */
+  /* border: 1px solid var(--border) !important; */
+}
+
+/* Nœuds sélectionnés */
+.react-flow__node.selected {
+  /* Bordure est gérée dans CustomTaskNode avec 'selected' prop maintenant */
+  /* box-shadow: 0 0 0 2px var(--primary-hover); */
+}
+
+/* Poignées (handles) des nœuds */
+.react-flow__handle {
+  background: var(--primary) !important; /* */
+  border: 1px solid var(--border) !important; /* */
+}
+
+/* Arêtes par défaut (pour les liens existants) */
+.react-flow__edge-path {
+  stroke: var(--border) !important; /* Couleur de trait pour les arêtes existantes */
+  stroke-width: 2px !important; /* Assure une épaisseur suffisante */
+}
+
+/* Arêtes sélectionnées ou animées (pour les nouveaux liens et la sélection) */
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke: var(--primary) !important; /* Arêtes animées/sélectionnées en couleur primaire */
+  stroke-width: 3px !important; /* Rend-les plus épaisses pour la visibilité */
+}
+
+/* MiniMap */
+.react-flow__minimap {
+  background: var(--sidebar-bg) !important; /* Fond de la minimap */
+}
+
+.react-flow__minimap-mask {
+  fill: rgba(0, 0, 0, 0.4) !important; /* Masque de la minimap */
+}
+
+.react-flow__minimap-node {
+  fill: var(--card-bg) !important; /* Nœuds dans la minimap */
+  stroke: var(--border) !important; /* */
+}
+
+/* Contrôles (zoom, fit view) */
+.react-flow__controls button {
+  background: var(--card-bg) !important; /* Fond comme les cartes/panneaux */
+  color: var(--text) !important; /* Texte clair */
+  border: 1px solid var(--border) !important; /* Bordure foncée */
+  border-radius: 4px !important; /* Rayon de bordure plus petit si tu veux */
+  width: 32px; /* Taille fixe pour des boutons carrés */
+  height: 32px; /* Taille fixe pour des boutons carrés */
+  display: flex; /* Pour centrer l'icône/texte */
+  align-items: center;
+  justify-content: center;
+  margin: 2px; /* Espacement entre les boutons */
+  font-size: 1.2em; /* Taille de l'icône/symbole */
+  cursor: pointer;
+  transition: background 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.react-flow__controls button:hover {
+  background: var(--primary-hover) !important; /* Effet hover avec couleur primaire foncée */
+  border-color: var(--primary) !important; /* Bordure primaire au survol */
+  color: var(--text) !important; /* Texte reste clair */
+}
+
+/* Styles pour les icônes à l'intérieur des boutons de contrôle (si ce sont des SVGs ou des fonts) */
+.react-flow__controls button svg {
+  fill: var(--text) !important; /* S'assurer que les icônes SVG sont claires */
+}
+
+/* Si tu as un bouton de recentrage séparé avec une classe différente (comme ton .fit-button) */
+.fit-button, .fullscreen-button {
+  background: var(--primary) !important; /* Utilise la couleur primaire */
+  color: var(--text) !important; /* Texte clair */
+  border: none !important;
+  padding: 0.5rem 0.75rem !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease-in-out !important;
+  font-size: 0.9rem !important; /* Ajuste la taille du texte si besoin */
+}
+
+.fit-button:hover, .fullscreen-button:hover {
+  background: var(--primary-hover) !important; /* Effet hover */
+}
+
+/* --- Amélioration des contrastes pour les éléments de saisie (input, select, textarea) --- */
+
+/* Surcharge des styles globaux existants pour plus de clarté */
+textarea,
+select,
+input {
+  background: var(--card-bg) !important; /* Couleur de fond foncée */
+  color: var(--text) !important; /* Texte clair */
+  border: 1px solid var(--border) !important; /* Bordure visible */
+  padding: 0.4rem 0.6rem !important; /* Plus de padding pour la lisibilité */
+  border-radius: 4px !important;
+}
+
+textarea:focus,
+select:focus,
+input:focus {
+  outline: none !important;
+  border-color: var(--primary) !important; /* Bordure focus en couleur primaire */
+  box-shadow: 0 0 0 2px rgba(79, 138, 255, 0.5); /* Ombre légère pour le focus */
+}
+
+/* --- Styles spécifiques au panneau d'édition des nœuds de ReactFlow --- */
+/* Cible le panneau spécifique de ReactFlow */
+/* --- Styles spécifiques au panneau d'édition des nœuds de ReactFlow --- */
+/* Cible le panneau spécifique de ReactFlow */
+.react-flow__panel {
+  background: var(--card-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6) !important;
+  border-radius: 8px !important;
+  padding: 10px !important;
+  font-size: 0.9rem !important;
+}
+
+/* Titre principal du panneau (Tâche X) */
+.react-flow__panel h4 {
+  color: var(--primary) !important;
+  margin-top: 0 !important;
+  margin-bottom: 8px !important;
+  font-size: 1.1rem !important;
+}
+
+/* Labels des champs (Objectif:, Type:, Dépendances:) */
+.react-flow__panel label {
+  display: block;
+  margin-top: 10px !important;
+  margin-bottom: 4px !important;
+  font-weight: bold !important;
+  color: var(--primary) !important; /* <-- CHANGER ICI : Couleur primaire pour les labels (titres) */
+}
+
+/* Champs de saisie (input, select) à l'intérieur du panneau */
+.react-flow__panel input[type="text"],
+.react-flow__panel select {
+  width: calc(100% - 16px) !important;
+  box-sizing: border-box !important;
+  background: var(--sidebar-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  padding: 8px !important;
+  border-radius: 4px !important;
+}
+
+.react-flow__panel input[type="text"]:focus,
+.react-flow__panel select:focus {
+  outline: none !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px rgba(79, 138, 255, 0.3) !important;
+}
+
+/* Texte informatif "Aucune dépendance directe" et "Aucune tâche ne dépend de celle-ci" */
+.react-flow__panel p {
+  font-size: 0.85em !important;
+  color: var(--primary-hover) !important; /* <-- CHANGER ICI : Couleur primaire hover (un peu plus sombre) pour le texte informatif */
+}
+
+/* Styles pour les éléments de liste des dépendances/dépendants */
+.react-flow__panel ul {
+  list-style: none; /* Supprime les puces par défaut */
+  padding: 0;
+  margin: 0;
+}
+
+.react-flow__panel ul li {
+  color: var(--text) !important; /* Couleur du texte des éléments de liste*/
+  margin-bottom: 5px;
+  font-size: 0.9em;
+}
+
+/* Bouton de suppression des dépendances/dépendants (le 'x') */
+.react-flow__panel ul li button {
+  background: transparent !important;
+  color: var(--error-text) !important; /* Texte rouge pour la suppression */
+  border: none !important;
+  padding: 0.1rem 0.3rem !important;
+  margin-left: 5px !important;
+  width: auto !important;
+  min-width: unset !important; /* Annule min-width de bouton générique si besoin */
+  font-size: 1em !important;
+  margin-top: 0 !important; /* Annule le margin-top du bouton générique */
+}
+
+.react-flow__panel ul li button:hover {
+  color: var(--error-bg) !important; /* Rouge plus foncé au survol */
+  background: transparent !important;
+}
+
+/* Bouton Supprimer la tâche (en bas du panneau) */
+.react-flow__panel button { /* Cette règle doit rester générique pour le bouton de suppression de tâche */
+  background: var(--error-bg) !important;
+  color: var(--error-text) !important;
+  border: none !important;
+  padding: 0.5rem 0.75rem !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease-in-out !important;
+  margin-top: 10px !important;
+  width: 100% !important;
+}
+
+.react-flow__panel button:hover {
+  background: #b91c1c !important;}

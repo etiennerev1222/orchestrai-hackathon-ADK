@@ -1,0 +1,36 @@
+{
+  "name": "react_frontend_modern",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "dagre": "^0.8.5",
+    "dompurify": "^3.2.6",
+    "highlight.js": "^11.11.1",
+    "marked": "^16.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "reactflow": "^11.11.4",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.29.0",
+    "@types/dagre": "^0.7.53",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react-swc": "^3.10.2",
+    "eslint": "^9.29.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.2.0",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.34.1",
+    "vite": "^7.0.2"
+  }
+}

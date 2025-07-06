@@ -1,5 +1,16 @@
 {
   "projects": {
-    "default": "orchestrai-hackathon"
-  }
+    "default": "grapheditor-test",
+    "grapheditor-test": "grapheditor-test"
+  },
+  "targets": {
+    "grapheditor-test": {
+      "hosting": {
+        "grapheditor-test": [
+          "grapheditor-test"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

@@ -1,12 +1,12 @@
 {
   "hosting": {
-    "public": "react_frontend",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
+    "public": "react_frontend_modern/dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
+      {
+        "source": "/editor_test.html",
+        "destination": "/editor_test.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"

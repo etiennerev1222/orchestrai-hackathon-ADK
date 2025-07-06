@@ -108,3 +108,21 @@ credentials.json
 secrets.env.template
 local-sa-key.json
 react_frontend/TaskGraphEditor.bundle.js
+# Dossiers de build et dépendances Node.js du NOUVEAU frontend
+/react_frontend_modern/node_modules/
+/react_frontend_modern/.vite/
+/react_frontend_modern/dist/
+/react_frontend_modern/package-lock.json # Ou /react_frontend_modern/yarn.lock
+
+# Le dossier de sauvegarde
+/react_frontend_backup/
+
+# Le dossier de l'ANCIEN frontend si tu ne le supprimes pas physiquement
+/react_frontend/ # Ignore tout l'ancien dossier si tu veux le garder mais pas le suivre
+
+# Fichiers sensibles (assure-toi qu'ils ne sont pas dans ton repo)
+/gcp-sa-key.json
+/orchestrai-sa-cluster-access.yaml
+/gcp_config/
+/log/
+/tmp/

@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Body, Path, File, UploadFile, Form, 
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
-from src.shared.execution_task_graph_management import ExecutionTaskGraph
+from src.shared.execution_task_graph_management import ExecutionTaskGraph, ExecutionTaskType, ExecutionTaskNode
 from src.services.environment_manager import EnvironmentManager
 from kubernetes import client
 from src.orchestrators.global_supervisor_logic import GlobalSupervisorLogic, GlobalPlanState 
@@ -172,6 +172,27 @@ class ConnectionManager:
         for connection in self.active_connections:
             await connection.send_text(message)
 
+# Dans server.py, après tes autres classes BaseModel
+
+class ExecutionTaskNodeCreateRequest(BaseModel):
+    id: str # L'ID est généré côté client pour le mock, mais le backend peut le générer ou le valider
+    objective: str
+    task_type: str # Correspond à ExecutionTaskType.value
+    position: Optional[Dict[str, float]] = None # Si tu veux stocker la position côté backend
+    dependencies: Optional[List[str]] = None # Dépendances initiales lors de la création
+
+class ExecutionTaskNodeUpdateRequest(BaseModel):
+    objective: Optional[str] = None
+    task_type: Optional[str] = None
+    dependencies: Optional[List[str]] = None # Mise à jour des dépendances via la maj du noeud
+    # Tu peux ajouter d'autres champs si le frontend peut les modifier
+    # state: Optional[str] = None # Si tu veux permettre la maj d'état via cet endpoint
+
+class TaskDependencyRequest(BaseModel):
+    source_node_id: str
+    target_node_id: str
+
+
 manager = ConnectionManager()
 # Cache in-memory des statuts des agents.
 agent_statuses: Dict[str, Dict[str, Any]] = {}
@@ -308,7 +329,7 @@ async def get_gra_status():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080","https://orchestrai-hackathon.web.app","http://user_interaction_agent:8080:"],
+    allow_origins=["http://localhost:8080","https://orchestrai-hackathon.web.app","http://user_interaction_agent:8080:", "http://localhost:5173"  ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1151,6 +1172,149 @@ async def restart_agent_endpoint(agent_name: str):
     except Exception as e:
         logger.error(f"Error restarting agent {agent_name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to restart agent")
+
+
+# Dans server.py, après get_execution_task_graph_details_endpoint par exemple
+
+@app.post("/v1/execution_task_graphs/{execution_plan_id}/nodes", status_code=201)
+async def create_execution_task_node(
+    execution_plan_id: str,
+    node_data: ExecutionTaskNodeCreateRequest
+):
+    """Crée un nouveau nœud de tâche dans un graphe d'exécution."""
+    try:
+        graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id)
+        # Créer un ExecutionTaskNode à partir des données reçues
+        new_node = ExecutionTaskNode(
+            task_id=node_data.id,
+            objective=node_data.objective,
+            task_type=ExecutionTaskType(node_data.task_type), # Assure la conversion en Enum
+            dependencies=node_data.dependencies # Utilise les dépendances initiales fournies
+        )
+        # Ajouter la tâche au graphe. is_root dépendrait de ta logique backend.
+        # Ici, on l'ajoute simplement. La logique root est gérée par ExecutionTaskGraph
+        # en fonction des dépendances.
+        await asyncio.to_thread(graph_manager.add_task, new_node)
+        logger.info(f"Noeud {node_data.id} ajouté au plan {execution_plan_id}.")
+        return {"message": "Node created successfully", "node_id": node_data.id}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Erreur création noeud dans plan {execution_plan_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
+
+@app.put("/v1/execution_task_graphs/{execution_plan_id}/nodes/{node_id}")
+async def update_execution_task_node(
+    execution_plan_id: str,
+    node_id: str,
+    updates: ExecutionTaskNodeUpdateRequest
+):
+    """Met à jour un nœud de tâche existant dans un graphe d'exécution."""
+    try:
+        graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id)
+        # Convertir le Pydantic model en dict pour l'utiliser avec edit_task
+        updates_dict = updates.model_dump(exclude_unset=True) # Seulement les champs qui sont définis
+
+        # Si le frontend envoie des dépendances via le PUT du noeud
+        if 'dependencies' in updates_dict:
+            # Récupérer le noeud actuel
+            current_node = await asyncio.to_thread(graph_manager.get_task, node_id)
+            if not current_node:
+                raise HTTPException(status_code=404, detail=f"Noeud {node_id} non trouvé.")
+
+            # Comparer les anciennes et nouvelles dépendances pour faire des link/unlink
+            old_deps = set(current_node.dependencies)
+            new_deps = set(updates_dict['dependencies'])
+
+            # Dépendances à ajouter
+            deps_to_add = list(new_deps - old_deps)
+            for dep_id in deps_to_add:
+                await asyncio.to_thread(graph_manager.link_tasks, dep_id, node_id)
+            
+            # Dépendances à supprimer
+            deps_to_remove = list(old_deps - new_deps)
+            for dep_id in deps_to_remove:
+                await asyncio.to_thread(graph_manager.unlink_tasks, dep_id, node_id)
+            
+            # Supprimer 'dependencies' du updates_dict pour éviter de l'envoyer à edit_task (qui ne le gère pas directement)
+            del updates_dict['dependencies']
+        
+        # Mettre à jour les autres champs du nœud (objective, task_type, etc.)
+        if updates_dict: # S'il reste d'autres champs à mettre à jour
+            await asyncio.to_thread(graph_manager.edit_task, node_id, updates_dict)
+        
+        logger.info(f"Noeud {node_id} mis à jour dans le plan {execution_plan_id}.")
+        return {"message": "Node updated successfully", "node_id": node_id}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Erreur mise à jour noeud {node_id} dans plan {execution_plan_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
+
+@app.delete("/v1/execution_task_graphs/{execution_plan_id}/nodes/{node_id}")
+async def delete_execution_task_node(
+    execution_plan_id: str,
+    node_id: str
+):
+    """Supprime un nœud de tâche et ses sous-tâches/liens d'un graphe d'exécution."""
+    try:
+        graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id)
+        await asyncio.to_thread(graph_manager.delete_task, node_id)
+        logger.info(f"Noeud {node_id} supprimé du plan {execution_plan_id}.")
+        return {"message": "Node deleted successfully", "node_id": node_id}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Erreur suppression noeud {node_id} dans plan {execution_plan_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
+
+@app.post("/v1/execution_task_graphs/{execution_plan_id}/dependencies", status_code=201)
+async def add_task_dependency(
+    execution_plan_id: str,
+    dependency_data: TaskDependencyRequest
+):
+    """Ajoute une dépendance (lien) entre deux tâches dans un graphe d'exécution."""
+    try:
+        graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id)
+        await asyncio.to_thread(
+            graph_manager.link_tasks,
+            dependency_data.source_node_id,
+            dependency_data.target_node_id
+        )
+        logger.info(f"Dépendance de {dependency_data.source_node_id} vers {dependency_data.target_node_id} ajoutée au plan {execution_plan_id}.")
+        return {"message": "Dependency added successfully"}
+    except ValueError as ve: # Capture les erreurs de cycle de _ensure_acyclic
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Erreur ajout dépendance dans plan {execution_plan_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
+
+@app.delete("/v1/execution_task_graphs/{execution_plan_id}/dependencies/{source_node_id}/{target_node_id}")
+async def delete_task_dependency(
+    execution_plan_id: str,
+    source_node_id: str,
+    target_node_id: str
+):
+    """Supprime une dépendance (lien) entre deux tâches dans un graphe d'exécution."""
+    try:
+        graph_manager = ExecutionTaskGraph(execution_plan_id=execution_plan_id)
+        await asyncio.to_thread(
+            graph_manager.unlink_tasks,
+            source_node_id,
+            target_node_id
+        )
+        logger.info(f"Dépendance de {source_node_id} vers {target_node_id} supprimée du plan {execution_plan_id}.")
+        return {"message": "Dependency removed successfully"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Erreur suppression dépendance dans plan {execution_plan_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
 
 if __name__ == "__main__":
     
