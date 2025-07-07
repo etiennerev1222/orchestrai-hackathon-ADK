@@ -206,6 +206,42 @@ class BaseAgentExecutor(AgentExecutor, ABC):
         except Exception as e:
             logger.error(f"Erreur lors de _update_task_state: {e}")
 
+    def _build_context_summary(self, task: Task) -> str:
+        """Construit un résumé synthétique du contexte de la tâche."""
+        if not task or not task.contextId or not task.id:
+            logger.warning("[CTX] Impossible de construire le contexte: identifiants manquants")
+            return ""
+        try:
+            from src.shared.execution_task_graph_management import ExecutionTaskGraph
+
+            graph = ExecutionTaskGraph(task.contextId)
+            node = graph.get_task(task.id)
+            if not node:
+                logger.warning(
+                    f"[CTX] Tâche {task.id} introuvable dans le plan {task.contextId}"
+                )
+                return ""
+
+            lines = [f"Objectif actuel: {node.objective}"]
+            if node.parent_id:
+                parent = graph.get_task(node.parent_id)
+                if parent:
+                    lines.append(f"Parent: {parent.objective}")
+                    if parent.result_summary:
+                        lines.append(f"Résumé parent: {parent.result_summary}")
+            if node.dependencies:
+                dep_summaries = []
+                for dep_id in node.dependencies:
+                    dep = graph.get_task(dep_id)
+                    if dep and dep.result_summary:
+                        dep_summaries.append(f"- {dep.result_summary}")
+                if dep_summaries:
+                    lines.append("Dépendances:\n" + "\n".join(dep_summaries))
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"[CTX] Erreur lors de la construction du résumé: {e}")
+            return ""
+
     @override
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         # VÉRIFIEZ QUE CE BLOC EST PRÉSENT
@@ -271,6 +307,21 @@ class BaseAgentExecutor(AgentExecutor, ABC):
             logger.info(
                 f"Entrée à traiter pour la tâche {current_task_id}: '{user_input}'"
             )
+
+            context_summary = self._build_context_summary(task)
+            if context_summary:
+                logger.info(f"[CTX] Résumé contexte pour {current_task_id}: {context_summary}")
+                try:
+                    from src.shared.execution_task_graph_management import ExecutionTaskGraph
+                    graph = ExecutionTaskGraph(task.contextId)
+                    node = graph.get_task(task.id)
+                    if node:
+                        node.meta["context_summary"] = context_summary
+                        graph.add_task(node)
+                except Exception as e:
+                    logger.error(
+                        f"[CTX] Erreur lors de la sauvegarde du contexte pour {current_task_id}: {e}"
+                    )
             self.status_detail = "Appel de la logique de l'agent"
             await self._notify_gra_of_status_change()
             await event_queue.enqueue_event(
