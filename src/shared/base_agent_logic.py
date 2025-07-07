@@ -32,3 +32,21 @@ class BaseAgentLogic(ABC):
             Les données résultant du traitement. Le type peut varier.
         """
         pass
+
+    def get_context_summary(self, context_id: str | None) -> str | None:
+        """Récupère le résumé de contexte depuis Firestore."""
+        if not context_id:
+            logger.warning("[CTX] get_context_summary appelé sans context_id")
+            return None
+        try:
+            from src.shared.execution_task_graph_management import ExecutionTaskGraph
+
+            graph = ExecutionTaskGraph(context_id)
+            node = graph.get_task(context_id)
+            if not node:
+                logger.warning(f"[CTX] Contexte {context_id} introuvable")
+                return None
+            return node.meta.get("context_summary") or node.result_summary
+        except Exception as e:
+            logger.error(f"[CTX] Erreur récupération contexte {context_id}: {e}")
+            return None
