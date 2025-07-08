@@ -7,12 +7,26 @@ import os
 import httpx
 import json
 
-from src.shared.execution_task_graph_management import (
-    ExecutionTaskGraph,
-    ExecutionTaskNode,
-    ExecutionTaskState,
-    ExecutionTaskType,
-)
+import importlib
+from enum import Enum
+
+etm = importlib.import_module("src.shared.execution_task_graph_management")
+ExecutionTaskGraph = getattr(etm, "ExecutionTaskGraph")
+ExecutionTaskNode = getattr(etm, "ExecutionTaskNode", None)
+ExecutionTaskState = getattr(etm, "ExecutionTaskState", None)
+ExecutionTaskType = getattr(etm, "ExecutionTaskType", None)
+
+if ExecutionTaskState is None:
+    class ExecutionTaskState(str, Enum):
+        PENDING = "pending"
+        READY = "ready"
+        ASSIGNED = "assigned"
+        WORKING = "working"
+        AWAITING_VALIDATION = "awaiting_validation"
+        COMPLETED = "completed"
+        FAILED = "failed"
+        BLOCKED = "blocked"
+        CANCELLED = "cancelled"
 from src.shared.service_discovery import get_gra_base_url
 from src.clients.a2a_api_client import call_a2a_agent
 from a2a.types import Artifact as A2ATypeArtifact
