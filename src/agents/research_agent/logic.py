@@ -67,6 +67,11 @@ class ResearchAgentLogic(BaseAgentLogic):
             "- 'sous_taches': une liste vide [], car la décomposition s'arrête à ce niveau pour les tâches que tu génères.\n"
             "Fournis UNIQUEMENT l'objet JSON, sans texte ou explication en dehors."
         )
+
+        context_summary = self.get_context_summary(context_id)
+        if context_summary:
+            self.logger.info(f"[CTX] Résumé chargé pour {context_id}: {context_summary}")
+            system_prompt = f"{system_prompt}\n\nContexte:\n{context_summary}"
         
         prompt = (
             f"Objectif de la tâche actuelle ({task_type_for_agent}) : {objective}\n\n"
