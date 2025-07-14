@@ -62,6 +62,11 @@ class DevelopmentAgentLogic(BaseAgentLogic):
 
         system_prompt = self._get_system_prompt()
 
+        context_summary = self.get_context_summary(context_id)
+        if context_summary:
+            self.logger.info(f"[CTX] Résumé chargé pour {context_id}: {context_summary}")
+            system_prompt = f"{system_prompt}\n\nContexte:\n{context_summary}"
+
         prompt = (
             f"Objectif de développement global : {objective}\n\n"
             f"Résultat de la dernière action exécutée : {json.dumps(last_action_result, indent=2)}\n\n"
