@@ -79,6 +79,20 @@ class EnvironmentManager:
         payload = {"environment_id": self.normalize_environment_id(environment_id), "path": file_path}
         data = await self._post("download_from_environment", payload)
         return data.get("content", "")
+    async def execute_command(self, environment_id: str, command: str, workdir: str = "/app") -> Dict[str, Any]:
+        logger.debug(f"EnvironementManagerHelper Executing command in environment {environment_id}: {command} (workdir: {workdir})")
+        cmd = f"cd {workdir} && {command}" if workdir else command
+        payload = {"environment_id": self.normalize_environment_id(environment_id), "command": cmd}
+        return await self._post("exec_in_environment", payload, timeout=60)
+
+    async def write_file(self, environment_id: str, file_path: str, content: str) -> Dict[str, Any]: # CHANGED RETURN TYPE HINT
+        payload = {"environment_id": self.normalize_environment_id(environment_id), "path": file_path, "content": content}
+        return await self._post("upload_to_environment", payload, timeout=60)
+
+    async def read_file(self, environment_id: str, file_path: str) -> str:
+        payload = {"environment_id": self.normalize_environment_id(environment_id), "path": file_path}
+        data = await self._post("download_from_environment", payload)
+        return data.get("content", "")
 
     async def list_files_in_environment(self, environment_id: str, path: str = ".") -> List[Dict[str, Any]]:
         cmd_str = (

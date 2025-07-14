@@ -193,6 +193,21 @@ class TaskDependencyRequest(BaseModel):
     target_node_id: str
 
 
+
+class ToolInvocationData(BaseModel):
+    name: str
+    input: Dict[str, Any]
+    output: Dict[str, Any]
+
+class InteractionArtifact(BaseModel):
+    interaction_id: str
+    msg_type: str
+    tool_invoked: Optional[ToolInvocationData] = None
+    linked_task_id: Optional[str] = None
+    result_summary: Optional[str] = None
+    sender_agent: Optional[str] = None
+    timestamp: Optional[str] = None
+
 manager = ConnectionManager()
 # Cache in-memory des statuts des agents.
 agent_statuses: Dict[str, Dict[str, Any]] = {}
@@ -1314,6 +1329,18 @@ async def delete_task_dependency(
     except Exception as e:
         logger.error(f"Erreur suppression dépendance dans plan {execution_plan_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
+@app.get("/interactions/{context_id}", response_model=List[InteractionArtifact])
+async def get_interaction_artifacts(context_id: str):
+    from src.shared.firebase_init import get_firestore_client
+    client = get_firestore_client()
+    if not client:
+        raise HTTPException(status_code=500, detail="Firestore client not available")
+
+    collection_ref = client.collection("interactions").document(context_id).collection("entries")
+    docs = collection_ref.stream()
+    entries = [doc.to_dict() for doc in docs]
+    return entries
 
 
 if __name__ == "__main__":

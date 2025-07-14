@@ -15,6 +15,7 @@ class ExecutionTaskType(str, Enum):
     EXPLORATORY = "exploratory"
     CONTAINER = "container"
     DECOMPOSITION = "decomposition"
+    TOOL_CALL = "tool_call" 
 
 class ExecutionTaskState(str, Enum):
     PENDING = "pending"
@@ -150,7 +151,8 @@ class ExecutionTaskGraph:
 
     def add_task(self, task_node: ExecutionTaskNode, is_root: bool = False):
         self.logger.debug(f"[{self.execution_plan_id}] ExecutionTaskGraph.add_task pour {task_node.id}, état: {task_node.state.value}, output_artifact_ref initial: {task_node.output_artifact_ref}")
-        
+        self.logger.debug(f"Ajout tâche {task_node.id} avec meta: {task_node.meta}")
+
         graph_data = self._get_graph_data()
         nodes = graph_data.get("nodes", {})
         
@@ -433,4 +435,19 @@ class ExecutionTaskGraph:
         nodes = graph_data.get("nodes", {})
         self._ensure_acyclic(nodes)
         return True
-    
+
+    def add_collaborative_edge(self, sender_agent, receiver_agent, msg_type, interaction_id):
+        collab_task_id = f"collab-{interaction_id}"
+
+        task_node = ExecutionTaskNode(
+            task_id=collab_task_id,
+            objective=f"Collaborative: {sender_agent} -> {receiver_agent} ({msg_type})",
+            task_type=ExecutionTaskType.CONTAINER,  # ou autre si besoin
+            parent_id=None,
+            meta={"sender": sender_agent, "receiver": receiver_agent, "msg_type": msg_type}
+        )
+        self.add_task(task_node)
+
+        self.link_tasks(from_id=sender_agent, to_id=collab_task_id)
+        self.link_tasks(from_id=collab_task_id, to_id=receiver_agent)
+
