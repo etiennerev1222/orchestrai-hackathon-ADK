@@ -504,6 +504,16 @@ Several helper scripts are provided for deployment and maintenance tasks.
 - `react_frontend_modern/` – run the React front end locally with `npm run dev` or build with `npm run build`.
 - `init_projet.py.initial` – example project scaffolding utility.
 
+## Running Tests
+
+Install the main requirements as well as the packages used in the test suite, then run `pytest`:
+
+```bash
+pip install -r requirements.txt
+pip install -r src/tests/requirements.txt
+pytest
+```
+
 ## Future Enhancements
 
 * More advanced re-planning logic in `ExecutionSupervisorLogic`.
