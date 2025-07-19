@@ -20,6 +20,14 @@ class ResearchAgentLogic(BaseAgentLogic):
         self.logger = logging.getLogger(f"{__name__}.ResearchAgentLogic")
         self.logger.info("Logique du ResearchAgent initialisée.")
 
+    def get_active_tools(self) -> dict:
+        """Expose les outils utilisables par l'agent de recherche."""
+        return {
+            "workforce_information": self.tool_registry.get_tools().get(
+                "workforce_information"
+            )
+        }
+
     async def process(self, input_data_str: str, context_id: str | None = None) -> str:
         try:
             input_payload = json.loads(input_data_str)
@@ -84,35 +92,58 @@ class ResearchAgentLogic(BaseAgentLogic):
             "Réponds UNIQUEMENT avec l'objet JSON spécifié."
         )
 
+        allowed_tools = list(self.get_active_tools().keys())
+        system_prompt = self._inject_tool_descriptions(system_prompt, allowed_tools)
+
         try:
-            self.logger.debug(f"ResearchAgentLogic - Prompt Système LLM:\n{system_prompt}")
-            self.logger.debug(f"ResearchAgentLogic - Prompt Utilisateur LLM:\n{prompt}")
-            llm_response_str = await call_llm(prompt, system_prompt, json_mode=True)
-            self.logger.debug(f"ResearchAgentLogic - Réponse brute du LLM: {llm_response_str}")
+            self.logger.debug(
+                f"ResearchAgentLogic - Prompt Système LLM:\n{system_prompt}"
+            )
+            self.logger.debug(
+                f"ResearchAgentLogic - Prompt Utilisateur LLM:\n{prompt}"
+            )
+            loop_result = await self.run_reasoning_loop_with_tools(
+                objective=objective,
+                context_id=context_id,
+                allowed_tools=allowed_tools,
+                initial_prompt=prompt,
+                system_prompt=system_prompt,
+            )
+            final = self.extract_final_result_with_fallback(loop_result)
+            llm_json_output = final if isinstance(final, dict) else {}
 
             try:
-                llm_json_output = json.loads(llm_response_str)
                 if not isinstance(llm_json_output, dict) or \
                    "summary" not in llm_json_output or \
                    "new_sub_tasks" not in llm_json_output or \
                    not isinstance(llm_json_output["new_sub_tasks"], list):
-                    self.logger.error(f"Réponse LLM pour ResearchAgent n'a pas la structure attendue (summary, new_sub_tasks): {llm_json_output}")
-                    return json.dumps({
-                        "summary": "Erreur: La réponse du LLM n'a pas la structure JSON attendue.",
-                        "new_sub_tasks": [],
-                        "error": "LLM response structure incorrect."
-                    })
-                self.logger.info(f"ResearchAgent - Résultat traité. Summary: '{llm_json_output.get('summary')[:100]}...'. Nombre de nouvelles sous-tâches: {len(llm_json_output.get('new_sub_tasks',[]))}")
+                    self.logger.error(
+                        f"Réponse LLM pour ResearchAgent n'a pas la structure attendue (summary, new_sub_tasks): {llm_json_output}"
+                    )
+                    return json.dumps(
+                        {
+                            "summary": "Erreur: La réponse du LLM n'a pas la structure JSON attendue.",
+                            "new_sub_tasks": [],
+                            "error": "LLM response structure incorrect."
+                        }
+                    )
+                self.logger.info(
+                    f"ResearchAgent - Résultat traité. Summary: '{llm_json_output.get('summary', '')[:100]}...'. Nombre de nouvelles sous-tâches: {len(llm_json_output.get('new_sub_tasks',[]))}"
+                )
                 return json.dumps(llm_json_output, ensure_ascii=False)
 
-            except json.JSONDecodeError as e:
-                self.logger.error(f"Impossible de parser JSON du LLM pour ResearchAgent: {e}. Réponse: '{llm_response_str}'")
-                return json.dumps({
-                    "summary": "Erreur: La réponse du LLM n'était pas un JSON valide.",
-                    "new_sub_tasks": [],
-                    "error": "Invalid JSON response from LLM", 
-                    "raw_response": llm_response_str
-                })
+            except Exception as e:
+                self.logger.error(
+                    f"Impossible de parser JSON du LLM pour ResearchAgent: {e}. Réponse: '{llm_json_output}'"
+                )
+                return json.dumps(
+                    {
+                        "summary": "Erreur: La réponse du LLM n'était pas un JSON valide.",
+                        "new_sub_tasks": [],
+                        "error": "Invalid JSON response from LLM",
+                        "raw_response": str(llm_json_output)
+                    }
+                )
 
         except Exception as e:
             self.logger.error(f"ResearchAgent - Échec du traitement: {e}", exc_info=True)
