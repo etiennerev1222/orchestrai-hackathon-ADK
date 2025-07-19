@@ -50,7 +50,8 @@ const TYPE_COLORS = {
   executable: '#007bff',
   exploratory: '#ff9800',
   container: '#888888',
-  decomposition: '#9c27b0'
+  decomposition: '#9c27b0',
+  tool_call: '#795548'
 };
 
 // Répertoire racine de chaque environnement isolé à l'intérieur du pod
@@ -920,6 +921,9 @@ function parseTaskGraph(nodesObj: any, isTeam1: boolean, highlightStates: string
     else if (state === 'failed' || state === 'unable_to_complete') borderColor = '#dc3545';
 
     const nodeData: any = { id, label: (info.objective || id).slice(0, 35) };
+    if (info.task_type === 'tool_call') {
+      nodeData.shape = 'diamond';
+    }
     if (isTeam1) {
       let team1Color = '#d3d3d3';
       if (state === 'completed') team1Color = '#d4edda';
@@ -1081,6 +1085,7 @@ function App() {
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [team1Counts, setTeam1Counts] = useState<any>(null);
   const [team2Counts, setTeam2Counts] = useState<any>(null);
+  const [taskInteractions, setTaskInteractions] = useState<{ [key: string]: any[] }>({});
   const [highlightFailed, setHighlightFailed] = useState(false);
   const [highlightWorking, setHighlightWorking] = useState(false);
   const [highlightCompleted, setHighlightCompleted] = useState(false);
@@ -1218,6 +1223,25 @@ function App() {
             setTeam2NodesMap(d.nodes || {});
             setTeam2Counts(computeStateCounts(d.nodes));
           });
+          fetch(`${BACKEND_API_URL}/interactions/${plan.team2_execution_plan_id}`)
+            .then(r => r.json())
+            .then(list => {
+              const map: { [key: string]: any[] } = {};
+              (list || []).forEach((it: any) => {
+                const tid = it.linked_task_id;
+                if (tid) {
+                  if (!map[tid]) map[tid] = [];
+                  map[tid].push(it);
+                }
+              });
+              setTaskInteractions(map);
+            })
+            .catch(err => {
+              console.error('Error fetching interactions', err);
+              setTaskInteractions({});
+            });
+        } else {
+          setTaskInteractions({});
         }
     }).catch(err => console.error('Error loading plan details', err));
   }, []);
@@ -1377,32 +1401,43 @@ function App() {
     } else {
         const artifact = nodeInfo.output_artifact_ref;
         const initialRequest = nodeInfo.objective;
+        const interactions = taskInteractions[nodeId] || [];
         if (artifact) {
           fetch(`${BACKEND_API_URL}/artifacts/${artifact}`)
             .then(r => r.json())
             .then(d => {
               const artContent = parseMaybeJson(d.content);
+              let toShow: any = artContent;
               if (nodeInfo.state === 'failed') {
-                display({ initial_request: initialRequest, artifact: artContent });
-              } else {
-                display(artContent);
+                toShow = { initial_request: initialRequest, artifact: artContent };
               }
+              if (interactions.length) {
+                toShow = { artifact: toShow, interactions };
+              }
+              display(toShow);
             })
             .catch(() => {
-              if (nodeInfo.state === 'failed')
-                display({
+              if (nodeInfo.state === 'failed') {
+                let toShow: any = {
                   initial_request: initialRequest,
                   summary: nodeInfo.result_summary || 'Failure without details'
-                });
+                };
+                if (interactions.length) toShow = { artifact: toShow, interactions };
+                display(toShow);
+              }
             });
         } else if (nodeInfo.state === 'failed') {
-          display({
+          let toShow: any = {
             initial_request: initialRequest,
             summary: nodeInfo.result_summary || 'Failure without details'
-          });
+          };
+          if (interactions.length) toShow = { artifact: toShow, interactions };
+          display(toShow);
+        } else if (interactions.length) {
+          display({ interactions });
         }
     }
-  }, [team1NodesMap, team2NodesMap, setPopup, BACKEND_API_URL, parseMaybeJson]);
+  }, [team1NodesMap, team2NodesMap, setPopup, BACKEND_API_URL, parseMaybeJson, taskInteractions]);
 
   // --- 4. RENDU DU COMPOSANT ---
   if (initialLoading) {

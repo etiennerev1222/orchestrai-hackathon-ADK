@@ -28,7 +28,8 @@ const TYPE_COLORS = {
   executable: '#007bff',
   exploratory: '#ff9800',
   container: '#888888',
-  decomposition: '#9c27b0'
+  decomposition: '#9c27b0',
+  tool_call: '#795548'
 };
 
 const toPastel = (hex: string) => {
