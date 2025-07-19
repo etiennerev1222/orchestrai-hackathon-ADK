@@ -11,6 +11,10 @@ class ValidatorAgentLogic(BaseAgentLogic):
         super().__init__()
         logger.info("Logique du ValidatorAgent initialisée (mode LLM).")
 
+    def get_active_tools(self) -> dict:
+        """Retourne les outils disponibles pour le validateur."""
+        return self.tool_registry.get_tools()
+
     async def process(self, input_data: Dict[str, Any], context_id: str | None = None) -> Dict[str, Any]:
         """
         Valide un plan basé sur son évaluation, en utilisant un LLM pour la décision finale.
