@@ -13,8 +13,6 @@ from src.shared.firebase_init import get_firestore_client
 
 from src.shared.prompt_utils import build_dynamic_system_prompt
 from src.shared.tool_registry import ToolRegistry
-import uuid
-from datetime import datetime
 
 import src.shared.interaction_logger as interaction_logger
 

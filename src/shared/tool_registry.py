@@ -5,9 +5,10 @@ from typing import Callable, Optional
 from src.tools import development_tools  # Exporte les outils Python spécifiques
 from src.tools import generic_tools  # Exporte des outils plus transversaux
 from src.shared.execution_task_graph_management import ExecutionTaskGraph, ExecutionTaskNode,ExecutionTaskType
- 
+
 
 import uuid
+from datetime import datetime
 logger = logging.getLogger(__name__)
 
 import logging
@@ -86,8 +87,6 @@ class ToolRegistry:
 
     async def handle_llm_response(self, llm_response: str | dict, context_id: Optional[str] = None) -> Optional[dict]:
         import json
-        import uuid
-        from datetime import datetime
         from src.shared.interaction_logger import save_interaction_artifact
         from src.shared.execution_task_graph_management import ExecutionTaskNode, ExecutionTaskGraph, ExecutionTaskType
 
