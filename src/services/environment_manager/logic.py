@@ -28,14 +28,14 @@ class EnvironmentManager(BaseEnvironmentManager):
         storage_client = storage.Client()
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(destination_blob)
-        artifact["agent_name"] = os.environ.get("AGENT_NAME", "EnvironmentManagerGKEv2")
-        await asyncio.to_thread(blob.upload_from_string, content.encode("utf-8"))
         artifact = {
             "environment_id": environment_id,
             "path": path,
             "gcs_uri": f"gs://{bucket_name}/{destination_blob}",
             "created_at": datetime.utcnow().isoformat(),
         }
+        artifact["agent_name"] = os.environ.get("AGENT_NAME", "EnvironmentManagerGKEv2")
+        await asyncio.to_thread(blob.upload_from_string, content.encode("utf-8"))
         doc_ref = db.collection("artifacts").document()
         await asyncio.to_thread(doc_ref.set, artifact)
         artifact_id = doc_ref.id
