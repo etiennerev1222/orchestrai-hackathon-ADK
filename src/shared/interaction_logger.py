@@ -65,8 +65,8 @@ def log_collaboration_trace(interaction: dict, context_id: str):
 
     # 🔗 Ajout dans le graphe comme interaction collaborative
     if interaction.get("msg_type") in ["CAPABILITY_CHECK", "RESOURCE_REQUEST"]:
-        ExecutionTaskGraph.add_collaborative_edge(
-            context_id=context_id,
+        graph = ExecutionTaskGraph(context_id)
+        graph.add_collaborative_edge(
             sender_agent=interaction.get("sender_agent"),
             receiver_agent=interaction.get("receiver_agent"),
             msg_type=interaction.get("msg_type"),
