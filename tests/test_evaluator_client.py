@@ -1,3 +1,9 @@
+"""Integration test for the Evaluator agent.
+
+This script connects to a running ``EvaluatorAgentServer`` defined by
+``EVALUATOR_AGENT_SERVER_URL`` and sends a simple plan for evaluation.
+Run with ``python tests/test_evaluator_client.py``.
+"""
 
 import asyncio
 import httpx

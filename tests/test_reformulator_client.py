@@ -1,3 +1,9 @@
+"""Integration test for the Reformulator agent.
+
+The script contacts a ``ReformulatorAgentServer`` (see
+``REFORMULATOR_AGENT_SERVER_URL``) to send a user objective and wait for the
+reformulated version. Execute with ``python tests/test_reformulator_client.py``.
+"""
 
 import asyncio
 import httpx

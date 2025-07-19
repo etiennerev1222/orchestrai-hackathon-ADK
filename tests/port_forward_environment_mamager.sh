@@ -2,6 +2,12 @@
 #!/bin/bash
 set -e
 
+# Helper script to port-forward the Environment Manager service to
+# ``localhost:8080``. Useful when running the manual environment manager tests.
+# Usage:
+#     bash tests/port_forward_environment_mamager.sh
+
+
 NAMESPACE="default"
 LABEL_SELECTOR="app=environment-manager"
 LOCAL_PORT=8080

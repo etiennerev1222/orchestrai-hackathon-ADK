@@ -1,3 +1,9 @@
+"""Utility to verify that registered agents respond to ``/health``.
+
+Requires access to Firestore with ``gcloud auth application-default login``.
+Run with ``python tests/check_health.py``.
+"""
+
 import asyncio
 import httpx
 import firebase_admin

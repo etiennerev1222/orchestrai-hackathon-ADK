@@ -1,3 +1,16 @@
+"""Integration test for the DecompositionAgent.
+
+This script sends a sample plan to a running DecompositionAgentServer and
+displays the returned artifacts. The agent must be accessible locally on
+``http://localhost:8005`` (see ``DECOMPOSITION_AGENT_SERVER_URL``).
+
+Run it manually with:
+
+```bash
+python tests/test_decoposeur.py
+```
+"""
+
 import asyncio
 import httpx
 import logging

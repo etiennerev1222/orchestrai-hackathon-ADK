@@ -1,3 +1,9 @@
+"""Unit test for the graph editor FastAPI interface.
+
+Run with ``pytest tests/test_graph_editor_interface.py``. No external services
+are required as dummy implementations are used.
+"""
+
 import types
 import sys
 import pytest
