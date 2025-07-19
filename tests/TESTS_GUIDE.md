@@ -51,6 +51,25 @@ for each test.
 - **test_graph_editor_interface.py**
   - Uses FastAPI's `TestClient` to validate the graph editor endpoints.
   - Run via `pytest tests/test_graph_editor_interface.py`.
+- **dev_tools_tests.py**
+  - Runs Development agent tools against a running Environment Manager.
+  - Requires access to the service defined by `$ENVIRONMENT_MANAGER_INTERNAL_URL`.
+- **test_development_agent.py**
+  - Sends a complete task to a deployed Development agent and polls for results.
+  - Requires Firestore access and the agent URL stored in the service registry.
+- **test_environment_manager.py**
+  - Python variant of the end‑to‑end Environment Manager test.
+  - Assumes the service is reachable on `localhost:8000`.
+- **test_palier_6_tool_invoke.py**
+  - Validates that `capability_check` invocations are tracked in Firestore.
+  - Needs valid Google Cloud credentials.
+- **k8s_iam_test_server.py**
+  - Lightweight FastAPI server for testing IAM calls to the GKE API.
+  - Run with `python tests/k8s_iam_test_server.py` or build using `tests/Dockerfile`.
+- **deploy_dns_test.sh**
+  - Example Cloud Run Job for verifying internal DNS resolution.
+- **simule_UserInteractionAgentLogic.py**
+  - Demonstrates `UserInteractionAgentLogic` clarification flow locally.
 
 ## Unit tests (`tests/unit/`)
 
@@ -66,10 +85,13 @@ Individual files include:
 - `test_context_builder.py`
 - `test_decomposition_logic.py`
 - `test_dev_executor_artifact.py`
+- `test_dev_agent_executor_tool_call.py`
 - `test_environment_manager_upload.py`
 - `test_interaction_logger.py`
 - `test_retry_failed_tasks.py`
 - `test_tool_capability_check.py`
+- `test_evaluator_capability_check.py`
+- `test_global_prompts.py`
 
 Each unit test has no external dependencies and can be run independently
 with `pytest tests/unit/<file>`.

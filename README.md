@@ -504,7 +504,7 @@ Several helper scripts are provided for deployment and maintenance tasks.
 
 - `scripts/cleanup_firestore_plans.py` – remove unfinished plans from Firestore.
 - `src/run_orchestrator.py` – trigger a planning sequence from the command line.
-- `src/tests/k8s_iam_test_server.py` – FastAPI server to test GKE IAM authentication.
+- `tests/k8s_iam_test_server.py` – FastAPI server to test GKE IAM authentication.
 - `react_frontend_modern/` – run the React front end locally with `npm run dev` or build with `npm run build`.
 - `init_projet.py.initial` – example project scaffolding utility.
 
@@ -514,7 +514,7 @@ Install the main requirements as well as the packages used in the test suite, th
 
 ```bash
 pip install -r requirements.txt
-pip install -r src/tests/requirements.txt
+pip install -r tests/requirements.txt
 pytest
 ```
 
