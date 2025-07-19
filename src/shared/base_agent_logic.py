@@ -16,7 +16,7 @@ from src.shared.tool_registry import ToolRegistry
 import uuid
 from datetime import datetime
 
-from src.shared.interaction_logger import build_collaboration_artifact, log_collaboration_trace
+import src.shared.interaction_logger as interaction_logger
 
 
 
@@ -119,7 +119,7 @@ class BaseAgentLogic(ABC):
         return base_prompt.rstrip() + tools_section
 
 
-    def log_collaboration_trace(
+    def _record_collaboration(
         sender_agent: str,
         receiver_agent: str,
         msg_type: str,
@@ -129,26 +129,18 @@ class BaseAgentLogic(ABC):
         llm_output: Optional[dict] = None,
         result_summary: Optional[str] = None,
     ) -> str:
-        interaction_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow().isoformat()
-
-        artifact = {
-            "interaction_id": interaction_id,
-            "msg_type": msg_type,
-            "sender_agent": sender_agent,
-            "receiver_agent": receiver_agent,
-            "tool_invoked": tool_invoked,
-            "llm_prompt": llm_prompt,
-            "llm_output": llm_output,
-            "result_summary": result_summary,
-            "timestamp": timestamp,
-        }
-
-        # Enregistrement dans Firestore
-        artifact = build_collaboration_artifact( artifact)
-        log_collaboration_trace(context_id, artifact)
-        
-        return interaction_id
+        artifact = interaction_logger.build_collaboration_artifact(
+            context_id=context_id,
+            msg_type=msg_type,
+            sender_agent=sender_agent,
+            receiver_agent=receiver_agent,
+            llm_prompt=llm_prompt,
+            llm_output=llm_output,
+            result_summary=result_summary,
+            tool_invoked=tool_invoked,
+        )
+        interaction_logger.log_collaboration_trace(artifact, context_id=context_id)
+        return artifact["interaction_id"]
 
 # src/shared/base_agent_logic.py
 
@@ -360,16 +352,14 @@ class BaseAgentLogic(ABC):
         response = await call_llm(prompt, system_prompt, json_mode=True)
         result = json.loads(response)
 
-        log_collaboration_trace(
-            interaction_id=str(uuid.uuid4()),
+        self._record_collaboration(
+            sender_agent=payload.get("sender", "unknown"),
+            receiver_agent=self.__class__.__name__,
             msg_type="CAPABILITY_CHECK",
-            sender=payload.get("sender", "unknown"),
-            receiver=self.__class__.__name__,
-            payload=payload,
+            context_id=payload.get("context_id"),
             llm_prompt=prompt,
             llm_output=response,
-            decision=result,
-            context_id=payload.get("context_id")
+            result_summary=str(result),
         )
         return result
 
