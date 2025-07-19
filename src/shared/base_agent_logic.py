@@ -161,7 +161,7 @@ class BaseAgentLogic(ABC):
     
     async def tool_capability_check(self, input: dict) -> dict:
         deliverable = input.get("deliverable_description", "")
-        tool_list = list(self.registered_tools.keys())
+        tool_list = list(self.tool_registry.tools.keys())
 
         return {
             "can_handle": self.can_deliver(deliverable),
