@@ -10,6 +10,8 @@ from datetime import datetime
 import httpx
 from src.shared.llm_client import call_llm
 from src.shared.firebase_init import get_firestore_client
+from a2a.types import TextPart
+from src.clients.a2a_api_client import call_a2a_agent
 
 from src.shared.prompt_utils import build_dynamic_system_prompt
 from src.shared.tool_registry import ToolRegistry
@@ -79,13 +81,11 @@ class BaseAgentLogic(ABC):
             "question": question
         }
 
-        result = await self.send_collaborative_message(
+        return await self.send_collaborative_message(
             receiver_agent=receiver_agent,
             msg_type="QUESTION_TO_USER",
             payload=payload
         )
-
-        return result
     def postprocess_reasoning_result(self, loop_result: dict, original_input: str) -> dict:
         final = self.extract_final_result_with_fallback(loop_result)
         final["original_input_text_this_turn"] = original_input
@@ -141,6 +141,71 @@ class BaseAgentLogic(ABC):
         return artifact["interaction_id"]
 
 # src/shared/base_agent_logic.py
+
+    async def send_collaborative_message(
+        self,
+        receiver_agent: str,
+        msg_type: str,
+        payload: dict,
+        context_id: Optional[str] = None,
+    ) -> dict:
+        """Send a collaboration payload to another agent via A2A and return its response."""
+        db_client = get_firestore_client()
+        if not db_client:
+            logger.error("Firestore client unavailable; cannot send collaborative message.")
+            return {"status": "error", "message": "firestore_unavailable"}
+
+        try:
+            doc = db_client.collection("service_registry").document(receiver_agent).get()
+            if not doc.exists:
+                logger.error(f"Agent '{receiver_agent}' not found in registry.")
+                return {"status": "error", "message": "agent_not_found"}
+            agent_info = doc.to_dict()
+            agent_url = agent_info.get("internal_url") or agent_info.get("public_url")
+            if not agent_url:
+                logger.error(f"Agent '{receiver_agent}' has no URL in registry.")
+                return {"status": "error", "message": "agent_no_url"}
+        except Exception as e:
+            logger.error(f"Failed to look up agent '{receiver_agent}' in registry: {e}", exc_info=True)
+            return {"status": "error", "message": str(e)}
+
+        try:
+            a2a_task = await call_a2a_agent(
+                agent_url=agent_url,
+                input_text=json.dumps(payload),
+                initial_context_id=context_id,
+            )
+        except Exception as e:
+            logger.error(f"Error calling agent {receiver_agent} at {agent_url}: {e}", exc_info=True)
+            return {"status": "error", "message": str(e)}
+
+        artifact_content = None
+        if a2a_task and a2a_task.artifacts:
+            art = a2a_task.artifacts[0]
+            text = None
+            if art.parts and len(art.parts) > 0:
+                part = art.parts[0]
+                if hasattr(part, "root") and isinstance(part.root, TextPart):
+                    text = part.root.text
+                elif isinstance(part, TextPart):
+                    text = part.text
+            if text:
+                try:
+                    artifact_content = json.loads(text)
+                except Exception:
+                    artifact_content = text
+
+        self._record_collaboration(
+            sender_agent=self.__class__.__name__,
+            receiver_agent=receiver_agent,
+            msg_type=msg_type,
+            context_id=context_id or "unknown",
+            result_summary=str(artifact_content)
+        )
+
+        return artifact_content if artifact_content is not None else {}
+
+    # src/shared/base_agent_logic.py
 
     def get_active_tools(self) -> dict:
         """
