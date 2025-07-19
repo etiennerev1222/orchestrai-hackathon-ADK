@@ -2,6 +2,13 @@
 #!/bin/bash
 set -e
 
+# Manual end-to-end test of the Environment Manager. Requires ``kubectl`` access
+# to a cluster where the service is deployed. Run directly from the repository
+# root:
+#
+#     bash tests/run_test_environment_manager.sh
+
+
 NAMESPACE="default"
 LABEL_SELECTOR="app=environment-manager"
 LOCAL_PORT=8080

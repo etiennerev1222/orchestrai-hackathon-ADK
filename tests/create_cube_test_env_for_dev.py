@@ -1,3 +1,8 @@
+"""Quick script to manually create a test execution environment on GKE.
+
+Requires Kubernetes credentials and the environment manager service account.
+Execute with ``python tests/create_cube_test_env_for_dev.py``.
+"""
 
 import asyncio
 from src.services.environment_manager import KubernetesEnvironmentManager

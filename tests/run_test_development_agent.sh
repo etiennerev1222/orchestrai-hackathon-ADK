@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Manual test that interacts with the Development agent running in a Kubernetes
+# cluster. Requires ``kubectl`` and valid gcloud credentials. Execute with:
+#
+#     bash tests/run_test_development_agent.sh
+
+
 NAMESPACE="default"
 LABEL_SELECTOR="app=development-agent"
 LOCAL_PORT=8080

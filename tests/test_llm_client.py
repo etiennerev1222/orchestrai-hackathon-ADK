@@ -1,3 +1,9 @@
+"""Simple manual test for the internal LLM client using Vertex AI.
+
+Ensure Google Cloud credentials are configured in the environment before
+running. Execute with ``python tests/test_llm_client.py``.
+"""
+
 import asyncio
 import os
 import logging
