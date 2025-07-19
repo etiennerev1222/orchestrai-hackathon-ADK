@@ -4,7 +4,6 @@ from typing import Dict, Any, Tuple, List, Optional
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.prompts import SYSTEM_PROMPT_LLM
-from src.shared.tool_registry import TOOL_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +16,9 @@ class UserInteractionAgentLogic(BaseAgentLogic):
 
 
     def get_active_tools(self) -> dict:
-        """
-        Expose les outils que cet agent peut utiliser, définis dans le TOOL_REGISTRY.
-        """
+        """Expose les outils disponibles pour cet agent."""
         return {
-            "workforce_information": TOOL_REGISTRY["workforce_information"],
+            "workforce_information": self.tool_registry.get_tools()["workforce_information"],
         }
     def _format_conversation_history(self, history: List[Dict[str, str]]) -> str:
         if not history:
@@ -43,7 +40,7 @@ class UserInteractionAgentLogic(BaseAgentLogic):
         previous_turn = input_data.get("previous_turn")
         context_id = input_data.get("context_id") or context_id
 
-        allowed_tools = TOOL_REGISTRY
+        allowed_tools = list(self.get_active_tools().keys())
         logger.info(f"Outils disponibles pour le LLM : {allowed_tools}")
 
         logger.info(f"UserInteractionAgentLogic - Action: {action}, Input: '{current_text_input}', Hist: {len(conversation_history)} entrées")
