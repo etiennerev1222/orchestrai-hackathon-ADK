@@ -4,7 +4,7 @@ import logging
 import json
 from src.shared.base_agent_executor import BaseAgentExecutor
 from src.agents.development_agent.logic import DevelopmentAgentLogic
-from a2a.types import Artifact, TextPart
+from a2a.types import Artifact, TextPart, Task
 from src.shared.tool_registry import ToolRegistry
 logger = logging.getLogger(__name__)
 
@@ -16,14 +16,14 @@ class DevelopmentAgentExecutor(BaseAgentExecutor):
             default_artifact_description="Résultat produit par l'agent de développement."
         )
 
-    def _create_artifact_from_result(self, result: dict, context_id: str, objective: str) -> Artifact:
+    def _create_artifact_from_result(self, result_data: dict, task: Task) -> Artifact:
         return Artifact(
-            context_id=context_id,
-            content=result,
+            context_id=task.contextId,
+            content=result_data,
             name="capability_check_result",
             agent_name="DevelopmentAgent",
-            objective=objective,
-            type="tool_result"
+            objective=task.objective,
+            type="tool_result",
         )
 
     async def execute(self, request_context, event_queue):
