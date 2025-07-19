@@ -1,6 +1,17 @@
 import logging
 import json
+import uuid
 from typing import Dict, Any, Tuple, List, Optional
+
+from src.services.environment_manager.environment_manager import EnvironmentManager
+from src.shared.interaction_logger import log_collaboration_trace
+from src.shared.execution_task_graph_management import (
+    ExecutionTaskGraph,
+    ExecutionTaskNode,
+    ExecutionTaskType,
+)
+from src.shared.llm_client import LlmClient
+from src.shared.tool_registry import ToolRegistry
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.prompts import SYSTEM_PROMPT_LLM
@@ -8,11 +19,16 @@ from src.shared.prompts import SYSTEM_PROMPT_LLM
 logger = logging.getLogger(__name__)
 
 ACTION_CLARIFY_OBJECTIVE = "clarify_objective"
+ACTION_RECEIVE_FILE = "receive_file"
 
 class UserInteractionAgentLogic(BaseAgentLogic):
     def __init__(self):
         super().__init__()
         logger.info("Logique du UserInteractionAgent initialisée (avec LLM pour clarification).")
+        self.llm_client = LlmClient()
+        self.tool_registry = ToolRegistry()
+        self.tool_registry.tools[ACTION_CLARIFY_OBJECTIVE] = self.clarify_objective
+        self.tool_registry.tools[ACTION_RECEIVE_FILE] = self.receive_file
 
 
     def get_active_tools(self) -> dict:
@@ -31,8 +47,68 @@ class UserInteractionAgentLogic(BaseAgentLogic):
             formatted_history.append(f"Previously, Agent asked: {agent_q}\nUser responded: {user_a}")
         return "\n\n".join(formatted_history)
 
+    async def receive_file(self, input_data: Dict[str, Any], context_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Outil pour recevoir un fichier de l'utilisateur, le stocker dans l'environnement
+        d'exécution et créer un artefact dans le graphe d'exécution.
+        """
+        file_name = input_data.get("file_name")
+        file_content = input_data.get("file_content")
+        environment_id = context_id
+
+        if not all([file_name, file_content, environment_id]):
+            return {"status": "error", "message": "Les champs 'file_name', 'file_content', et 'environment_id' sont requis."}
+
+        try:
+            env_manager = EnvironmentManager()
+            destination_path = f"/app/{file_name}"
+            content_text = file_content.decode("utf-8", errors="ignore") if isinstance(file_content, (bytes, bytearray)) else str(file_content)
+            await env_manager.write_file_to_environment(
+                environment_id=environment_id,
+                file_path=destination_path,
+                content=content_text,
+            )
+            logger.info(f"Fichier {file_name} stocké avec succès dans l'environnement {environment_id} à l'emplacement : {destination_path}")
+
+            try:
+                graph = ExecutionTaskGraph(execution_plan_id=environment_id)
+                file_node = ExecutionTaskNode(
+                    task_id=f"file_{uuid.uuid4().hex[:8]}",
+                    objective=f"Artefact Fichier : {file_name}",
+                    task_type=ExecutionTaskType.EXECUTABLE,
+                    meta={"file_path": destination_path, "source": "user_upload", "file_name": file_name},
+                )
+                file_node.state = "completed"
+                file_node.result_summary = f"Fichier utilisateur '{file_name}' disponible à l'emplacement : {destination_path}"
+                graph.add_task(file_node, is_root=True)
+                logger.info(f"Noeud artefact créé pour le fichier {file_name} dans le graphe {environment_id}.")
+            except Exception as e:
+                logger.error(f"Échec de la création du noeud artefact pour {file_name} : {e}", exc_info=True)
+
+            log_collaboration_trace(
+                {
+                    "interaction_id": str(uuid.uuid4()),
+                    "msg_type": "FILE_UPLOAD",
+                    "sender_agent": "User",
+                    "receiver_agent": "InteractionAgent",
+                    "result_summary": f"Fichier {file_name} stocké dans {destination_path}",
+                    "tool_invoked": {"name": "receive_file", "input": {"file_name": file_name, "path": destination_path}},
+                },
+                context_id,
+            )
+
+            return {"status": "success", "message": f"Fichier {file_name} reçu, stocké et enregistré comme artefact."}
+
+        except Exception as e:
+            logger.error(f"Erreur critique lors de la réception du fichier {file_name}: {e}", exc_info=True)
+            return {"status": "error", "message": str(e)}
+
     async def process(self, input_data: Dict[str, Any], context_id: Optional[str] = None) -> Tuple[Dict[str, Any], str | None]:
         action = input_data.get("action")
+        if action == ACTION_RECEIVE_FILE:
+            result = await self.receive_file(input_data, context_id)
+            status = "completed" if result.get("status") == "success" else "failed"
+            return result, status
         current_text_input = input_data.get("current_objective_or_response", "").strip()
         conversation_history = input_data.get("conversation_history", [])
         objective = input_data.get("objective", "").strip()

@@ -985,8 +985,11 @@ function Team2Legend() {
   );
 }
 
-function ClarificationSection({ plan, refreshPlanDetails }: { plan: any; refreshPlanDetails: (planId: string) => void }) {
+function ClarificationSection({ plan, refreshPlanDetails, agents }: { plan: any; refreshPlanDetails: (planId: string) => void; agents: any[] }) {
   const [answer, setAnswer] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   if (!plan) return null;
   const history = plan.conversation_history || [];
   const artifact = plan.last_agent_response_artifact || {};
@@ -1019,6 +1022,40 @@ function ClarificationSection({ plan, refreshPlanDetails }: { plan: any; refresh
       .catch(err => console.error('Error accepting objective', err));
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFile(e.target.files?.[0] || null);
+    setUploadMsg(null);
+  };
+
+  const uploadFile = async () => {
+    if (!file) return;
+    const interactionAgent = agents.find(a => (a.name || '').includes('UserInteractionAgent'));
+    if (!interactionAgent?.public_url) {
+      setUploadMsg('Interaction agent unavailable');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('context_id', plan.environment_id || plan.global_plan_id);
+    formData.append('file', file);
+    try {
+      const res = await fetch(`${interactionAgent.public_url.replace(/\/$/, '')}/upload-file`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== 'success') {
+        throw new Error(data.message || `HTTP ${res.status}`);
+      }
+      setUploadMsg('File uploaded');
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      refreshPlanDetails(plan.global_plan_id);
+    } catch (err: any) {
+      console.error('File upload error', err);
+      setUploadMsg('Upload failed');
+    }
+  };
+
   return (
     <div className="clarification-block">
       <h4>Clarification in progress</h4>
@@ -1048,6 +1085,13 @@ function ClarificationSection({ plan, refreshPlanDetails }: { plan: any; refresh
         placeholder="Your answer..."
         style={{ width: '100%' }}
       />
+      <div style={{ margin: '0.5rem 0' }}>
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} />
+        <button onClick={uploadFile} disabled={!file} style={{ marginLeft: '0.5rem' }}>
+          Upload file
+        </button>
+        {uploadMsg && <span style={{ marginLeft: '0.5rem' }}>{uploadMsg}</span>}
+      </div>
       <div style={{ marginTop: '0.5rem' }}>
         <button onClick={submitAnswer}>Send</button>
         <button onClick={forceTeam1} style={{ marginLeft: '0.5rem' }}>Force TEAM 1</button>
@@ -1563,7 +1607,7 @@ function App() {
             )}
 
             {planDetails?.current_supervisor_state === 'CLARIFICATION_PENDING_USER_INPUT' && (
-              <ClarificationSection plan={planDetails} refreshPlanDetails={refreshPlanDetails} />
+              <ClarificationSection plan={planDetails} refreshPlanDetails={refreshPlanDetails} agents={agents} />
             )}
             
             {/* Déplace le bouton "Modifier le Graphe d'Exécution" ici, EN DEHORS du bloc "Resume/Retry" */}

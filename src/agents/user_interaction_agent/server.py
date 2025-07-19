@@ -19,7 +19,7 @@ from src.shared.log_handler import InMemoryLogHandler
 from src.shared.service_discovery import get_gra_base_url, register_self_with_gra
 from src.shared.stats_utils import increment_agent_restart
 from .executor import UserInteractionAgentExecutor
-from .logic import ACTION_CLARIFY_OBJECTIVE
+from .logic import ACTION_CLARIFY_OBJECTIVE, ACTION_RECEIVE_FILE
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -117,6 +117,21 @@ def create_app_instance() -> Starlette:
         if not agent_executor:
             return JSONResponse({"state": "Error", "message": "Executor not initialized"}, status_code=500)
         return JSONResponse(agent_executor.get_status())
+
+    async def upload_file_endpoint(request):
+        form = await request.form()
+        context_id = form.get("context_id")
+        file = form.get("file")
+        if not context_id or file is None:
+            return JSONResponse({"status": "error", "message": "context_id and file are required"}, status_code=400)
+        file_bytes = await file.read()
+        input_data = {
+            "action": ACTION_RECEIVE_FILE,
+            "file_name": file.filename,
+            "file_content": file_bytes,
+        }
+        result, _ = await agent_executor.agent_logic.process(input_data, context_id)
+        return JSONResponse(result)
     
     app.router.routes.append(
         Route("/health", endpoint=health_check_endpoint, methods=["GET"])
@@ -131,6 +146,9 @@ def create_app_instance() -> Starlette:
     )
     app.router.routes.append(
         Route("/restart", endpoint=restart_endpoint, methods=["POST"])
+    )
+    app.router.routes.append(
+        Route("/upload-file", endpoint=upload_file_endpoint, methods=["POST"])
     )
     app.router.lifespan_context = lifespan
 
