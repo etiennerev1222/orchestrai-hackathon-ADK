@@ -2,19 +2,15 @@
 
 import logging
 from typing import Callable, Optional
-from src.tools import development_tools  # Exporte les outils Python spécifiques
-from src.tools import generic_tools  # Exporte des outils plus transversaux
-from src.shared.execution_task_graph_management import ExecutionTaskGraph, ExecutionTaskNode,ExecutionTaskType
-
-
-import uuid
 from datetime import datetime
-logger = logging.getLogger(__name__)
-
-import logging
-from typing import Optional
+import uuid
 
 from src.tools import development_tools, generic_tools
+from src.shared.execution_task_graph_management import (
+    ExecutionTaskGraph,
+    ExecutionTaskNode,
+    ExecutionTaskType,
+)
 
 logger = logging.getLogger(__name__)
 
