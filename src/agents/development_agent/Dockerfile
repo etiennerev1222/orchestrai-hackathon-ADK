@@ -8,7 +8,7 @@ WORKDIR /app
 COPY ./src /app/src
 
 # Installe les dépendances Python
-RUN pip install --no-cache-dir -r /app/src/tests/requirements.txt
+RUN pip install --no-cache-dir -r /app/tests/requirements.txt
 
 # La commande pour démarrer le serveur du Development Agent
 CMD ["python", "-m", "src.agents.development_agent.server"]

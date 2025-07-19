@@ -8,7 +8,7 @@ WORKDIR /app
 COPY ./src /app/src
 
 # Installe les dépendances Python (incluant la librairie kubernetes)
-RUN pip install --no-cache-dir -r /app/src/tests/requirements.txt
+RUN pip install --no-cache-dir -r /app/tests/requirements.txt
 
 # La commande pour démarrer le serveur de l'Environment Manager
 CMD ["python", "-m", "src.services.environment_manager.server"]

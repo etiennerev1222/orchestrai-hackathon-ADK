@@ -26,7 +26,7 @@ echo "Endpoint GKE : ${GKE_ENDPOINT}"
 
 # 2. Construction de l'image du service de test IAM (sans cache)
 echo "--- Construction de l'image du service de test IAM ---"
-docker build -t gcr.io/${GCP_PROJECT_ID}/k8s-iam-test-server:latest -f src/tests/Dockerfile . > build_iam_test_server.log 2>&1 
+docker build -t gcr.io/${GCP_PROJECT_ID}/k8s-iam-test-server:latest -f tests/Dockerfile . > build_iam_test_server.log 2>&1
 
 if [ $? -ne 0 ]; then
     echo "Erreur: La construction de l'image a échoué. Voir build_iam_test_server.log pour les détails."

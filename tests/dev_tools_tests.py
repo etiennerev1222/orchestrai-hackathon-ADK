@@ -1,4 +1,4 @@
-# src/tests/dev_tools_tests.py
+# tests/dev_tools_tests.py
 
 import pytest
 from src.agents.development_agent.executor import DevelopmentAgentExecutor
