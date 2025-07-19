@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 GCP_REGION = os.environ.get("GCP_REGION")
 
-LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-1.5-flash-001")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-2.0-flash-001")
 
 try:
