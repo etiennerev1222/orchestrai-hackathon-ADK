@@ -285,6 +285,8 @@ The project implements a multi-level orchestration pattern with persistent state
 * **Service discovery via the GRA** stores agent metadata in Firestore.
 * **Iterative planning** allows plan revisions until validation.
 * **LLM-powered logic** relies on Gemini models through `llm_client.py`.
+* **Tool-based agent logic** via `BaseAgentLogic` and a `ToolRegistry` that loads
+  skill-specific tools such as `workforce_information` and `capability_check`.
 
 ## ⚙️ Installation & Prerequisites
 
@@ -428,7 +430,9 @@ The script automatically injects the correct environment variables (`GCP_PROJECT
 ## How to Add Your Agent
 
 1. **Create a folder** under `src/agents/<your_agent>`.
-2. Add `logic.py`, `executor.py` and `server.py` implementing the agent logic.
+2. Add `logic.py`, `executor.py` and `server.py` implementing the agent logic. Your
+   `logic.py` should subclass `BaseAgentLogic` and declare the tools available via
+   the `ToolRegistry`.
 3. Make the server register itself to the GRA using the `/v1/agents/register` endpoint.
 4. Add a Dockerfile and update `deployment.sh` to build and deploy your new image.
 5. Deploy with `./deployment.sh deploy-one <your_agent>` once the image is built.
