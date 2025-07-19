@@ -4,6 +4,8 @@ from typing import Dict, Any, Tuple
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
+from src.shared.prompts import get_base_prompt
+from src.shared.prompt_utils import build_generic_system_prompt
 
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
@@ -45,23 +47,10 @@ class TestingAgentLogic(BaseAgentLogic):
             self.logger.info(f"TestingAgent: Mode '{AGENT_SKILL_TEST_CASE_GENERATION}' pour l'objectif: '{objective}'")
             feature_spec_content = input_artifacts_content.get("feature_spec_id", "")
             
-            system_prompt_tcg = (
-                "Tu es un ingénieur QA expert en création de cas de test. "
-                "Ta mission est de générer une suite de cas de test pertinents et exhaustifs (mais concis) "
-                "basée sur un objectif, des instructions, des critères d'acceptation et potentiellement des spécifications de fonctionnalité fournies. "
-                "Tu peux effectuer les actions suivantes :\n"
-                "1. **Pour générer et écrire un fichier de test :**\n"
-                "   `{ \"action\": \"generate_test_code_and_write_file\", \"file_path\": \"/app/tests/test_something.py\", \"objective\": \"description des tests\", \"local_instructions\": [], \"acceptance_criteria\": [] }`\n"
-                "2. **Pour exécuter une commande :**\n"
-                "   `{ \"action\": \"execute_command\", \"command\": \"votre commande\", \"workdir\": \"/app\" }`\n"
-                "3. **Pour lire un fichier :**\n"
-                "   `{ \"action\": \"read_file\", \"file_path\": \"/app/chemin/fichier\" }`\n"
-                "4. **Pour lister un répertoire :**\n"
-                "   `{ \"action\": \"list_directory\", \"path\": \"/app/chemin/dossier\" }`\n"
-                "5. **Pour terminer la tâche :**\n"
-                "   `{ \"action\": \"complete_task\", \"summary\": \"Résumé des tests effectués et résultats.\" }`\n"
-                "Ton processus doit être itératif : génère des tests, exécute-les, analyse les résultats, répète si nécessaire. "
-                "Retourne les cas de test sous forme d'une liste de descriptions textuelles dans un objet JSON."
+            base_prompt = get_base_prompt("testing_agent_tcg")
+            system_prompt_tcg = build_generic_system_prompt(
+                base_prompt,
+                self.tool_registry.get_metadata_for_tools(self.tool_registry.tools.keys())
             )
             prompt_tcg = (
                 f"Objectif de la fonctionnalité pour laquelle générer des cas de test : {objective}\n\n"
@@ -141,12 +130,10 @@ class TestingAgentLogic(BaseAgentLogic):
                     f"'''\n{formatted_test_cases}\n'''\n\n"
                 )
             
-            system_prompt_st = (
-                "Tu es un ingénieur QA expert et un testeur logiciel rigoureux. "
-                "Ta mission est d'analyser un livrable de code fourni, ainsi qu'une liste de cas de test (si fournie), "
-                "par rapport à son objectif, ses instructions de développement et ses critères d'acceptation. "
-                "Tu dois déterminer si le livrable est conforme. Identifie les points de succès et les échecs ou bugs potentiels. "
-                "Fournis un rapport de test concis au format JSON."
+            base_prompt = get_base_prompt("testing_agent_st")
+            system_prompt_st = build_generic_system_prompt(
+                base_prompt,
+                self.tool_registry.get_metadata_for_tools(self.tool_registry.tools.keys())
             )
             prompt_st = (
                 f"Objectif du développement qui a produit ce livrable : {objective}\n\n"

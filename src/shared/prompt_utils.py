@@ -127,3 +127,13 @@ Be collaborative and clear. Your job is not to finalize every detail, but to pre
 [AVAILABLE TOOLS]
 {tool_descriptions}
 """
+
+
+def build_generic_system_prompt(base_prompt: str, tool_registry: dict) -> str:
+    """Append dynamic tool descriptions to a base system prompt."""
+    if not tool_registry:
+        return base_prompt
+
+    tool_lines = [f"- {name}: {meta.get('description', 'No description')}" for name, meta in tool_registry.items()]
+    tools_section = "\n\n[AVAILABLE TOOLS]\n" + "\n".join(tool_lines)
+    return base_prompt.rstrip() + tools_section

@@ -1,6 +1,8 @@
 import logging
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
+from src.shared.prompts import get_base_prompt
+from src.shared.prompt_utils import build_generic_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +29,10 @@ class ReformulatorAgentLogic(BaseAgentLogic):
         if not objective_text:
             return "Objectif vide reçu, aucune reformulation possible."
 
-        system_prompt = (
-            "Tu es un assistant expert en gestion de projet. "
-            "Ton rôle est de reformuler un objectif fourni par un utilisateur pour le rendre plus clair, "
-            "plus spécifique et directement exploitable par une equipe d'agent LLM aux capacité étendue. Si l'objectif est vague, enrichis-le avec des "
-            "hypothèses raisonnables. Ne pose pas de questions, fournis directement une version améliorée."
+        base_prompt = get_base_prompt("reformulator")
+        system_prompt = build_generic_system_prompt(
+            base_prompt,
+            self.tool_registry.get_metadata_for_tools(self.get_active_tools().keys())
         )
 
         prompt = (
@@ -44,7 +45,6 @@ class ReformulatorAgentLogic(BaseAgentLogic):
         )
 
         allowed_tools = list(self.get_active_tools().keys())
-        system_prompt = self._inject_tool_descriptions(system_prompt, allowed_tools)
 
         try:
             result = await self.run_reasoning_loop_with_tools(

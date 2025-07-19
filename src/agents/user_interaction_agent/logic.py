@@ -14,7 +14,6 @@ from src.shared.llm_client import LlmClient
 from src.shared.tool_registry import ToolRegistry
 
 from src.shared.base_agent_logic import BaseAgentLogic
-from src.shared.prompts import SYSTEM_PROMPT_LLM
 
 logger = logging.getLogger(__name__)
 

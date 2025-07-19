@@ -3,6 +3,8 @@ import json
 from typing import Dict, Any
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
+from src.shared.prompts import get_base_prompt
+from src.shared.prompt_utils import build_generic_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +32,10 @@ class ValidatorAgentLogic(BaseAgentLogic):
                 "evaluated_plan": evaluation_result.get("evaluated_plan")
             }
 
-        system_prompt = (
-            "Tu es un chef de projet expérimenté et pragmatique. Ta mission est de valider si un plan d'action est suffisamment mûr pour être transmis à l'équipe d'exécution (TEAM 2). "
-            "Tu n'exiges pas la perfection, mais la clarté et la cohérence. Un plan 'approuvé' signifie que l'équipe d'exécution a une base de travail solide pour commencer à décomposer le projet en tâches techniques, même si certains détails devront être affinés par eux."
-            "\nTa décision doit se baser sur les critères suivants :\n"
-            "1.  **Faisabilité Générale :** Le score de faisabilité est-il raisonnable (par exemple, 6/10 ou plus) ?\n"
-            "2.  **Blocage Critique :** Les faiblesses identifiées sont-elles des obstacles insurmontables qui empêcheraient totalement le démarrage, ou sont-ce des risques gérables et des points de vigilance pour l'équipe d'exécution ?\n"
-            "Un manque de détails techniques fins n'est PAS un bloqueur, mais un objectif principal contradictoire\n"
-            "Justifie toujours ta décision de manière constructive et retourne le résultat UNIQUEMENT au format JSON."
+        base_prompt = get_base_prompt("validator_agent")
+        system_prompt = build_generic_system_prompt(
+            base_prompt,
+            self.tool_registry.get_metadata_for_tools(self.get_active_tools().keys())
         )
         
         evaluation_str = json.dumps(evaluation_result, indent=2, ensure_ascii=False)

@@ -5,6 +5,8 @@ import uuid
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
+from src.shared.prompts import get_base_prompt
+from src.shared.prompt_utils import build_generic_system_prompt
 
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
@@ -56,24 +58,10 @@ class ResearchAgentLogic(BaseAgentLogic):
             skills_string_for_prompt = ", ".join([f"'{s}'" for s in default_skills])
 
 
-        system_prompt = (
-            "Tu es un assistant de recherche et d'analyse IA expert. Ta mission est d'exécuter des tâches exploratoires ou d'analyse. "
-            "Tu dois fournir un résumé de tes découvertes ou de ton analyse. "
-            "Si la nature de la tâche exploratoire ('exploratory') implique obligatoirement la définition de nouvelles sous-tâches executable par des agents LLM pour atteindre l'objectif initial, "
-            "tu DOIS les proposer. Pour les tâches non exploratoires, tu ne génères généralement pas de nouvelles sous-tâches.\n"
-            "Ta réponse DOIT être un objet JSON unique avec DEUX clés racine OBLIGATOIRES : 'summary' (string) et 'new_sub_tasks' (array of task objects).\n"
-            "La clé 'new_sub_tasks' doit être une liste vide [] si aucune nouvelle sous-tâche n'est nécessaire ou si la tâche n'est pas de type 'exploratory' et ne justifie pas de décomposition.\n"
-            "Si tu génères des 'new_sub_tasks', chaque objet tâche dans la liste DOIT avoir EXACTEMENT les clés suivantes:\n"
-            "- 'id': un identifiant textuel local unique et court pour la sous-tâche (ex: 'sub_T01', 'sub_T02a').\n"
-            "- 'nom': un nom court et descriptif.\n"
-            "- 'description': une description détaillée.\n"
-            "- 'type': 'executable', 'exploratory', ou 'container'.\n"
-            "- 'dependances': une liste vide [], car ces sous-tâches dépendront implicitement de la tâche exploratoire parente (gérée par le superviseur).\n"
-            "- 'instructions_locales': liste de strings.\n"
-            "- 'acceptance_criteria': liste de strings.\n"
-            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences d'agent LLM disponibles : [{skills_string_for_prompt}]. Choisis la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
-            "- 'sous_taches': une liste vide [], car la décomposition s'arrête à ce niveau pour les tâches que tu génères.\n"
-            "Fournis UNIQUEMENT l'objet JSON, sans texte ou explication en dehors."
+        base_prompt = get_base_prompt("research_agent")
+        system_prompt = build_generic_system_prompt(
+            base_prompt,
+            self.tool_registry.get_metadata_for_tools(self.get_active_tools().keys())
         )
 
         context_summary = self.get_context_summary(context_id)
@@ -93,7 +81,6 @@ class ResearchAgentLogic(BaseAgentLogic):
         )
 
         allowed_tools = list(self.get_active_tools().keys())
-        system_prompt = self._inject_tool_descriptions(system_prompt, allowed_tools)
 
         try:
             self.logger.debug(

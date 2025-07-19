@@ -4,6 +4,8 @@ from typing import Dict, Any, List
 
 from src.shared.base_agent_logic import BaseAgentLogic
 from src.shared.llm_client import call_llm
+from src.shared.prompts import get_base_prompt
+from src.shared.prompt_utils import build_generic_system_prompt
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -51,23 +53,9 @@ class DecompositionAgentLogic(BaseAgentLogic):
             available_skills_list = default_skills
 
 
-        system_prompt = (
-            "Tu es un chef de projet expert en décomposition de plans en tâches granulaires et structurées. "
-            "Ton rôle est de prendre un plan de projet détaillé et de le transformer en un objet JSON structuré. "
-            "Cet objet JSON DOIT avoir les clés racine suivantes et uniquement celles-ci : 'global_context' (string), 'instructions' (array of string), et 'tasks' (array of task objects).\n"
-            "Pour chaque tâche dans la liste 'tasks' (et pour chaque tâche dans 'sous_taches'), tu dois fournir EXACTEMENT les clés suivantes :\n"
-            "- 'id': un identifiant textuel local unique et court (ex: 'T01', 'T02.1').\n"
-            "- 'nom': un nom court et descriptif.\n"
-            "- 'description': une description détaillée.\n"
-            "- 'type': 'executable', 'exploratory', ou 'container'.\n"
-            "- 'dependances': une liste d'IDs locaux des tâches dont cette tâche dépend directement. Si une tâche d'exécution de tests (ex: avec compétence 'software_testing') dépend de code ET de cas de tests, elle doit lister les IDs des tâches ayant produit ces deux éléments.\n"
-            "- 'instructions_locales': liste de strings.\n"
-            "- 'acceptance_criteria': liste de strings.\n"
-            f"- 'assigned_agent_type': une chaîne de caractères choisie EXACTEMENT parmi la liste suivante de compétences disponibles de tes agents LLM : [{skills_string}]. Choisis la plus pertinente. Si aucune ne correspond parfaitement, choisis 'general_analysis'.\n"
-            "- 'input_data_refs': un dictionnaire optionnel (peut être omis ou vide {}). Si une tâche a besoin de l'artefact d'une tâche précédente comme input nommé, utilise ce champ. Par exemple, pour une tâche qui exécute des tests, tu pourrais avoir : `\"input_data_refs\": {\"code_to_test\": \"ID_TACHE_CODE\", \"test_cases_file\": \"ID_TACHE_GEN_TESTS\"}`. Les valeurs sont les 'id' locaux d'autres tâches.\n"
-            "- 'sous_taches': une liste vide [] ou une liste d'objets tâche imbriqués, suivant la même structure.\n"
-            "Assure-toi que la réponse est UNIQUEMENT l'objet JSON global."
-        )
+        base_prompt = get_base_prompt("decomposition_agent").format(skills_list=f"[{skills_string}]")
+        # The decomposition agent does not rely on tool invocation but we keep a generic tools section for consistency
+        system_prompt = build_generic_system_prompt(base_prompt, {})
         
         prompt = (
             f"Voici le plan détaillé à décomposer :\n\n"
