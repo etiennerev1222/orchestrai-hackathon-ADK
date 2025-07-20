@@ -16,8 +16,13 @@ class DummyAgent(BaseAgentLogic):
 @pytest.mark.asyncio
 async def test_record_collaboration_builds_and_logs():
     artifact = {"interaction_id": "abc123"}
-    with patch("src.shared.interaction_logger.build_collaboration_artifact", return_value=artifact) as build_mock,
-         patch("src.shared.interaction_logger.log_collaboration_trace") as log_mock:
+    with (
+        patch(
+            "src.shared.interaction_logger.build_collaboration_artifact",
+            return_value=artifact,
+        ) as build_mock,
+        patch("src.shared.interaction_logger.log_collaboration_trace") as log_mock,
+    ):
         interaction_id = BaseAgentLogic._record_collaboration(
             sender_agent="A",
             receiver_agent="B",
@@ -55,9 +60,17 @@ async def test_send_collaborative_message_records_interaction():
     fake_artifact.parts = [MagicMock(root=MagicMock(text="{\"foo\": \"bar\"}"))]
     fake_task.artifacts = [fake_artifact]
 
-    with patch("src.shared.base_agent_logic.get_firestore_client", return_value=db_mock),
-         patch("src.shared.base_agent_logic.call_a2a_agent", AsyncMock(return_value=fake_task)) as call_mock,
-         patch.object(BaseAgentLogic, "_record_collaboration") as record_mock:
+    with (
+        patch(
+            "src.shared.base_agent_logic.get_firestore_client",
+            return_value=db_mock,
+        ),
+        patch(
+            "src.shared.base_agent_logic.call_a2a_agent",
+            AsyncMock(return_value=fake_task),
+        ) as call_mock,
+        patch.object(BaseAgentLogic, "_record_collaboration") as record_mock,
+    ):
         result = await agent.send_collaborative_message(
             "other",
             "CAPABILITY_CHECK",

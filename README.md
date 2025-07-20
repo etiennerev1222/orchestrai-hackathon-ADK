@@ -517,6 +517,7 @@ pip install -r requirements.txt
 pip install -r tests/requirements.txt
 pytest
 ```
+For detailed steps to test each agent individually, see `docs/TEST_PROTOCOL.md`.
 
 ## Future Enhancements
 
