@@ -1,3 +1,8 @@
 # Docs
 
 This folder stores images and resources for the technical documentation. Architecture diagrams referenced by the main README are kept here. Screenshots of the Streamlit interface can also live in this directory. See `environment_manager.md` for details about managing isolated environments. The file `TEST_PROTOCOL.md` lists step‑by‑step instructions to verify each agent locally.
+
+Additional Mermaid diagrams are provided for clarity:
+
+- [Supervisor Class Diagrams](class_diagrams.md)
+- [Phase Diagrams](phase_diagrams.md)
