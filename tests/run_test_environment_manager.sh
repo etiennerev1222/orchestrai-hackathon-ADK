@@ -14,7 +14,10 @@ LABEL_SELECTOR="app=environment-manager"
 LOCAL_PORT=8080
 REMOTE_PORT=8080
 TMP_LOG="env_mgr_port_forward.log"
-TEST_ENV_ID="exec-env-$(date +%s)"
+# Environment identifiers are now derived from a global plan id (gplan_xxx).
+# The manager normalises IDs to the form "exec-<gplan_id>", so we provide only
+# the gplan identifier here for clarity.
+TEST_ENV_ID="gplan_$(date +%s)"
 BASE_IMAGE="gcr.io/orchestrai-hackathon/python-devtools:1751122256"
 
 echo "🔍 Recherche du pod de l'environment manager..."
@@ -128,6 +131,14 @@ curl -s -X POST -H "Authorization: Bearer $(get_id_token)" \
      -H "Content-Type: application/json" \
      -d "{\"environment_id\": \"$TEST_ENV_ID\", \"path\": \"/app\"}" \
      "$EM_URL/list_files_in_environment" | tee list_files.json
+sleep 1
+
+# Clean up environment before closing the port-forward
+echo "➡ Suppression de l'environnement de test"
+curl -s -X POST -H "Authorization: Bearer $(get_id_token)" \
+     -H "Content-Type: application/json" \
+     -d "{\"environment_id\": \"$TEST_ENV_ID\"}" \
+     "$EM_URL/delete_environment" | tee delete_env.json
 sleep 1
 
 # Nettoyage
