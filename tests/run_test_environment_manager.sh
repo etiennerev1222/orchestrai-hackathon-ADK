@@ -2,11 +2,11 @@
 #!/bin/bash
 set -e
 
-# Manual end-to-end test of the Environment Manager. Requires ``kubectl`` access
-# to a cluster where the service is deployed. Run directly from the repository
-# root:
+# Manual end-to-end test of the Environment Manager. By default it expects a
+# Kubernetes deployment and uses ``kubectl`` to port-forward the service. Pass
+# ``--local`` to run against a locally started instance using the Docker backend.
 #
-#     bash tests/run_test_environment_manager.sh
+#    bash tests/run_test_environment_manager.sh [--local]
 
 
 NAMESPACE="default"
@@ -14,42 +14,66 @@ LABEL_SELECTOR="app=environment-manager"
 LOCAL_PORT=8080
 REMOTE_PORT=8080
 TMP_LOG="env_mgr_port_forward.log"
+# Set to 1 when running locally with the Docker backend
+LOCAL_MODE=0
+
+if [[ "$1" == "--local" ]]; then
+  LOCAL_MODE=1
+fi
 # Environment identifiers are now derived from a global plan id (gplan_xxx).
 # The manager normalises IDs to the form "exec-<gplan_id>", so we provide only
 # the gplan identifier here for clarity.
 TEST_ENV_ID="gplan_$(date +%s)"
 BASE_IMAGE="gcr.io/orchestrai-hackathon/python-devtools:1751122256"
 
-echo "🔍 Recherche du pod de l'environment manager..."
-POD_NAME=$(kubectl get pod -n $NAMESPACE -l $LABEL_SELECTOR -o jsonpath="{.items[0].metadata.name}")
-
-if [ -z "$POD_NAME" ]; then
-  echo "⛔ Aucun pod 'environment-manager' trouvé avec le label '$LABEL_SELECTOR'."
-  exit 1
-fi
-
-echo "✅ Pod trouvé : $POD_NAME"
-echo "🔁 Démarrage du port-forward sur localhost:${LOCAL_PORT}..."
-kubectl port-forward -n $NAMESPACE pod/$POD_NAME $LOCAL_PORT:$REMOTE_PORT > $TMP_LOG 2>&1 &
-PF_PID=$!
-
-for i in {1..10}; do
-  if nc -z localhost $LOCAL_PORT; then
-    echo "✅ Port $LOCAL_PORT disponible."
-    break
+if [ "$LOCAL_MODE" -eq 1 ]; then
+  echo "🚀 Lancement de l'Environment Manager en local (backend Docker)..."
+  ENV_MANAGER_BACKEND=docker PORT=$LOCAL_PORT \
+    python -m src.services.environment_manager.server > $TMP_LOG 2>&1 &
+  EM_PID=$!
+  for i in {1..10}; do
+    if nc -z localhost $LOCAL_PORT; then
+      echo "✅ Service local démarré sur le port $LOCAL_PORT"
+      break
+    fi
+    sleep 1
+  done
+  if ! nc -z localhost $LOCAL_PORT; then
+    echo "❌ Impossible de démarrer le service local."
+    kill $EM_PID
+    exit 1
   fi
-  sleep 1
-done
+  get_id_token() { echo ""; }
+else
+  echo "🔍 Recherche du pod de l'environment manager..."
+  POD_NAME=$(kubectl get pod -n $NAMESPACE -l $LABEL_SELECTOR -o jsonpath="{.items[0].metadata.name}")
 
-if ! nc -z localhost $LOCAL_PORT; then
-  echo "❌ Port non disponible. Échec."
-  kill $PF_PID
-  exit 1
+  if [ -z "$POD_NAME" ]; then
+    echo "⛔ Aucun pod 'environment-manager' trouvé avec le label '$LABEL_SELECTOR'." >&2
+    exit 1
+  fi
+
+  echo "✅ Pod trouvé : $POD_NAME"
+  echo "🔁 Démarrage du port-forward sur localhost:${LOCAL_PORT}..."
+  kubectl port-forward -n $NAMESPACE pod/$POD_NAME $LOCAL_PORT:$REMOTE_PORT > $TMP_LOG 2>&1 &
+  PF_PID=$!
+
+  for i in {1..10}; do
+    if nc -z localhost $LOCAL_PORT; then
+      echo "✅ Port $LOCAL_PORT disponible."
+      break
+    fi
+    sleep 1
+  done
+
+  if ! nc -z localhost $LOCAL_PORT; then
+    echo "❌ Port non disponible. Échec."
+    kill $PF_PID
+    exit 1
+  fi
+
+  get_id_token() { gcloud auth print-identity-token; }
 fi
-
-get_id_token() {
-    gcloud auth print-identity-token
-}
 
 EM_URL="http://localhost:${LOCAL_PORT}"
 
@@ -142,8 +166,13 @@ curl -s -X POST -H "Authorization: Bearer $(get_id_token)" \
 sleep 1
 
 # Nettoyage
-echo "🧹 Fermeture du port-forward ($PF_PID)"
-kill $PF_PID
+if [ "$LOCAL_MODE" -eq 1 ]; then
+  echo "🧹 Arrêt du serveur local ($EM_PID)"
+  kill $EM_PID
+else
+  echo "🧹 Fermeture du port-forward ($PF_PID)"
+  kill $PF_PID
+fi
 rm -f $TMP_LOG
 
 echo "🎉 Test terminé. Résultats dans :"
