@@ -7,8 +7,13 @@ from typing import Optional
 from src.shared.firebase_init import db
 from src.shared.execution_task_graph_management import ExecutionTaskGraph
 
-from .k8s_environment_manager import KubernetesEnvironmentManager as BaseEnvironmentManager
 import os
+
+backend = os.environ.get("ENV_MANAGER_BACKEND", "k8s").lower()
+if backend == "docker":
+    from .docker_environment_manager import DockerEnvironmentManager as BaseEnvironmentManager
+else:
+    from .k8s_environment_manager import KubernetesEnvironmentManager as BaseEnvironmentManager
 logger = logging.getLogger(__name__)
 
 class EnvironmentManager(BaseEnvironmentManager):

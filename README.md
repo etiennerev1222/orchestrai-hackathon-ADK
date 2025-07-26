@@ -228,7 +228,7 @@ graph LR
 * **Front End**: React served from Firebase Hosting.
 
 * **Asynchronous Task Handling**: Extensive use of `asyncio`.
-* **Environment Manager**: Creates and manages isolated Kubernetes pods to run the generated code. A dedicated API allows deleting a pod via `DELETE /api/environments/{env_id}`.
+* **Environment Manager**: Creates and manages isolated execution environments. On Kubernetes it spawns pods, but locally you can set `ENV_MANAGER_BACKEND=docker` to use a single Docker container. A dedicated API allows deleting a pod via `DELETE /api/environments/{env_id}`.
 
 ## ☁️ Cloud Infrastructure Overview
 
