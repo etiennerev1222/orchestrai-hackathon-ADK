@@ -444,6 +444,15 @@ class ExecutionSupervisorLogic:
         self.logger.info(
             f"[{self.execution_plan_id}] Début du cycle de traitement d'exécution."
         )
+        if self.task_graph.get_edit_mode():
+            self.logger.info(
+                f"[{self.execution_plan_id}] Mode édition actif - exécution en pause"
+            )
+            await self._update_status(
+                AgentOperationalState.IDLE, "Edit mode active"
+            )
+            return
+
         await self._update_status(AgentOperationalState.WORKING, "Cycle d'exécution")
         current_graph_snapshot_before_ready = self.task_graph.as_dict()
         ready_tasks_nodes = self.task_graph.get_ready_tasks()
@@ -899,6 +908,13 @@ class ExecutionSupervisorLogic:
 
     async def continue_execution(self, max_cycles: int = 5):
         """Reprendre un plan existant pour traiter les tâches restantes."""
+        if self.task_graph.get_edit_mode():
+            self.logger.info(
+                f"[{self.execution_plan_id}] Mode édition actif - reprise suspendue"
+            )
+            await self._update_status(AgentOperationalState.IDLE, "Edit mode active")
+            return
+
         if not self.plan_environment_id:
             self.plan_environment_id = (
                 await self.environment_manager.get_environment_or_fallback(

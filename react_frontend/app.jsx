@@ -17,6 +17,9 @@ const TYPE_COLORS = {
   decomposition: '#9c27b0'
 };
 
+// Root directory of each isolated environment inside the pod
+const ENV_WORKDIR = '/app';
+
 function parseMaybeJson(data) {
   if (!data) return data;
   if (typeof data === 'string') {
@@ -693,7 +696,7 @@ function FileBrowser({ environmentId, planId }) {
     <div className="file-browser">
       <h3>File Explorer (ID: {environmentId})</h3>
       <div className="path-bar">
-        <span>Path: /app/{currentPath}</span>
+        <span>Path: {ENV_WORKDIR}/{currentPath}</span>
         <div className="file-actions">
           <input
             type="file"
